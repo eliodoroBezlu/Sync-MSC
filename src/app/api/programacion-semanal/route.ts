@@ -94,6 +94,16 @@ export async function POST(req: NextRequest) {
                utilizacion: hhDisp > 0 ? Math.round((hhProg / hhDisp) * 100) : 0 };
     });
 
+    const existente = await prisma.programacionSemanal.findFirst({
+      where: { semana, anio, areaCodigo: areaCodigo || null },
+    });
+    if (existente) {
+      return Response.json(
+        { ok: false, error: `Ya existe un plan para semana ${semana}/${anio} en esta área. Elimínalo primero si deseas reemplazarlo.` },
+        { status: 409 }
+      );
+    }
+
     const programa = await prisma.programacionSemanal.create({
       data: {
         semana, anio, disciplina, areaCodigo: areaCodigo || null,

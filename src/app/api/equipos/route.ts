@@ -64,12 +64,28 @@ export async function POST(req: NextRequest) {
       let inserted = 0, modified = 0;
       for (const eq of body) {
         const tag = String(eq.tag).toUpperCase().trim();
+        // Ensure area exists before inserting equipment (FK constraint)
+        if (eq.areaCodigo && eq.areaCodigo !== "0") {
+          await prisma.area.upsert({
+            where: { codigo: String(eq.areaCodigo) },
+            update: {},
+            create: {
+              codigo: String(eq.areaCodigo),
+              nombre: String(eq.descripcionArea || eq.areaCodigo),
+              superintendencia: "",
+            },
+          });
+        }
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { descripcionArea, ...eqData } = eq as Record<string, unknown>;
         const existing = await prisma.equipo.findUnique({ where: { tag } });
         if (existing) {
-          await prisma.equipo.update({ where: { tag }, data: eq });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await prisma.equipo.update({ where: { tag }, data: eqData as any });
           modified++;
         } else {
-          await prisma.equipo.create({ data: { ...eq, tag } });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await prisma.equipo.create({ data: { ...(eqData as any), tag } });
           inserted++;
         }
       }

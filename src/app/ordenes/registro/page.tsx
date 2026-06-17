@@ -1167,7 +1167,7 @@ export default function RegistroOTPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState("");
   const [done, setDone] = useState(false);
-  const [doneOT, setDoneOT] = useState<{ numeroOT: string; estado: string } | null>(null);
+  const [doneOT, setDoneOT] = useState<{ numeroOT: string; estado: string; consolidado?: boolean } | null>(null);
 
   // ── OTs recurrentes: misma numeroOT en 2+ días del plan ──
   const recurrentesNums = React.useMemo(() => {
@@ -1370,7 +1370,7 @@ export default function RegistroOTPage() {
     setEditLinea({ ...linea });
     setEditIdx(0);
     setIsNewLinea(false);
-    setStep(2);
+    setStep(ref.areaCodigo ? 2 : 1);
     setView("registro");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -1478,7 +1478,7 @@ export default function RegistroOTPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error al guardar");
       setDone(true);
-      setDoneOT({ numeroOT: data.ot.numeroOT, estado: data.ot.estado });
+      setDoneOT({ numeroOT: data.ot.numeroOT, estado: data.ot.estado, consolidado: data.consolidado ?? false });
     } catch (e: unknown) {
       setSubmitErr(e instanceof Error ? e.message : "Error desconocido");
     } finally {
@@ -1504,7 +1504,9 @@ export default function RegistroOTPage() {
             <div style={{ fontSize: 30, fontWeight: 800, color: "#2563eb", letterSpacing: "0.04em", marginBottom: 10 }}>#{doneOT.numeroOT}</div>
           )}
           <p style={{ color: "#64748b", fontSize: 14, lineHeight: 1.6, marginBottom: 28 }}>
-            {doneOT.estado === "pendiente_revision" ? "OT enviada al supervisor para revisión." : "OT guardada como borrador."}
+            {doneOT.consolidado
+              ? "Avance diario registrado en OT existente. La OT acumula todos los días de la semana."
+              : doneOT.estado === "pendiente_revision" ? "OT enviada al supervisor para revisión." : "OT guardada como borrador."}
           </p>
           <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
             <button onClick={() => { setDone(false); setDoneOT(null); setView("inicio"); }} style={S.btnPrimary()}>Volver al plan</button>

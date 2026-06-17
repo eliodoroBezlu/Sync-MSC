@@ -177,6 +177,9 @@ function diffLineas(original: Linea[], editado: Linea[]): string[] {
   editado.forEach((linea, i) => {
     const orig = original[i];
     if (!orig) return;
+    if (linea.tiempoEstimadoHrs !== orig.tiempoEstimadoHrs) {
+      msgs.push(`[${linea.tag}] HH estimadas: ${orig.tiempoEstimadoHrs ?? "—"}HH → ${linea.tiempoEstimadoHrs ?? "—"}HH`);
+    }
     if (linea.tiempoRealHrs !== orig.tiempoRealHrs) {
       msgs.push(`[${linea.tag}] HH trabajadas: ${orig.tiempoRealHrs ?? "—"}HH → ${linea.tiempoRealHrs ?? "—"}HH`);
     }
@@ -194,6 +197,11 @@ function diffLineas(original: Linea[], editado: Linea[]): string[] {
 
 export default function ReporteOTPage() {
   const { user } = useUser();
+  const [otParamId, setOtParamId] = useState<string | null>(null);
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search).get("ot");
+    setOtParamId(p);
+  }, []);
 
   // Derivados de rol — Admin(1) y Superintendente(2) tienen acceso total
   const esTecnico   = user?.rol === 4 || user?.rol === 6; // rol 6 = Contratista, mismos permisos que técnico
@@ -257,6 +265,13 @@ export default function ReporteOTPage() {
   useEffect(() => { fetch("/api/areas").then((r) => r.json()).then(setAreas).catch(() => {}); }, []);
   useEffect(() => { loadOrdenes(); }, [loadOrdenes]);
 
+  // Auto-seleccionar OT si viene el parámetro ?ot=<id> desde programa semanal
+  useEffect(() => {
+    if (!otParamId || ordenes.length === 0 || loading) return;
+    const match = ordenes.find((o) => o._id === otParamId);
+    if (match) setSelected(match);
+  }, [otParamId, ordenes, loading]);
+
   useEffect(() => {
     if (!selected) { setEditMode(false); return; }
     const d = selected.datosSupervision ?? {};
@@ -272,7 +287,7 @@ export default function ReporteOTPage() {
   }, [selected?._id]);
 
   const ordenesFiltradas = ordenes.filter((o) => {
-    // Técnico solo ve sus propias OTs
+    // Técnico/Contratista solo ve sus propias OTs
     if (esTecnico && user) {
       const tokensUser = user.nombre.toLowerCase().normalize("NFD").replace(/\p{Mn}/gu, "").split(/\s+/).filter(t => t.length > 2);
       const esAsignado = o.tecnicos.some(t => {
@@ -282,10 +297,15 @@ export default function ReporteOTPage() {
       });
       if (!esAsignado) return false;
     }
+    // Supervisor con áreas asignadas solo ve OTs de sus áreas
+    if (user && user.rol === 3 && user.areas && user.areas.length > 0) {
+      if (!user.areas.includes(o.areaCodigo)) return false;
+    }
     if (!filtroBuscar) return true;
     const q = filtroBuscar.toLowerCase();
     return (
       o.numeroOT.toLowerCase().includes(q) ||
+      (o.otJdeNumero ?? "").toLowerCase().includes(q) ||
       o.tecnicos.some((t) => t.nombreCompleto.toLowerCase().includes(q)) ||
       o.lineas.some((l) => l.tag.toLowerCase().includes(q))
     );
@@ -516,7 +536,10 @@ export default function ReporteOTPage() {
                   <label style={S.label}>Área</label>
                   <select value={filtroArea} onChange={(e) => setFiltroArea(e.target.value)} style={S.select}>
                     <option value="">Todas</option>
-                    {areas.map((a) => <option key={a.codigo} value={a.codigo}>{a.codigo} — {a.nombre}</option>)}
+                    {(user?.rol === 3 && user.areas?.length > 0
+                      ? areas.filter(a => user.areas.includes(a.codigo))
+                      : areas
+                    ).map((a) => <option key={a.codigo} value={a.codigo}>{a.codigo} — {a.nombre}</option>)}
                   </select>
                 </div>
               </div>
@@ -737,7 +760,9 @@ export default function ReporteOTPage() {
   const canEdit = !isConcluido && (esAdmin || (esTecnico && enEstadoTecnico && esOtPropia) || (esSup && !esTecnico));
 
   // Solo técnico (o admin) puede enviar a revisión desde borrador/corrección
-  const canSendToReview = enEstadoTecnico && (esAdmin || (esTecnico && esOtPropia));
+  // Para OTs del plan (OPEPLANT): solo domingo o admin puede enviar a revisión (cierre semanal)
+  const bloqueoCierreSemanal = ot.origenPlan && new Date().getDay() !== 0 && !esAdmin;
+  const canSendToReview = enEstadoTecnico && (esAdmin || (esTecnico && esOtPropia)) && !bloqueoCierreSemanal;
 
   // Formulario de supervisión: solo supervisores/admins, cuando la OT está en pendiente_revision
   const showSupForm = esSup && ot.estado === "pendiente_revision";
@@ -937,18 +962,32 @@ export default function ReporteOTPage() {
                     <span style={{ fontSize: 11, color: "#64748b" }}>{l.descripcionEquipo}</span>
                   </div>
 
-                  {/* Tiempo real */}
-                  <div style={{ marginBottom: 12 }}>
-                    <label style={{ ...S.label, marginBottom: 3 }}>HH Trabajadas <span style={{ fontWeight: 400, textTransform: "none" as const }}>(personas × horas)</span></label>
-                    <input
-                      type="number" min="0" step="0.5"
-                      value={l.tiempoRealHrs ?? ""}
-                      onChange={(e) => patchLinea(i, { tiempoRealHrs: e.target.value ? Number(e.target.value) : undefined })}
-                      style={S.inputSm}
-                    />
-                    {ot.lineas[i].tiempoRealHrs !== undefined && (
-                      <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>Orig: {ot.lineas[i].tiempoRealHrs}HH</p>
-                    )}
+                  {/* Tiempo estimado + real */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                    <div>
+                      <label style={{ ...S.label, marginBottom: 3 }}>HH Estimadas</label>
+                      <input
+                        type="number" min="0" step="0.5"
+                        value={l.tiempoEstimadoHrs ?? ""}
+                        onChange={(e) => patchLinea(i, { tiempoEstimadoHrs: e.target.value ? Number(e.target.value) : undefined })}
+                        style={S.inputSm}
+                      />
+                      {ot.lineas[i].tiempoEstimadoHrs !== undefined && (
+                        <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>Orig: {ot.lineas[i].tiempoEstimadoHrs}HH</p>
+                      )}
+                    </div>
+                    <div>
+                      <label style={{ ...S.label, marginBottom: 3 }}>HH Trabajadas <span style={{ fontWeight: 400, textTransform: "none" as const }}>(personas × horas)</span></label>
+                      <input
+                        type="number" min="0" step="0.5"
+                        value={l.tiempoRealHrs ?? ""}
+                        onChange={(e) => patchLinea(i, { tiempoRealHrs: e.target.value ? Number(e.target.value) : undefined })}
+                        style={S.inputSm}
+                      />
+                      {ot.lineas[i].tiempoRealHrs !== undefined && (
+                        <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>Orig: {ot.lineas[i].tiempoRealHrs}HH</p>
+                      )}
+                    </div>
                   </div>
 
                   {/* Síntoma / Causa / Resolución — CMP y CMR (correctivos) */}
@@ -1196,6 +1235,11 @@ export default function ReporteOTPage() {
           <div style={{ ...S.card, background: "#f8fafc" }}>
             <div style={{ fontWeight: 700, fontSize: 13, color: "#0f2847", marginBottom: 10 }}>Acciones</div>
             {saveErr && <p style={{ color: "#dc2626", fontSize: 12, marginBottom: 10 }}>⚠ {saveErr}</p>}
+            {bloqueoCierreSemanal && enEstadoTecnico && (
+              <p style={{ fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>
+                ⏳ Esta OT es del plan semanal. El envío a revisión se habilita el <strong>domingo</strong> al finalizar la semana.
+              </p>
+            )}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {canSendToReview && (
                 <button onClick={() => cambiarEstado("pendiente_revision", "OT enviada a revisión por " + (user?.nombre ?? "técnico"))} disabled={saving} style={{ ...S.btnPrimary, opacity: saving ? 0.6 : 1 }}>

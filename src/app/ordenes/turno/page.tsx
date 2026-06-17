@@ -266,6 +266,7 @@ export default function ReporteTurnoPage() {
     const matchEstado = !filtroEstado || o.estado === filtroEstado;
     const txt = filtroTexto.toLowerCase();
     const matchTxt = !txt || o.numeroOT.toLowerCase().includes(txt)
+      || (o.otJdeNumero ?? "").toLowerCase().includes(txt)
       || o.areaCodigo.toLowerCase().includes(txt)
       || o.lineas.some((l) => l.tag.toLowerCase().includes(txt))
       || o.tecnicos.some((t) => t.nombreCompleto.toLowerCase().includes(txt));

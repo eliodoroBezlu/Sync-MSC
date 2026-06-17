@@ -45,14 +45,19 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     if (!numeroOT || !dia)
       return Response.json({ ok: false, error: "numeroOT y dia son requeridos" }, { status: 400 });
 
+    const whereBase = { programacionSemanalId: id, numeroOT, dia };
+    const whereGrupo = body.grupo
+      ? { ...whereBase, grupo: String(body.grupo) }
+      : whereBase;
+
     await prisma.otProgramada.updateMany({
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      where: { programacionSemanalId: id, numeroOT, dia, grupo: body.grupo || undefined },
+      where: whereGrupo,
       data: {
         ...(estado             !== undefined ? { estado } : {}),
         ...(observaciones      !== undefined ? { observaciones } : {}),
         ...(personalAsignado    !== undefined ? { personalAsignado } : {}),
         ...(personalAsignadoIds !== undefined ? { personalAsignadoIds } : {}),
+        ...(body.nuevoGrupo ? { grupo: String(body.nuevoGrupo) } : {}),
         ...(pasarNoche         !== undefined ? {
           pasarNoche,
           pasarNocheMotivo: pasarNocheMotivo ?? "",

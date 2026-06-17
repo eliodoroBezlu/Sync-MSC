@@ -1,15 +1,18 @@
 "use client";
+import { useState } from "react";
 
 type BitacoraEntry = { turno: string; supervisor: string; nota: string; hhAtendidas: number; fecha?: string };
 type LineaDisplay  = { tag: string; tipoOT: string; descripcion: string; resolucion: string; hh: number };
 
 type OTDisplay = {
-  id: string; numeroOT: string; tag: string; tipoOT: string;
+  id: string; numeroOT: string; otJdeNumero?: string | null; tag: string; tipoOT: string;
   descripcion: string; tecnicos: string[]; hhTotal: number;
   estado: string; critica: boolean; pendiente: boolean; nota: string;
   esPlan?: boolean; esGuardia?: boolean; bitacora?: BitacoraEntry[];
   lineas?: LineaDisplay[];
 };
+
+function otNum(ot: OTDisplay) { return ot.otJdeNumero ?? ot.numeroOT; }
 
 type Novedad = { prioridad: string; tag?: string; descripcion: string };
 
@@ -35,6 +38,7 @@ export default function PrintClientTecnico({
   reporte: ReporteData;
   ots: OTDisplay[];
 }) {
+  const [zoom, setZoom] = useState(100);
   const fecha = new Date(reporte.fecha);
   const fechaStr = fecha.toLocaleDateString("es-BO", { day: "2-digit", month: "long", year: "numeric" });
   const res = reporte.resumenEjecutivo;
@@ -97,9 +101,14 @@ export default function PrintClientTecnico({
           style={{ padding: "9px 14px", background: "#64748b", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13 }}>
           ✕ Cerrar
         </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, background: "white", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 8px" }}>
+          <button onClick={() => setZoom(z => Math.max(50, z - 10))} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, fontWeight: 700, color: "#374151", padding: "0 4px" }}>−</button>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "#374151", minWidth: 38, textAlign: "center" }}>{zoom}%</span>
+          <button onClick={() => setZoom(z => Math.min(150, z + 10))} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, fontWeight: 700, color: "#374151", padding: "0 4px" }}>+</button>
+        </div>
       </div>
 
-      <div className="pagina">
+      <div className="pagina" style={{ transform: `scale(${zoom/100})`, transformOrigin: "top center" }}>
         {/* ── ENCABEZADO ── */}
         <table style={{ width: "100%", borderCollapse: "collapse", border: "1.5px solid #000", marginBottom: 4 }}>
           <tbody>
@@ -189,7 +198,7 @@ export default function PrintClientTecnico({
                     </td>
                     <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 8 }}>OPEPLANT</td>
                     <td style={{ textAlign: "center", fontSize: 8 }}>{b.hhAtendidas || "—"}</td>
-                    <td style={{ fontFamily: "monospace", fontSize: 8 }}>{ot.numeroOT}</td>
+                    <td style={{ fontFamily: "monospace", fontSize: 8 }}>{otNum(ot)}</td>
                     <td style={{ fontSize: 8 }}>{b.nota || ot.descripcion || "—"}</td>
                     <td style={{ fontSize: 8, color: "#92400e" }}>
                       {b.supervisor && <span>{b.supervisor}</span>}
@@ -213,7 +222,7 @@ export default function PrintClientTecnico({
                   </td>
                   <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 8 }}>{ot.tag || "OPEPLANT"}</td>
                   <td style={{ textAlign: "center", fontSize: 8 }}>{ot.hhTotal || "—"}</td>
-                  <td style={{ fontFamily: "monospace", fontSize: 8 }}>{ot.numeroOT}</td>
+                  <td style={{ fontFamily: "monospace", fontSize: 8 }}>{otNum(ot)}</td>
                   <td style={{ fontSize: 8 }}>{ot.descripcion || "—"}</td>
                   <td style={{ fontSize: 8, fontStyle: ot.nota ? "normal" : "italic", color: ot.nota ? "#1e293b" : "#94a3b8" }}>
                     {ot.nota || "—"}
@@ -251,7 +260,7 @@ export default function PrintClientTecnico({
                   <tr key={`${ot.id}-hdr`} style={{ background: "#e8f0fe" }}>
                     <td style={{ textAlign: "center", fontSize: 8, fontWeight: "bold" }}>{baseIdx}</td>
                     <td colSpan={4} style={{ fontSize: 8, fontWeight: "bold", color: "#1e40af" }}>
-                      OT #{ot.numeroOT} · {ot.tecnicos.join(", ")} · {ot.hhTotal}HH
+                      OT {otNum(ot)} · {ot.tecnicos.join(", ")} · {ot.hhTotal}HH
                     </td>
                     <td colSpan={2} style={{ fontSize: 8, fontStyle: ot.nota ? "normal" : "italic", color: ot.nota ? "#1e293b" : "#94a3b8" }}>
                       {ot.nota || "—"}
@@ -267,12 +276,12 @@ export default function PrintClientTecnico({
                       <td style={{ textAlign: "center", fontSize: 8, fontWeight: "bold", color: TIPO_COLOR[l.tipoOT] ?? "#000" }}>{l.tipoOT}</td>
                       <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 8 }}>{l.tag}</td>
                       <td style={{ textAlign: "center", fontSize: 8 }}>{l.hh || "—"}</td>
-                      <td style={{ fontFamily: "monospace", fontSize: 7, color: "#64748b" }}>{ot.numeroOT}</td>
+                      <td style={{ fontFamily: "monospace", fontSize: 7, color: "#64748b" }}>{otNum(ot)}</td>
                       <td style={{ fontSize: 8 }}>
                         {l.descripcion && <div>{l.descripcion}</div>}
                         {l.resolucion  && <div style={{ color: "#16a34a", fontStyle: "italic" }}>✓ {l.resolucion}</div>}
                       </td>
-                      <td colSpan={2} style={{ fontSize: 7, color: "#64748b" }}>{ot.tecnicos.join(", ")}</td>
+                      <td colSpan={2} style={{ fontSize: 7, color: "#64748b" }}></td>
                     </tr>
                   )),
                 ];
@@ -285,7 +294,7 @@ export default function PrintClientTecnico({
                   <td style={{ textAlign: "center", fontSize: 8, fontWeight: "bold", color: TIPO_COLOR[ot.tipoOT] ?? "#000" }}>{ot.tipoOT}</td>
                   <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 8 }}>{ot.tag}</td>
                   <td style={{ textAlign: "center", fontSize: 8 }}>{ot.hhTotal || "—"}</td>
-                  <td style={{ fontFamily: "monospace", fontSize: 8 }}>{ot.numeroOT}</td>
+                  <td style={{ fontFamily: "monospace", fontSize: 8 }}>{otNum(ot)}</td>
                   <td style={{ fontSize: 8 }}>
                     {ot.descripcion}
                     {lineas?.[0]?.resolucion && <div style={{ color: "#16a34a", fontStyle: "italic", fontSize: 7 }}>✓ {lineas[0].resolucion}</div>}
@@ -339,7 +348,7 @@ export default function PrintClientTecnico({
                 <div className="section-title" style={{ color: "#dc2626" }}>⚠ OTs CRÍTICAS ({criticas.length})</div>
                 {criticas.map(o => (
                   <div key={o.id} style={{ fontSize: 8, padding: "2px 6px", borderBottom: "1px solid #eee" }}>
-                    <b>{o.numeroOT}</b> — {o.tag} — {o.descripcion}
+                    <b>{otNum(o)}</b> — {o.tag} — {o.descripcion}
                   </div>
                 ))}
               </div>
@@ -349,7 +358,7 @@ export default function PrintClientTecnico({
                 <div className="section-title" style={{ color: "#d97706" }}>→ PENDIENTES SIGUIENTE TURNO ({pendientesSig.length})</div>
                 {pendientesSig.map(o => (
                   <div key={o.id} style={{ fontSize: 8, padding: "2px 6px", borderBottom: "1px solid #eee" }}>
-                    <b>{o.numeroOT}</b> — {o.tag} — {o.descripcion}
+                    <b>{otNum(o)}</b> — {o.tag} — {o.descripcion}
                   </div>
                 ))}
               </div>

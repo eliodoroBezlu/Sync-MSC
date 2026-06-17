@@ -640,14 +640,20 @@ export default function CalibracionPage() {
       })
       .catch(() => {});
 
-    fetch("/api/patrones")
+    fetch("/api/patrones?all=1")
       .then((r) => r.json())
       .then((d: PatronDoc[]) => setPatrones(d))
       .catch(() => {});
 
-    fetch("/api/usuarios?rol=4&area=3320")
-      .then((r) => r.json())
-      .then((d: UserOpt[]) => setTecnicos(d))
+    Promise.all([
+      fetch("/api/usuarios?rol=4&area=3320").then((r) => r.json()),
+      fetch("/api/usuarios?area=3320&contratista=true").then((r) => r.json()),
+    ])
+      .then(([tec, cont]: [UserOpt[], UserOpt[]]) => {
+        // Merge técnicos + contratistas, sin duplicados por _id
+        const merged = [...tec, ...cont.filter((c) => !tec.some((t) => t._id === c._id))];
+        setTecnicos(merged);
+      })
       .catch(() => {});
 
     // Supervisores: rol=3 del área 3320 + Superintendentes rol=1 que pueden firmar
@@ -1358,11 +1364,12 @@ export default function CalibracionPage() {
                 )}
 
                 {(() => {
+                  const vigentes = patrones.filter((p) => !isVencido(p.fechaVencimiento));
                   const display = (!form.tipoVariable || form.tipoVariable === "Otro")
-                    ? patrones
+                    ? vigentes
                     : (() => {
-                        const f = patrones.filter((p) => p.tipo === form.tipoVariable || p.tipo === "Multifunción");
-                        return f.length > 0 ? f : patrones;
+                        const f = vigentes.filter((p) => p.tipo === form.tipoVariable || p.tipo === "Multifunción");
+                        return f.length > 0 ? f : vigentes;
                       })();
                   return display.map((p, idx) => {
                     const vencido = isVencido(p.fechaVencimiento);
@@ -1393,6 +1400,7 @@ export default function CalibracionPage() {
                               )}
                               <span style={{ fontWeight: 700, fontSize: 13, color: "#0f2847" }}>{p.codigo}</span>
                               <span style={{ fontSize: 11, color: "#64748b" }}>{p.tipo}</span>
+                              {!p.activo && <span style={S.badge("#64748b")}>Inactivo</span>}
                               {vencido && <span style={S.badge("#dc2626")}>⚠ VENCIDO</span>}
                               {proximo && <span style={S.badge("#d97706")}>Próx. vencer</span>}
                             </div>

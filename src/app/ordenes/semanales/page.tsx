@@ -20,6 +20,7 @@ const DIAS_CORTO: Record<DiaSemana, string> = {
   Vi: "VIE", Sa: "SAB", Do: "DOM",
 };
 const GRUPOS: GrupoTrabajo[] = ["G1", "G2", "G3", "G4", "Diurno", "Nocturno"];
+const AREAS_SEMANAL = new Set(["3310","3311","3312","3313","3315","3316","3318","3319","3320","3322","3338","3339","3343","3348","3351","3388"]);
 
 // Mapeo de areaCodigo → disciplina en MongoDB
 function areaToDisciplina(areaCodigo: string): string {
@@ -161,7 +162,7 @@ function EstadoSelector({
           {ESTADO_LABEL[ot.estado]}
         </span>
         <a
-          href="/ordenes/reporte"
+          href={`/ordenes/reporte?ot=${ot.ordenTrabajoId}`}
           title={`Ver OT interna #${ot.ordenTrabajoNum}`}
           style={{ fontSize: 9, color: "#2563eb", fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" as const }}
         >
@@ -222,13 +223,13 @@ function Dashboard({
 }) {
   const ESTADOS_ACTIVOS: EstadoOTProgramada[] = ["en_proceso", "en_revision", "completada"];
 
-  // Solo contar HH de días que ya ocurrieron (fecha UTC <= hoy local)
+  // Solo contar HH de días que ya terminaron (estrictamente antes de hoy)
   const hoy = new Date();
   const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,"0")}-${String(hoy.getDate()).padStart(2,"0")}`;
   function diaPasado(dia: DiaSemana) {
     const f = fechasDias[dia];
     const fStr = f.toISOString().slice(0, 10);
-    return fStr <= hoyStr;
+    return fStr < hoyStr;
   }
 
   const ots = programa.otsProgramadas ?? [];
@@ -351,6 +352,7 @@ function AsignarTecnicosModal({
 }) {
   const [tecnicos, setTecnicos] = useState<{ _id: string; nombre: string }[]>([]);
   const [seleccionados, setSeleccionados] = useState<string[]>(ot.personalAsignado ?? []);
+  const [grupoEdit, setGrupoEdit] = useState<string>(ot.grupo ?? "Diurno");
   const [busqueda, setBusqueda] = useState("");
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -383,7 +385,7 @@ function AsignarTecnicosModal({
     const res = await fetch(`/api/programacion-semanal/${programaId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ numeroOT: ot.numeroOT, dia: ot.dia, personalAsignado: seleccionados, personalAsignadoIds: ids }),
+      body: JSON.stringify({ numeroOT: ot.numeroOT, dia: ot.dia, grupo: ot.grupo, personalAsignado: seleccionados, personalAsignadoIds: ids, ...(grupoEdit !== ot.grupo ? { nuevoGrupo: grupoEdit } : {}) }),
     });
     const data = await res.json();
     setSaving(false);
@@ -415,6 +417,25 @@ function AsignarTecnicosModal({
             </p>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: 6, width: 30, height: 30, cursor: "pointer", fontSize: 14, color: "#64748b" }}>✕</button>
+        </div>
+
+        {/* Cambiar grupo (Diurno/Nocturno/G1...) */}
+        <div style={{ marginBottom: 10 }}>
+          <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: "0.06em", textTransform: "uppercase" as const, display: "block", marginBottom: 4 }}>
+            Grupo / Turno
+          </label>
+          <select
+            value={grupoEdit}
+            onChange={e => setGrupoEdit(e.target.value)}
+            style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 13, background: grupoEdit !== ot.grupo ? "#fffbeb" : "white", fontWeight: grupoEdit !== ot.grupo ? 700 : 400 }}
+          >
+            {["G1","G2","G3","G4","Diurno","Nocturno"].map(g => (
+              <option key={g} value={g}>{g}</option>
+            ))}
+          </select>
+          {grupoEdit !== ot.grupo && (
+            <p style={{ fontSize: 11, color: "#d97706", marginTop: 3 }}>⚠ Cambiará de <b>{ot.grupo}</b> → <b>{grupoEdit}</b></p>
+          )}
         </div>
 
         <input
@@ -904,13 +925,14 @@ function parseSheetRows(rows: unknown[][]): IOTProgramada[] {
     const tipoOT = row[1];
     const dia    = String(row[12] ?? "").trim();
     const grupo  = String(row[11] ?? "").trim();
-    if (noOT && typeof noOT === "number" && tipoOT && DIAS_VALIDOS_SET.has(dia)) {
+    const noOTStr = String(noOT ?? "").trim();
+    if (noOTStr && (typeof noOT === "number" || /^\d+$/.test(noOTStr)) && tipoOT && DIAS_VALIDOS_SET.has(dia)) {
       const personas   = Number(row[7]) || 1;
       const hrsTrabajo = Number(row[8]) || 0;
       const hhTotal    = Number(row[9]) || personas * hrsTrabajo;
       const personalRaw = String(row[10] ?? "");
       ots.push({
-        numeroOT:          String(noOT),
+        numeroOT:          noOTStr,
         tipoOT:            String(tipoOT).trim().toUpperCase(),
         tipoTrabajo:       String(row[2] ?? "").trim(),
         prioridad:         String(row[3] ?? "").trim() || undefined,
@@ -921,7 +943,7 @@ function parseSheetRows(rows: unknown[][]): IOTProgramada[] {
         personalAsignado: personalRaw
           ? personalRaw.split(/[/+]/).map(s => s.trim()).filter(Boolean)
           : [],
-        grupo: GRUPO_MAP_MODAL[grupo] ?? "Diurno",
+        grupo: (GRUPO_MAP_MODAL[grupo] ?? (grupo ? undefined : "Diurno")) as GrupoTrabajo || "Diurno",
         dia:   dia as DiaSemana,
         estado: "no_iniciada" as EstadoOTProgramada,
       });
@@ -931,9 +953,9 @@ function parseSheetRows(rows: unknown[][]): IOTProgramada[] {
 }
 
 function CargaCSVModal({
-  semana, anio, disciplina, subidoPor, onClose, onSuccess,
+  semana, anio, disciplina, areaCodigo, subidoPor, onClose, onSuccess,
 }: {
-  semana: number; anio: number; disciplina: string; subidoPor: string;
+  semana: number; anio: number; disciplina: string; areaCodigo: string; subidoPor: string;
   onClose: () => void; onSuccess: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -1032,6 +1054,7 @@ function CargaCSVModal({
   async function handleGuardar() {
     try {
       setSaving(true); setError("");
+      if (!areaCodigo) { setError("Sin área activa — selecciona un área antes de subir el plan"); setSaving(false); return; }
       const ots = modo === "excel" ? preview : parseCSV(csv);
       if (!ots.length) { setError("No se encontraron OTs válidas"); return; }
 
@@ -1046,7 +1069,7 @@ function CargaCSVModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          semana, anio, disciplina,
+          semana, anio, disciplina, areaCodigo,
           fechaInicio:         lunes.toISOString(),
           fechaFin:            domingo.toISOString(),
           hhProgramadasSemana: hhProgramadas,
@@ -1288,10 +1311,11 @@ export default function SemanalesPage() {
       .then((r) => r.json())
       .then((data: IArea[]) => {
         if (!Array.isArray(data)) return;
-        // Admin/Superintendente ven todas; Supervisor/Planificador solo sus áreas asignadas
+        // Admin/Superintendente ven todas las áreas operativas; Supervisor/Planificador solo sus áreas
+        const operativas = data.filter((a) => AREAS_SEMANAL.has(a.codigo));
         const visible = (user.rol <= 2)
-          ? data
-          : data.filter((a) => user.areas.includes(a.codigo));
+          ? operativas
+          : operativas.filter((a) => user.areas.includes(a.codigo));
         if (visible.length === 0) return;
         setAreas(visible);
         // Priorizar el área del usuario; si no está en la lista, tomar la primera disponible
@@ -1629,7 +1653,7 @@ export default function SemanalesPage() {
 
       {showCSV && (
         <CargaCSVModal
-          semana={semana} anio={anio} disciplina={areaActiva ? areaToDisciplina(areaActiva.codigo) : "INST"} subidoPor="system"
+          semana={semana} anio={anio} disciplina={areaActiva ? areaToDisciplina(areaActiva.codigo) : "INST"} areaCodigo={areaActiva?.codigo ?? ""} subidoPor={user?.nombre ?? "system"}
           onClose={() => setShowCSV(false)}
           onSuccess={() => { setShowCSV(false); cargarPrograma(); }}
         />

@@ -129,15 +129,107 @@ async function siguienteNumeroOT(): Promise<string> {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const numeroOT = await siguienteNumeroOT();
     const esDePlan = !!body.programacionSemanalId;
 
-    const ot = await prisma.ordenTrabajo.create({
+    const areaCodigo: string | null = body.areaCodigo?.trim() || null;
+
+    // Garantizar que el área exista antes de crear la OT
+    if (areaCodigo) {
+      await prisma.area.upsert({
+        where: { codigo: areaCodigo },
+        update: {},
+        create: { codigo: areaCodigo, nombre: areaCodigo, superintendencia: "" },
+      });
+    }
+
+    // ── Consolidación OPEPLANT: si ya existe OT con mismo otJdeNumero en esta semana, agregar avance diario ──
+    if (body.otJdeNumero && esDePlan) {
+      const fechaOT = new Date(body.fecha);
+      // Calcular lunes de la semana ISO de la fecha
+      const day = fechaOT.getUTCDay() || 7;
+      const lunes = new Date(fechaOT);
+      lunes.setUTCDate(fechaOT.getUTCDate() - day + 1);
+      lunes.setUTCHours(0, 0, 0, 0);
+      const domingo = new Date(lunes);
+      domingo.setUTCDate(lunes.getUTCDate() + 7);
+
+      const existente = await prisma.ordenTrabajo.findFirst({
+        where: {
+          otJdeNumero: body.otJdeNumero,
+          origenPlan: true,
+          fecha: { gte: lunes, lt: domingo },
+        },
+        include,
+        orderBy: { fecha: "asc" },
+      });
+
+      if (existente) {
+        // Agregar registro diario + historial a la OT existente
+        const registroData = {
+          fecha: new Date(body.fecha),
+          tecnico: body.tecnicos?.[0]?.nombreCompleto || "Técnico",
+          usuarioId: body.tecnicos?.[0]?.usuarioId || null,
+          hhTrabajadas: body.lineas?.reduce((s: number, l: Record<string, unknown>) => s + (Number(l.tiempoRealHrs) || 0), 0) || 0,
+          tareasEjecutadas: body.lineas?.[0]?.tareasEjecutadas as string[] ?? [],
+          observaciones: body.lineas?.[0]?.observaciones as string || null,
+        };
+
+        await prisma.otRegistroDiario.create({
+          data: {
+            ordenTrabajoId: existente.id,
+            fecha: registroData.fecha,
+            tecnico: registroData.tecnico,
+            usuarioId: registroData.usuarioId,
+            hhTrabajadas: registroData.hhTrabajadas,
+            tareas: registroData.tareasEjecutadas,
+            observaciones: registroData.observaciones,
+          },
+        });
+
+        await prisma.otHistorial.create({
+          data: {
+            ordenTrabajoId: existente.id,
+            fechaHora: new Date(),
+            usuarioId: body.tecnicos?.[0]?.usuarioId || "system",
+            nombreUsuario: body.tecnicos?.[0]?.nombreCompleto || "Sistema",
+            cambio: `Avance del día ${body.otJdeDia ?? body.fecha} registrado — ${registroData.hhTrabajadas}HH`,
+          },
+        });
+
+        // Actualizar estado del otProgramada correspondiente
+        if (body.programacionSemanalId && body.otJdeNumero && body.otJdeDia) {
+          await prisma.otProgramada.updateMany({
+            where: {
+              programacionSemanalId: body.programacionSemanalId,
+              numeroOT: body.otJdeNumero,
+              dia: body.otJdeDia,
+            },
+            data: { estado: "completada" },
+          });
+        }
+
+        // Re-fetch con relaciones actualizadas
+        const otActualizada = await prisma.ordenTrabajo.findUnique({
+          where: { id: existente.id },
+          include,
+        });
+
+        return Response.json(
+          { ok: true, ot: serializeOT(otActualizada as Parameters<typeof serializeOT>[0]), consolidado: true },
+          { status: 200 }
+        );
+      }
+    }
+
+    const numeroOT = await siguienteNumeroOT();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ot = await (prisma.ordenTrabajo.create as any)({
       data: {
         numeroOT,
         fecha: new Date(body.fecha),
         turno: body.turno,
-        areaCodigo: body.areaCodigo,
+        areaCodigo,
         estado: body.estado ?? "borrador",
         origenPlan: esDePlan,
         programacionSemanalId: body.programacionSemanalId || null,

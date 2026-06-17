@@ -7,10 +7,12 @@ export async function GET(req: NextRequest) {
   const rolParam  = searchParams.get("rol");
   const areaParam = searchParams.get("area");
   const all       = searchParams.get("all") === "true";
+  const contratistaParam = searchParams.get("contratista");
 
   const where: Record<string, unknown> = {};
   if (!all) where.activo = true;
   if (rolParam) where.rol = Number(rolParam);
+  if (contratistaParam === "true") where.esContratista = true;
 
   const users = await prisma.usuario.findMany({
     where: {

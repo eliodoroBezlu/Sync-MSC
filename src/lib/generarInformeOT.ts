@@ -42,6 +42,14 @@ interface CambioHistorial {
   cambio: string;
 }
 
+interface RegistroDiario {
+  fecha: string;
+  tecnico: string;
+  hhTrabajadas: number;
+  tareasEjecutadas?: string[];
+  observaciones?: string;
+}
+
 interface OTData {
   numeroOT?: string;
   otJdeNumero?: string;
@@ -51,6 +59,7 @@ interface OTData {
   estado: string;
   tecnicos: TecnicoRef[];
   lineas: LineaOT[];
+  registrosDiarios?: RegistroDiario[];
   datosSupervision?: DatosSupervision;
   historialCambios?: CambioHistorial[];
 }
@@ -349,14 +358,50 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
     y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
   }
 
-  // ── 3. SUPERVISIÓN ──────────────────────────────────────────────────────────
+  // ── 3. AVANCES DIARIOS (si hay registros) ───────────────────────────────────
+  const diarios = ot.registrosDiarios ?? [];
+  if (diarios.length > 0) {
+    y = checkPage(doc, y, 30);
+    seccion(doc, "3. Avances Diarios", y, PW);
+    y += 14;
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: 15, right: 15 },
+      head: [["Fecha", "Técnico", "HH", "Tareas Ejecutadas / Observaciones"]],
+      body: diarios.map(r => {
+        const tareas = (r.tareasEjecutadas ?? []).join("\n");
+        const obs = r.observaciones?.trim() ?? "";
+        const detalle = [tareas, obs].filter(Boolean).join("\n") || "—";
+        return [
+          fmt(r.fecha),
+          r.tecnico,
+          `${r.hhTrabajadas} h`,
+          detalle,
+        ];
+      }),
+      headStyles: { fillColor: NAVY, textColor: BLANCO, fontSize: 7, fontStyle: "bold", cellPadding: 2.5 },
+      bodyStyles: { fontSize: 7.5, cellPadding: 2.5, textColor: NEGRO, overflow: "linebreak" },
+      alternateRowStyles: { fillColor: GRIS_L },
+      columnStyles: {
+        0: { cellWidth: 22, halign: "center" },
+        1: { cellWidth: 38 },
+        2: { cellWidth: 14, halign: "center" },
+        3: { cellWidth: 96 },
+      },
+    });
+    y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+  }
+
+  // ── SUPERVISIÓN ─────────────────────────────────────────────────────────────
   const ds = ot.datosSupervision ?? {};
   const comentarios = (ds.comentariosSupervisor ?? "").split("\n").filter(Boolean);
   const hayDatosSupervision = tieneCorrectivos && (ds.requierePlanificacion || comentarios.length > 0);
 
+  const secSupervision = diarios.length > 0 ? 4 : 3;
   if (hayDatosSupervision) {
     y = checkPage(doc, y, 40);
-    seccion(doc, "3. Supervisión", y, PW);
+    seccion(doc, `${secSupervision}. Supervisión`, y, PW);
     y += 14;
 
     const supRows: [string, string][] = [];
@@ -383,14 +428,16 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
     y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
   }
 
-  // ── 4. RESUMEN HORAS-HOMBRE ─────────────────────────────────────────────────
+  // ── RESUMEN HORAS-HOMBRE ────────────────────────────────────────────────────
   y = checkPage(doc, y, 45);
-  let secNum = hayDatosSupervision ? 4 : 3;
+  let secNum = (diarios.length > 0 ? 1 : 0) + (hayDatosSupervision ? 1 : 0) + 3;
   seccion(doc, `${secNum}. Resumen de Horas-Hombre`, y, PW);
   y += 14;
 
   const totalEst  = ot.lineas.reduce((s, l) => s + (l.tiempoEstimadoHrs ?? 0), 0);
-  const totalReal = ot.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0);
+  const hhLineas  = ot.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0);
+  const hhDiarios = (ot.registrosDiarios ?? []).reduce((s, r) => s + (r.hhTrabajadas ?? 0), 0);
+  const totalReal = hhLineas + hhDiarios;
   const diff      = Math.round((totalReal - totalEst) * 10) / 10;
   const pct       = totalEst > 0 ? Math.round((totalReal / totalEst) * 100) : 0;
 

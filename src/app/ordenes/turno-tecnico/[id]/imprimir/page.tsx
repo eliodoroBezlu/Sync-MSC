@@ -7,11 +7,11 @@ type Params = { params: Promise<{ id: string }> };
 type LineaDisplay = { tag: string; tipoOT: string; descripcion: string; resolucion: string; hh: number };
 
 type OTDisplay = {
-  id: string; numeroOT: string; tag: string; tipoOT: string;
+  id: string; numeroOT: string; otJdeNumero?: string | null; tag: string; tipoOT: string;
   descripcion: string; tecnicos: string[]; hhTotal: number;
   estado: string; critica: boolean; pendiente: boolean; nota: string;
   esPlan?: boolean; esGuardia?: boolean; bitacora?: BitacoraEntry[];
-  lineas?: LineaDisplay[]; // todas las líneas expandidas
+  lineas?: LineaDisplay[];
 };
 
 type BitacoraEntry = { turno: string; supervisor: string; nota: string; hhAtendidas: number; fecha?: string };
@@ -48,6 +48,7 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
     return {
       id: o.id,
       numeroOT: o.numeroOT,
+      otJdeNumero: o.otJdeNumero,
       tag: linea?.tag ?? "",
       tipoOT: linea?.tipoOT ?? "",
       descripcion: linea?.sintoma ?? linea?.descripcionEquipo ?? linea?.descripcionTrabajo ?? "",
