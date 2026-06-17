@@ -1488,7 +1488,20 @@ function AreasTab() {
   }
 
   async function toggleActivo(item: AreaItem) {
-    await fetch(`/api/areas/${item._id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ activo: !item.activo }) });
+    await fetch(`/api/areas/${item.codigo}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ activo: !item.activo }) });
+    load();
+  }
+
+  async function eliminar(item: AreaItem) {
+    if (!confirm(`¿Eliminar área ${item.codigo} — ${item.nombre}? Esta acción no se puede deshacer.`)) return;
+    const res = await fetch(`/api/areas/${item.codigo}`, { method: "DELETE" });
+    const data = await res.json();
+    if (data.ok) { load(); return; }
+    // Falló por FK — ofrecer eliminación forzada
+    if (!confirm(`${data.error ?? "No se pudo eliminar"}\n\n¿Desea eliminar forzadamente? Todos los equipos/OTs serán reasignados al área "0000".`)) return;
+    const forceRes = await fetch(`/api/areas/${item.codigo}?force=true`, { method: "DELETE" });
+    const forceData = await forceRes.json();
+    if (!forceData.ok) { alert(forceData.error ?? "No se pudo eliminar forzadamente."); return; }
     load();
   }
 
@@ -1576,7 +1589,7 @@ function AreasTab() {
                   <td style={{ ...C.td, color: "#475569" }}>{item.superintendencia}</td>
                   <td style={C.td}>{item.tieneCalibracion ? <Badge bg="#dbeafe" color="#1d4ed8">Sí</Badge> : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                   <td style={C.td}><Badge bg={item.activo ? "#dcfce7" : "#f1f5f9"} color={item.activo ? "#16a34a" : "#94a3b8"}>{item.activo ? "Activo" : "Inactivo"}</Badge></td>
-                  <td style={C.td}><button style={item.activo ? C.btnRed : C.btnGreen} onClick={() => toggleActivo(item)}>{item.activo ? "Desactivar" : "Activar"}</button></td>
+                  <td style={C.td}><div style={{ display: "flex", gap: 4 }}><button style={item.activo ? C.btnRed : C.btnGreen} onClick={() => toggleActivo(item)}>{item.activo ? "Desactivar" : "Activar"}</button><button style={{ ...C.btnRed, background: "#991b1b" }} onClick={() => eliminar(item)}>Eliminar</button></div></td>
                 </tr>
               ))}
             </tbody>
