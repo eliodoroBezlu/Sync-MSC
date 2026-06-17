@@ -1481,7 +1481,7 @@ function AreasTab() {
   useEffect(() => { load(); }, [load]);
 
   function openAdd() { setEditingId(null); setForm({ codigo: "", nombre: "", superintendencia: "", tieneCalibracion: false }); setErr(""); setShowForm(true); }
-  function openEdit(item: AreaItem) { setEditingId(item._id); setForm({ codigo: item.codigo, nombre: item.nombre, superintendencia: item.superintendencia, tieneCalibracion: item.tieneCalibracion }); setErr(""); setShowForm(true); }
+  function openEdit(item: AreaItem) { setEditingId(item.codigo); setForm({ codigo: item.codigo, nombre: item.nombre, superintendencia: item.superintendencia, tieneCalibracion: item.tieneCalibracion }); setErr(""); setShowForm(true); }
 
   async function save() {
     if (!form.codigo || !form.nombre || !form.superintendencia) { setErr("Código, nombre y superintendencia son obligatorios"); return; }
@@ -1501,13 +1501,13 @@ function AreasTab() {
   }
 
   async function toggleActivo(item: AreaItem) {
-    await fetch(`/api/areas/${item._id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ activo: !item.activo }) });
+    await fetch(`/api/areas/${item.codigo}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ activo: !item.activo }) });
     load();
   }
 
   async function eliminar(item: AreaItem) {
     if (!confirm(`¿Eliminar área ${item.codigo} — ${item.nombre}? Esta acción no se puede deshacer.`)) return;
-    const res = await fetch(`/api/areas/${item._id}`, { method: "DELETE" });
+    const res = await fetch(`/api/areas/${item.codigo}`, { method: "DELETE" });
     const data = await res.json();
     if (!data.ok) { alert(data.error ?? "No se pudo eliminar. Puede tener equipos u OTs asociados."); return; }
     load();
