@@ -108,6 +108,10 @@ export async function GET(req: NextRequest) {
       ...(otJdeNumero ? { otJdeNumero } : {}),
       ...(origenPlan !== null ? { origenPlan: origenPlan === "true" } : {}),
       ...(Object.keys(fechaFilter).length ? { fecha: fechaFilter } : {}),
+      // Ocultar OTs OPEPLANT de revisión hasta el domingo (fin de semana ISO)
+      ...(estado === "pendiente_revision" && new Date().getUTCDay() !== 0
+        ? { NOT: { origenPlan: true, otJdeNumero: { not: null } } }
+        : {}),
     },
     include,
     orderBy: { fecha: "desc" },
