@@ -108,9 +108,9 @@ export async function GET(req: NextRequest) {
       ...(otJdeNumero ? { otJdeNumero } : {}),
       ...(origenPlan !== null ? { origenPlan: origenPlan === "true" } : {}),
       ...(Object.keys(fechaFilter).length ? { fecha: fechaFilter } : {}),
-      // Ocultar OTs OPEPLANT de revisión hasta el domingo (fin de semana ISO)
+      // Ocultar OTs OPEPLANT (con número JDE) de revisión hasta el domingo (fin de semana ISO)
       ...(estado === "pendiente_revision" && new Date().getUTCDay() !== 0
-        ? { NOT: { origenPlan: true, otJdeNumero: { not: null } } }
+        ? { NOT: { otJdeNumero: { not: null } } }
         : {}),
     },
     include,
@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ── Consolidación OPEPLANT: si ya existe OT con mismo otJdeNumero en esta semana, agregar avance diario ──
+    // ── Consolidación: si ya existe OT con mismo otJdeNumero en esta semana, agregar avance diario ──
     if (body.otJdeNumero && esDePlan) {
       const fechaOT = new Date(body.fecha);
       // Calcular lunes de la semana ISO de la fecha
@@ -160,7 +160,6 @@ export async function POST(req: NextRequest) {
       const existente = await prisma.ordenTrabajo.findFirst({
         where: {
           otJdeNumero: body.otJdeNumero,
-          origenPlan: true,
           fecha: { gte: lunes, lt: domingo },
         },
         include,
