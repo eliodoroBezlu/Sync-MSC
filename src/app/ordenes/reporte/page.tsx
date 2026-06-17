@@ -305,6 +305,7 @@ export default function ReporteOTPage() {
     const q = filtroBuscar.toLowerCase();
     return (
       o.numeroOT.toLowerCase().includes(q) ||
+      (o.otJdeNumero ?? "").toLowerCase().includes(q) ||
       o.tecnicos.some((t) => t.nombreCompleto.toLowerCase().includes(q)) ||
       o.lineas.some((l) => l.tag.toLowerCase().includes(q))
     );
