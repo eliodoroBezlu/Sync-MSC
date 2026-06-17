@@ -760,7 +760,9 @@ export default function ReporteOTPage() {
   const canEdit = !isConcluido && (esAdmin || (esTecnico && enEstadoTecnico && esOtPropia) || (esSup && !esTecnico));
 
   // Solo técnico (o admin) puede enviar a revisión desde borrador/corrección
-  const canSendToReview = enEstadoTecnico && (esAdmin || (esTecnico && esOtPropia));
+  // Para OTs del plan (OPEPLANT): solo domingo o admin puede enviar a revisión (cierre semanal)
+  const bloqueoCierreSemanal = ot.origenPlan && new Date().getDay() !== 0 && !esAdmin;
+  const canSendToReview = enEstadoTecnico && (esAdmin || (esTecnico && esOtPropia)) && !bloqueoCierreSemanal;
 
   // Formulario de supervisión: solo supervisores/admins, cuando la OT está en pendiente_revision
   const showSupForm = esSup && ot.estado === "pendiente_revision";
@@ -1233,6 +1235,11 @@ export default function ReporteOTPage() {
           <div style={{ ...S.card, background: "#f8fafc" }}>
             <div style={{ fontWeight: 700, fontSize: 13, color: "#0f2847", marginBottom: 10 }}>Acciones</div>
             {saveErr && <p style={{ color: "#dc2626", fontSize: 12, marginBottom: 10 }}>⚠ {saveErr}</p>}
+            {bloqueoCierreSemanal && enEstadoTecnico && (
+              <p style={{ fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>
+                ⏳ Esta OT es del plan semanal. El envío a revisión se habilita el <strong>domingo</strong> al finalizar la semana.
+              </p>
+            )}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {canSendToReview && (
                 <button onClick={() => cambiarEstado("pendiente_revision", "OT enviada a revisión por " + (user?.nombre ?? "técnico"))} disabled={saving} style={{ ...S.btnPrimary, opacity: saving ? 0.6 : 1 }}>
