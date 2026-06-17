@@ -1607,6 +1607,7 @@ function AreasTab() {
                     <button style={{ ...item.activo ? C.btnRed : C.btnGreen, marginRight: 4 }} onClick={() => toggleActivo(item)}>{item.activo ? "Desactivar" : "Activar"}</button>
                     <button style={{ ...C.btnSmall, background: "#991b1b", color: "#fff", border: "1px solid #7f1d1d" }} onClick={() => eliminar(item)}>Eliminar</button>
                   </td>
+                </tr>
               ))}
             </tbody>
           </table>
