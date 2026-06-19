@@ -1,7 +1,13 @@
 import { prisma } from "@/lib/prisma";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-// Serializar OrdenTrabajo con sus relaciones al formato que espera el frontend
+const include = {
+  tecnicos: true,
+  lineas: true,
+  historial: { orderBy: { fechaHora: "asc" as const } },
+  registrosDiarios: { orderBy: { fecha: "asc" as const } },
+};
+
 function serializeOT(ot: Record<string, unknown> & {
   tecnicos?: { usuarioId?: string | null; nombreCompleto: string }[];
   lineas?: Record<string, unknown>[];
@@ -67,50 +73,56 @@ function serializeOT(ot: Record<string, unknown> & {
   };
 }
 
-const include = {
-  tecnicos: true,
-  lineas: true,
-  historial: { orderBy: { fechaHora: "asc" as const } },
-  registrosDiarios: { orderBy: { fecha: "asc" as const } },
-};
+function normalizeString(value: unknown): string | null {
+  if (typeof value === "string") {
+    return value.trim() || null;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value).trim() || null;
+  }
+  return null;
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const area         = searchParams.get("area");
-  const estado       = searchParams.get("estado");
-  const tag          = searchParams.get("tag");
-  const turno        = searchParams.get("turno");
-  const fecha        = searchParams.get("fecha");
-  const fechaDesde   = searchParams.get("fechaDesde");
-  const fechaHasta   = searchParams.get("fechaHasta");
-  const otJdeNumero  = searchParams.get("otJdeNumero");
-  const origenPlan   = searchParams.get("origenPlan");
-  const limit        = Math.min(Number(searchParams.get("limit") || "50"), 200);
+  const area = searchParams.get("area");
+  const estado = searchParams.get("estado");
+  const tag = searchParams.get("tag");
+  const turno = searchParams.get("turno");
+  const fecha = searchParams.get("fecha");
+  const fechaDesde = searchParams.get("fechaDesde");
+  const fechaHasta = searchParams.get("fechaHasta");
+  const otJdeNumero = searchParams.get("otJdeNumero");
+  const origenPlan = searchParams.get("origenPlan");
+  const limit = Math.min(Number(searchParams.get("limit") || "50"), 200);
 
-  let fechaFilter = {};
+  let fechaFilter: Record<string, Date> = {};
   if (fecha) {
     const d = new Date(fecha);
-    const next = new Date(d); next.setDate(next.getDate() + 1);
+    const next = new Date(d);
+    next.setDate(next.getDate() + 1);
     fechaFilter = { gte: d, lt: next };
   } else if (fechaDesde || fechaHasta) {
-    const rango: Record<string, Date> = {};
-    if (fechaDesde) rango.gte = new Date(fechaDesde);
-    if (fechaHasta) { const h = new Date(fechaHasta); h.setDate(h.getDate() + 1); rango.lt = h; }
-    fechaFilter = rango;
+    if (fechaDesde) fechaFilter.gte = new Date(fechaDesde);
+    if (fechaHasta) {
+      const h = new Date(fechaHasta);
+      h.setDate(h.getDate() + 1);
+      fechaFilter.lt = h;
+    }
   }
 
+  const esDomingo = new Date().getUTCDay() === 0;
   const ordenes = await prisma.ordenTrabajo.findMany({
     where: {
-      ...(area        ? { areaCodigo: area } : {}),
-      ...(estado      ? { estado } : {}),
-      ...(tag         ? { lineas: { some: { tag: tag.toUpperCase() } } } : {}),
-      ...(turno       ? { turno } : {}),
+      ...(area ? { areaCodigo: area } : {}),
+      ...(estado ? { estado } : {}),
+      ...(tag ? { lineas: { some: { tag: tag.toUpperCase() } } } : {}),
+      ...(turno ? { turno } : {}),
       ...(otJdeNumero ? { otJdeNumero } : {}),
       ...(origenPlan !== null ? { origenPlan: origenPlan === "true" } : {}),
       ...(Object.keys(fechaFilter).length ? { fecha: fechaFilter } : {}),
-      // Ocultar OTs OPEPLANT (con número JDE) de revisión hasta el domingo (fin de semana ISO)
-      ...(estado === "pendiente_revision" && new Date().getUTCDay() !== 0
-        ? { NOT: { otJdeNumero: { not: null } } }
+      ...(!esDomingo
+        ? { NOT: { estado: "pendiente_revision", origenPlan: true, otJdeNumero: { not: null } } }
         : {}),
     },
     include,
@@ -118,7 +130,7 @@ export async function GET(req: NextRequest) {
     take: limit,
   });
 
-  return Response.json(ordenes.map(o => serializeOT(o as Parameters<typeof serializeOT>[0])));
+  return NextResponse.json(ordenes.map(o => serializeOT(o as Parameters<typeof serializeOT>[0])));
 }
 
 async function siguienteNumeroOT(): Promise<string> {
@@ -134,10 +146,10 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const esDePlan = !!body.programacionSemanalId;
+    const areaCodigo: string | null = typeof body.areaCodigo === "string" ? body.areaCodigo.trim() || null : null;
+    const otJdeNumero = normalizeString(body.otJdeNumero);
+    const otJdeDia = normalizeString(body.otJdeDia);
 
-    const areaCodigo: string | null = body.areaCodigo?.trim() || null;
-
-    // Garantizar que el área exista antes de crear la OT
     if (areaCodigo) {
       await prisma.area.upsert({
         where: { codigo: areaCodigo },
@@ -146,10 +158,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ── Consolidación: si ya existe OT con mismo otJdeNumero en esta semana, agregar avance diario ──
-    if (body.otJdeNumero && esDePlan) {
+    if (otJdeNumero && esDePlan) {
       const fechaOT = new Date(body.fecha);
-      // Calcular lunes de la semana ISO de la fecha
       const day = fechaOT.getUTCDay() || 7;
       const lunes = new Date(fechaOT);
       lunes.setUTCDate(fechaOT.getUTCDate() - day + 1);
@@ -159,7 +169,9 @@ export async function POST(req: NextRequest) {
 
       const existente = await prisma.ordenTrabajo.findFirst({
         where: {
-          otJdeNumero: body.otJdeNumero,
+          origenPlan: true,
+          programacionSemanalId: body.programacionSemanalId,
+          otJdeNumero,
           fecha: { gte: lunes, lt: domingo },
         },
         include,
@@ -167,12 +179,11 @@ export async function POST(req: NextRequest) {
       });
 
       if (existente) {
-        // Agregar registro diario + historial a la OT existente
         const registroData = {
           fecha: new Date(body.fecha),
           tecnico: body.tecnicos?.[0]?.nombreCompleto || "Técnico",
           usuarioId: body.tecnicos?.[0]?.usuarioId || null,
-          hhTrabajadas: body.lineas?.reduce((s: number, l: Record<string, unknown>) => s + (Number(l.tiempoRealHrs) || 0), 0) || 0,
+          hhTrabajadas: (body.lineas ?? []).reduce((sum: number, l: Record<string, unknown>) => sum + (Number(l.tiempoRealHrs) || 0), 0),
           tareasEjecutadas: body.lineas?.[0]?.tareasEjecutadas as string[] ?? [],
           observaciones: body.lineas?.[0]?.observaciones as string || null,
         };
@@ -195,29 +206,27 @@ export async function POST(req: NextRequest) {
             fechaHora: new Date(),
             usuarioId: body.tecnicos?.[0]?.usuarioId || "system",
             nombreUsuario: body.tecnicos?.[0]?.nombreCompleto || "Sistema",
-            cambio: `Avance del día ${body.otJdeDia ?? body.fecha} registrado — ${registroData.hhTrabajadas}HH`,
+            cambio: `Avance del día ${otJdeDia ?? body.fecha} registrado — ${registroData.hhTrabajadas}HH`,
           },
         });
 
-        // Actualizar estado del otProgramada correspondiente
-        if (body.programacionSemanalId && body.otJdeNumero && body.otJdeDia) {
+        if (body.programacionSemanalId && otJdeDia) {
           await prisma.otProgramada.updateMany({
             where: {
               programacionSemanalId: body.programacionSemanalId,
-              numeroOT: body.otJdeNumero,
-              dia: body.otJdeDia,
+              numeroOT: otJdeNumero,
+              dia: otJdeDia,
             },
             data: { estado: "completada" },
           });
         }
 
-        // Re-fetch con relaciones actualizadas
         const otActualizada = await prisma.ordenTrabajo.findUnique({
           where: { id: existente.id },
           include,
         });
 
-        return Response.json(
+        return NextResponse.json(
           { ok: true, ot: serializeOT(otActualizada as Parameters<typeof serializeOT>[0]), consolidado: true },
           { status: 200 }
         );
@@ -225,7 +234,6 @@ export async function POST(req: NextRequest) {
     }
 
     const numeroOT = await siguienteNumeroOT();
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ot = await (prisma.ordenTrabajo.create as any)({
       data: {
@@ -236,8 +244,8 @@ export async function POST(req: NextRequest) {
         estado: body.estado ?? "borrador",
         origenPlan: esDePlan,
         programacionSemanalId: body.programacionSemanalId || null,
-        otJdeNumero: body.otJdeNumero || null,
-        otJdeDia: body.otJdeDia || null,
+        otJdeNumero,
+        otJdeDia,
         tecnicos: {
           create: (body.tecnicos ?? []).map((t: { usuarioId?: string; nombreCompleto: string }) => ({
             usuarioId: t.usuarioId || null,
@@ -249,14 +257,14 @@ export async function POST(req: NextRequest) {
             tag: String(l.tag).toUpperCase(),
             descripcionEquipo: String(l.descripcionEquipo ?? ""),
             tipoOT: String(l.tipoOT),
-            sintoma: l.sintoma as string | null ?? null,
-            causaProbable: l.causaProbable as string | null ?? null,
-            resolucionAplicada: l.resolucionAplicada as string | null ?? null,
-            tiempoEstimadoHrs: l.tiempoEstimadoHrs as number | null ?? null,
-            tiempoRealHrs: l.tiempoRealHrs as number | null ?? null,
-            descripcionTrabajo: l.descripcionTrabajo as string | null ?? null,
+            sintoma: (l.sintoma as string | null) ?? null,
+            causaProbable: (l.causaProbable as string | null) ?? null,
+            resolucionAplicada: (l.resolucionAplicada as string | null) ?? null,
+            tiempoEstimadoHrs: (l.tiempoEstimadoHrs as number | null) ?? null,
+            tiempoRealHrs: (l.tiempoRealHrs as number | null) ?? null,
+            descripcionTrabajo: (l.descripcionTrabajo as string | null) ?? null,
             tareasEjecutadas: (l.tareasEjecutadas as string[]) ?? [],
-            observaciones: l.observaciones as string | null ?? null,
+            observaciones: (l.observaciones as string | null) ?? null,
             adjuntos: (l.adjuntos as object[]) ?? [],
           })),
         },
@@ -266,7 +274,7 @@ export async function POST(req: NextRequest) {
             usuarioId: body.tecnicos?.[0]?.usuarioId || "system",
             nombreUsuario: body.tecnicos?.[0]?.nombreCompleto || "Sistema",
             cambio: esDePlan
-              ? `OT creada desde plan semanal (JDE: ${body.otJdeNumero ?? "—"} · ${body.otJdeDia ?? ""})`
+              ? `OT creada desde plan semanal (JDE: ${otJdeNumero ?? "—"} · ${otJdeDia ?? ""})`
               : body.estado === "pendiente_revision" ? "OT enviada a revisión" : "OT creada como borrador",
           }],
         },
@@ -274,14 +282,12 @@ export async function POST(req: NextRequest) {
       include,
     });
 
-    // Actualizar plan semanal si viene del plan
-    // Para OTs recurrentes (misma OT en múltiples días) se vinculan TODOS los días sin filtrar por día
-    if (esDePlan && body.programacionSemanalId && body.otJdeNumero) {
+    if (esDePlan && body.programacionSemanalId && otJdeNumero) {
       await prisma.otProgramada.updateMany({
         where: {
           programacionSemanalId: body.programacionSemanalId,
-          numeroOT: body.otJdeNumero,
-          ...(!body.esRecurrente && body.otJdeDia ? { dia: body.otJdeDia } : {}),
+          numeroOT: otJdeNumero,
+          ...(!body.esRecurrente && otJdeDia ? { dia: otJdeDia } : {}),
         },
         data: {
           estado: "en_proceso",
@@ -291,12 +297,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return Response.json(
+    return NextResponse.json(
       { ok: true, ot: serializeOT(ot as Parameters<typeof serializeOT>[0]) },
       { status: 201 }
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error interno";
-    return Response.json({ ok: false, error: message }, { status: 400 });
+    return NextResponse.json({ ok: false, error: message }, { status: 400 });
   }
 }

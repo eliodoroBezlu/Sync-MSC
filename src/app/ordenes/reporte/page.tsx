@@ -205,7 +205,7 @@ export default function ReporteOTPage() {
 
   // Derivados de rol — Admin(1) y Superintendente(2) tienen acceso total
   const esTecnico   = user?.rol === 4 || user?.rol === 6; // rol 6 = Contratista, mismos permisos que técnico
-  const esSup       = user ? user.rol <= 3 : false; // 1, 2, 3 pueden revisar
+  const esSup       = user ? user.rol <= 3 || user.rol === 5 : false; // 1, 2, 3 y 5 pueden revisar
   const esAdmin     = user?.rol === 1;
 
   const [ordenes, setOrdenes] = useState<OTDoc[]>([]);
