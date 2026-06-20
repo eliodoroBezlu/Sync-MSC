@@ -1295,12 +1295,31 @@ export default function ReporteOTPage() {
                         ...(ot.registrosDiarios ?? []),
                         ...mismos.flatMap(h => h.registrosDiarios ?? []),
                       ].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
-                      // Fusionar lineas sin duplicar por tag+tipoOT
-                      const lineasKey = new Set(ot.lineas.map(l => `${l.tag}::${l.tipoOT}`));
-                      const lineasMerged = [
-                        ...ot.lineas,
-                        ...mismos.flatMap(h => h.lineas).filter(l => !lineasKey.has(`${l.tag}::${l.tipoOT}`)),
-                      ];
+                      // Fusionar lineas: misma tag+tipoOT → combinar adjuntos, tareas y observaciones
+                      const lineasMap = new Map(ot.lineas.map(l => [`${l.tag}::${l.tipoOT}`, { ...l, adjuntos: [...(l.adjuntos ?? [])] }]));
+                      for (const h of mismos) {
+                        for (const l of h.lineas) {
+                          const key = `${l.tag}::${l.tipoOT}`;
+                          const existing = lineasMap.get(key);
+                          if (existing) {
+                            // Agregar adjuntos del hermano que no estén ya presentes (por id)
+                            const adjIds = new Set((existing.adjuntos ?? []).map((a: { id?: string }) => a.id));
+                            for (const adj of (l.adjuntos ?? [])) {
+                              if (!adjIds.has((adj as { id?: string }).id)) {
+                                existing.adjuntos.push(adj);
+                                adjIds.add((adj as { id?: string }).id);
+                              }
+                            }
+                            // Acumular tareas ejecutadas sin duplicar
+                            const tareasSet = new Set(existing.tareasEjecutadas ?? []);
+                            for (const t of (l.tareasEjecutadas ?? [])) tareasSet.add(t);
+                            existing.tareasEjecutadas = Array.from(tareasSet);
+                          } else {
+                            lineasMap.set(key, { ...l, adjuntos: [...(l.adjuntos ?? [])] });
+                          }
+                        }
+                      }
+                      const lineasMerged = Array.from(lineasMap.values());
                       otParaPDF = { ...ot, tecnicos: tecnicosMerged, registrosDiarios: diariosMerged, lineas: lineasMerged };
                     }
                   } catch { /* usa ot sin fusión si falla el fetch */ }
