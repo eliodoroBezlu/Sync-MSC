@@ -134,29 +134,42 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     await prisma.rosterSemanal.deleteMany({ where: { planBorradorId: id } });
 
     // Guardar técnicos con sus 7 días
-    for (const p of personas) {
-      const asistenciaSemana = p.asistencia.slice(colInicio, colFin + 1);
-      if (asistenciaSemana.length === 0) continue;
+    let guardados = 0;
+    const errores: string[] = [];
 
-      const grupo = calcularGrupo(asistenciaSemana);
-      await prisma.rosterSemanal.create({
-        data: {
-          planBorradorId: id,
-          nombre: p.nombre,
-          usuarioId: p.usuarioId,
-          disciplina: "INST",
-          grupo,
-          asistencia: asistenciaSemana as unknown as import("@prisma/client").Prisma.InputJsonValue,
-          esContratista: false,
-        },
-      });
+    for (const p of personas) {
+      try {
+        const asistenciaSemana = p.asistencia.slice(colInicio, colFin + 1);
+        if (asistenciaSemana.length === 0) {
+          errores.push(`${p.nombre}: sin asistencia para semana (slice(${colInicio}, ${colFin + 1}) = vacío)`);
+          continue;
+        }
+
+        const grupo = calcularGrupo(asistenciaSemana);
+        await prisma.rosterSemanal.create({
+          data: {
+            planBorradorId: id,
+            nombre: p.nombre,
+            usuarioId: p.usuarioId,
+            disciplina: "INST",
+            grupo,
+            asistencia: asistenciaSemana as unknown as import("@prisma/client").Prisma.InputJsonValue,
+            esContratista: false,
+          },
+        });
+        guardados++;
+      } catch (e) {
+        errores.push(`${p.nombre}: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
 
     return NextResponse.json({
       ok: true,
-      importados: personas.length,
+      importados: guardados,
+      encontrados: personas.length,
       diasSemana: "22-28 (Semana 26)",
-      mensaje: `${personas.length} técnicos importados correctamente`,
+      mensaje: `${guardados}/${personas.length} técnicos importados`,
+      ...(errores.length > 0 && { advertencias: errores }),
       debug: {
         indiceDiaInicio,
         indiceCol22,
