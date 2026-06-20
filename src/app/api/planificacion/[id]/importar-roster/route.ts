@@ -68,23 +68,27 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       // Detectar encabezado "NOMBRE" con números de días
       if (col3 === "NOMBRE" && filaInstrumentistas > 0) {
         filaEncabezado = i;
-        // Primero buscar dónde empiezan los números (día 1)
-        for (let c = 4; c < row.length && indiceDiaInicio === -1; c++) {
+        // Buscar SECUENCIA CONSECUTIVA de números 1, 2, 3, ..., 28+ (no solo números sueltos)
+        // Esto evita confundir con números de otras columnas (Estado, Tipo, etc.)
+        for (let c = 4; c < row.length - 27; c++) {
           const v = Number(row[c]);
+          // Si encontramos "1", verificar que los siguientes sean 2, 3, 4, ..., 28
           if (Number.isInteger(v) && v === 1) {
-            indiceDiaInicio = c;
-            mesNumero = 6;
-            break;
-          }
-        }
-
-        // Ahora buscar solo en un rango razonable después del inicio (máximo 50 columnas)
-        if (indiceDiaInicio > -1) {
-          for (let c = indiceDiaInicio; c < Math.min(indiceDiaInicio + 50, row.length); c++) {
-            const v = Number(row[c]);
-            if (Number.isInteger(v) && v >= 1 && v <= 31) {
-              if (v === 22) indiceCol22 = c;
-              if (v === 28) indiceCol28 = c;
+            let esSecuencia = true;
+            for (let offset = 1; offset <= 27; offset++) {
+              const siguiente = Number(row[c + offset]);
+              if (!Number.isInteger(siguiente) || siguiente !== offset + 1) {
+                esSecuencia = false;
+                break;
+              }
+            }
+            if (esSecuencia) {
+              // Encontramos la secuencia correcta 1-30
+              indiceDiaInicio = c;
+              indiceCol22 = c + 21; // "22" está 21 posiciones después de "1"
+              indiceCol28 = c + 27; // "28" está 27 posiciones después de "1"
+              mesNumero = 6;
+              break;
             }
           }
         }
