@@ -117,24 +117,41 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       }
     }
 
-    // Actualizar lineas: delete + recreate
+    // Actualizar lineas: delete + recreate preservando adjuntos existentes
     if (lineas) {
+      // Leer adjuntos actuales antes de borrar para no perderlos
+      const lineasActuales = await prisma.otLinea.findMany({
+        where: { ordenTrabajoId: id },
+        select: { tag: true, tipoOT: true, adjuntos: true },
+      });
+      const adjuntosMap = new Map(
+        lineasActuales.map(l => [`${l.tag.toUpperCase()}::${l.tipoOT}`, l.adjuntos])
+      );
+
       await prisma.otLinea.deleteMany({ where: { ordenTrabajoId: id } });
       await prisma.otLinea.createMany({
-        data: lineas.map((l: Record<string, unknown>) => ({
-          ordenTrabajoId: id,
-          tag: String(l.tag).toUpperCase(),
-          descripcionEquipo: String(l.descripcionEquipo ?? ""),
-          tipoOT: String(l.tipoOT),
-          sintoma: l.sintoma as string | null ?? null,
-          causaProbable: l.causaProbable as string | null ?? null,
-          resolucionAplicada: l.resolucionAplicada as string | null ?? null,
-          tiempoEstimadoHrs: l.tiempoEstimadoHrs as number | null ?? null,
-          tiempoRealHrs: l.tiempoRealHrs as number | null ?? null,
-          descripcionTrabajo: l.descripcionTrabajo as string | null ?? null,
-          tareasEjecutadas: (l.tareasEjecutadas as string[]) ?? [],
-          observaciones: l.observaciones as string | null ?? null,
-        })),
+        data: lineas.map((l: Record<string, unknown>) => {
+          const key = `${String(l.tag).toUpperCase()}::${String(l.tipoOT)}`;
+          // Preferir adjuntos del payload (si el cliente los envía), sino recuperar los existentes en BD
+          const adjuntos = Array.isArray(l.adjuntos) && (l.adjuntos as unknown[]).length > 0
+            ? l.adjuntos
+            : (adjuntosMap.get(key) ?? []);
+          return {
+            ordenTrabajoId: id,
+            tag: String(l.tag).toUpperCase(),
+            descripcionEquipo: String(l.descripcionEquipo ?? ""),
+            tipoOT: String(l.tipoOT),
+            sintoma: l.sintoma as string | null ?? null,
+            causaProbable: l.causaProbable as string | null ?? null,
+            resolucionAplicada: l.resolucionAplicada as string | null ?? null,
+            tiempoEstimadoHrs: l.tiempoEstimadoHrs as number | null ?? null,
+            tiempoRealHrs: l.tiempoRealHrs as number | null ?? null,
+            descripcionTrabajo: l.descripcionTrabajo as string | null ?? null,
+            tareasEjecutadas: (l.tareasEjecutadas as string[]) ?? [],
+            observaciones: l.observaciones as string | null ?? null,
+            adjuntos,
+          };
+        }),
       });
     }
 

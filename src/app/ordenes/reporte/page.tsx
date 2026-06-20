@@ -1334,17 +1334,6 @@ export default function ReporteOTPage() {
                     }
                   } catch { /* usa otBase sin fusión si falla el fetch */ }
                 }
-                // DEBUG TEMPORAL — mostrar resumen antes de generar
-                const adjTotal = otParaPDF.lineas.flatMap(l => l.adjuntos ?? []).length;
-                const debugMsg = [
-                  `OT base: ${otBase._id}`,
-                  `origenPlan: ${otBase.origenPlan} | otJdeNumero: ${otBase.otJdeNumero}`,
-                  `programacionSemanalId: ${otBase.programacionSemanalId ?? "null"}`,
-                  `Líneas en otParaPDF: ${otParaPDF.lineas.length}`,
-                  `Adjuntos totales: ${adjTotal}`,
-                  otParaPDF.lineas.map((l, i) => `  linea[${i}] ${l.tag}::${l.tipoOT} adjuntos=${l.adjuntos?.length ?? 0}`).join("\n"),
-                ].join("\n");
-                if (!window.confirm(`DEBUG — revisa antes de continuar:\n\n${debugMsg}\n\n¿Generar PDF?`)) return;
                 void generarInformeOT(otParaPDF);
               }}
               style={{ background: "#0d2847", color: "#fff", border: "none", borderRadius: 6, padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
