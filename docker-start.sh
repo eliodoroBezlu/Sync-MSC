@@ -19,6 +19,69 @@ const migraciones = [
   "ALTER TABLE \"Usuario\" ADD COLUMN IF NOT EXISTS \"esContratista\" BOOLEAN NOT NULL DEFAULT false",
   "ALTER TABLE \"Usuario\" ADD COLUMN IF NOT EXISTS \"fechaExpiracion\" TIMESTAMP(3)",
   "ALTER TABLE \"OtProgramada\" ADD COLUMN IF NOT EXISTS \"personalAsignadoIds\" TEXT[] NOT NULL DEFAULT '{}'",
+
+  // ── Planificación module (2026-06) ──────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS "PlanBorrador" (
+    id TEXT NOT NULL PRIMARY KEY,
+    semana INTEGER NOT NULL,
+    anio INTEGER NOT NULL,
+    "areaCodigo" TEXT NOT NULL,
+    disciplina TEXT NOT NULL,
+    estado TEXT NOT NULL DEFAULT 'borrador',
+    "creadoPor" TEXT NOT NULL,
+    "publicadoEn" TIMESTAMP(3),
+    "programacionSemanalId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "PlanBorrador_semana_anio_areaCodigo_key" UNIQUE (semana, anio, "areaCodigo")
+  )`,
+  `CREATE TABLE IF NOT EXISTS "PlanBorradorOt" (
+    id TEXT NOT NULL PRIMARY KEY,
+    "planBorradorId" TEXT NOT NULL,
+    control INTEGER,
+    "numeroOT" TEXT NOT NULL,
+    "tipoOT" TEXT NOT NULL,
+    "tipoTrabajo" TEXT NOT NULL,
+    prioridad TEXT,
+    descripcion TEXT NOT NULL,
+    tag TEXT NOT NULL,
+    "descripcionEquipo" TEXT NOT NULL DEFAULT '',
+    personas INTEGER NOT NULL DEFAULT 1,
+    "hrsTrabajo" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "hhTotal" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "fechaInicioOt" TIMESTAMP(3),
+    "fechaFinOt" TIMESTAMP(3),
+    "diasTexto" TEXT,
+    dias TEXT[] NOT NULL DEFAULT '{}',
+    grupo TEXT NOT NULL DEFAULT 'Diurno',
+    "personalAsignado" TEXT[] NOT NULL DEFAULT '{}',
+    "personalAsignadoIds" TEXT[] NOT NULL DEFAULT '{}',
+    "esGuardia" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "PlanBorradorOt_planBorradorId_fkey"
+      FOREIGN KEY ("planBorradorId") REFERENCES "PlanBorrador"(id) ON DELETE CASCADE
+  )`,
+  `CREATE TABLE IF NOT EXISTS "RosterSemanal" (
+    id TEXT NOT NULL PRIMARY KEY,
+    "planBorradorId" TEXT NOT NULL,
+    nombre TEXT NOT NULL,
+    jde TEXT,
+    "usuarioId" TEXT,
+    grupo TEXT NOT NULL DEFAULT 'Diurno',
+    "esContratista" BOOLEAN NOT NULL DEFAULT false,
+    disciplina TEXT NOT NULL,
+    asistencia JSONB NOT NULL DEFAULT '[]',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "RosterSemanal_planBorradorId_nombre_key" UNIQUE ("planBorradorId", nombre),
+    CONSTRAINT "RosterSemanal_planBorradorId_fkey"
+      FOREIGN KEY ("planBorradorId") REFERENCES "PlanBorrador"(id) ON DELETE CASCADE
+  )`,
+  "CREATE INDEX IF NOT EXISTS \"PlanBorrador_anio_semana_estado_idx\" ON \"PlanBorrador\" (anio, semana, estado)",
+  "CREATE INDEX IF NOT EXISTS \"PlanBorradorOt_planBorradorId_idx\" ON \"PlanBorradorOt\" (\"planBorradorId\")",
+  "CREATE INDEX IF NOT EXISTS \"PlanBorradorOt_numeroOT_idx\" ON \"PlanBorradorOt\" (\"numeroOT\")",
+  "CREATE INDEX IF NOT EXISTS \"RosterSemanal_planBorradorId_idx\" ON \"RosterSemanal\" (\"planBorradorId\")",
 ];
 
 (async () => {

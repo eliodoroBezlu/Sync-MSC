@@ -436,3 +436,75 @@ model ChecklistMantto {
   @@index([disciplina, nivelTag, areaProceso, activo])
   @@index([areaCodigo, activo])
 }
+
+// ─── PLANIFICACIÓN (módulo nuevo) ─────────────────────────────────────────────
+
+model PlanBorrador {
+  id                    String   @id @default(cuid())
+  semana                Int
+  anio                  Int
+  areaCodigo            String
+  disciplina            String   // INST|ELEC|MEC|TESA|CON|VE
+  estado                String   @default("borrador") // borrador|revision|publicado
+  creadoPor             String
+  publicadoEn           DateTime?
+  programacionSemanalId String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  ots                   PlanBorradorOt[]
+  roster                RosterSemanal[]
+
+  @@unique([semana, anio, areaCodigo])
+  @@index([anio, semana, estado])
+}
+
+model PlanBorradorOt {
+  id                  String   @id @default(cuid())
+  planBorradorId      String
+  control             Int?
+  numeroOT            String
+  tipoOT              String
+  tipoTrabajo         String
+  prioridad           String?
+  descripcion         String
+  tag                 String
+  descripcionEquipo   String   @default("")
+  personas            Int      @default(1)
+  hrsTrabajo          Float    @default(0)
+  hhTotal             Float    @default(0)
+  fechaInicioOt       DateTime?
+  fechaFinOt          DateTime?
+  diasTexto           String?
+  dias                String[]
+  grupo               String   @default("Diurno")
+  personalAsignado    String[]
+  personalAsignadoIds String[]
+  esGuardia           Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  plan                PlanBorrador @relation(fields: [planBorradorId], references: [id], onDelete: Cascade)
+
+  @@index([planBorradorId])
+  @@index([numeroOT])
+}
+
+model RosterSemanal {
+  id            String   @id @default(cuid())
+  planBorradorId String
+  nombre        String
+  jde           String?
+  usuarioId     String?
+  grupo         String   @default("Diurno")
+  esContratista Boolean  @default(false)
+  disciplina    String   // INST|ELEC|MEC|TESA|CON|VE
+  asistencia    Json     @default("[]")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  plan          PlanBorrador @relation(fields: [planBorradorId], references: [id], onDelete: Cascade)
+
+  @@unique([planBorradorId, nombre])
+  @@index([planBorradorId])
+}
