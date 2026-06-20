@@ -123,8 +123,10 @@ export async function GET(req: NextRequest) {
   if (!otJdeNumero && !parentOtId) {
     andConditions.push({ NOT: { origenPlan: false, otJdeNumero: { not: null } } });
   }
-  // Ocultar OTs OPEPLANT de plan pendientes fuera del domingo
-  if (!esDomingo) {
+  // Ocultar OTs OPEPLANT de plan pendientes fuera del domingo.
+  // Cuando se consulta por otJdeNumero explícito (ej: para PDF merge) se necesitan
+  // TODOS los registros sin importar estado, así que se omite este filtro.
+  if (!esDomingo && !otJdeNumero) {
     andConditions.push({ NOT: { estado: "pendiente_revision", origenPlan: true, otJdeNumero: { not: null } } });
   }
 
