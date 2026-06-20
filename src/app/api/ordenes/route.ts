@@ -148,21 +148,24 @@ export async function GET(req: NextRequest) {
     take: limit,
   });
 
-  // Deduplicar OTs de plan con mismo otJdeNumero+programacionSemanalId
-  // Ocurre cuando una OT recurrente creó múltiples registros antes de la corrección.
-  // Se mantiene la más reciente (primera en la lista ordenada por fecha desc).
-  const seen = new Set<string>();
-  const deduplicadas = ordenes.filter(o => {
-    const rec = o as Record<string, unknown>;
-    if (rec.origenPlan && rec.otJdeNumero && rec.programacionSemanalId) {
-      const key = `${rec.programacionSemanalId}::${rec.otJdeNumero}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-    }
-    return true;
-  });
+  // Deduplicar OTs de plan con mismo otJdeNumero+programacionSemanalId.
+  // Se omite cuando se consulta por otJdeNumero explícito — en ese caso se necesitan
+  // TODOS los registros (ej: para fusionar datos al generar el PDF).
+  let resultado = ordenes;
+  if (!otJdeNumero) {
+    const seen = new Set<string>();
+    resultado = ordenes.filter(o => {
+      const rec = o as Record<string, unknown>;
+      if (rec.origenPlan && rec.otJdeNumero && rec.programacionSemanalId) {
+        const key = `${rec.programacionSemanalId}::${rec.otJdeNumero}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+      }
+      return true;
+    });
+  }
 
-  return NextResponse.json(deduplicadas.map(o => serializeOT(o as Parameters<typeof serializeOT>[0])));
+  return NextResponse.json(resultado.map(o => serializeOT(o as Parameters<typeof serializeOT>[0])));
 }
 
 async function siguienteNumeroOT(): Promise<string> {
