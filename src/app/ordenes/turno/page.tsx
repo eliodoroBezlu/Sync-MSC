@@ -196,7 +196,7 @@ export default function ReporteTurnoPage() {
 
   const loadReportes = useCallback(async () => {
     setLoadingReportes(true);
-    const params = new URLSearchParams({ limit: "80" });
+    const params = new URLSearchParams({ tipo: "supervisor", limit: "80" });
     if (filtroListaEstado) params.set("estado", filtroListaEstado);
     const data = await fetch(`/api/reportes-turno?${params}`).then((r) => r.json()).catch(() => []);
     setReportes(Array.isArray(data) ? data : []);
@@ -381,6 +381,7 @@ export default function ReporteTurnoPage() {
         }).filter(Boolean);
 
       const payload = {
+        tipo: "supervisor",
         turno: form.turno,
         fecha: form.fecha,
         supervisorId: form.supervisorId,
