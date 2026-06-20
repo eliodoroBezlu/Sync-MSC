@@ -565,11 +565,40 @@ export default function CalibracionPage() {
   const supervisorFormRef = useRef<HTMLDivElement | null>(null);
   const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; rol: number } | null>(null);
 
+  // ─── Helpers de fechas para filtros de período ───────────────────────────────
+  function restarDias(n: number) {
+    const d = new Date(); d.setDate(d.getDate() - n);
+    return d.toISOString().split("T")[0];
+  }
+  function lunesDeEstaSemana() {
+    const d = new Date();
+    const dia = d.getDay() === 0 ? 6 : d.getDay() - 1;
+    d.setDate(d.getDate() - dia);
+    return d.toISOString().split("T")[0];
+  }
+  function lunesDeSemanaAnterior() {
+    const d = new Date();
+    const dia = d.getDay() === 0 ? 6 : d.getDay() - 1;
+    d.setDate(d.getDate() - dia - 7);
+    return d.toISOString().split("T")[0];
+  }
+  function domingoSemanaAnterior() {
+    const d = new Date();
+    const dia = d.getDay() === 0 ? 6 : d.getDay() - 1;
+    d.setDate(d.getDate() - dia - 1);
+    return d.toISOString().split("T")[0];
+  }
+  type Periodo = "3semanas" | "semana" | "semana_ant" | "mes" | "personalizado" | "todo";
+
   // Lista
   const [registros, setRegistros] = useState<RegistroDoc[]>([]);
   const [loadingLista, setLoadingLista] = useState(true);
   const [filterTag, setFilterTag] = useState("");
   const [filterResultado, setFilterResultado] = useState("");
+  // Filtro de período (Capa 1 & 2 — default: últimas 3 semanas)
+  const [periodo, setPeriodo] = useState<Periodo>("3semanas");
+  const [filtroFechaDesde, setFiltroFechaDesde] = useState(restarDias(21));
+  const [filtroFechaHasta, setFiltroFechaHasta] = useState("");
 
   // Detalle
   const [detalle, setDetalle] = useState<RegistroDoc | null>(null);
@@ -617,7 +646,11 @@ export default function CalibracionPage() {
   const loadRegistros = useCallback(async () => {
     setLoadingLista(true);
     try {
-      const res = await fetch("/api/calibracion?limit=80");
+      const params = new URLSearchParams({ limit: "200" });
+      if (filtroFechaDesde) params.set("fechaDesde", filtroFechaDesde);
+      if (filtroFechaHasta) params.set("fechaHasta", filtroFechaHasta);
+      if (periodo === "todo") params.set("incluirArchivados", "true");
+      const res = await fetch(`/api/calibracion?${params}`);
       const data: RegistroDoc[] = await res.json();
       setRegistros(data);
     } catch {
@@ -625,7 +658,7 @@ export default function CalibracionPage() {
     } finally {
       setLoadingLista(false);
     }
-  }, []);
+  }, [filtroFechaDesde, filtroFechaHasta, periodo]);
 
   useEffect(() => { loadRegistros(); }, [loadRegistros]);
 
@@ -1112,7 +1145,69 @@ export default function CalibracionPage() {
                 </div>
                 <div style={{ color: "#64748b", fontSize: 12, paddingBottom: 10 }}>
                   {filteredRegistros.length} registro{filteredRegistros.length !== 1 ? "s" : ""}
+                  {periodo !== "todo" && (
+                    <span style={{ marginLeft: 6, color: "#94a3b8" }}>
+                      · {periodo === "semana" ? "esta semana" : periodo === "semana_ant" ? "semana pasada" : periodo === "3semanas" ? "últimas 3 semanas" : periodo === "mes" ? "último mes" : "rango personalizado"}
+                    </span>
+                  )}
                 </div>
+              </div>
+
+              {/* ─── Filtro de período (Capa 1 & 2) ─── */}
+              <div style={{ marginTop: 12, borderTop: "1px solid #e2e8f0", paddingTop: 10 }}>
+                <label style={{ ...S.label, display: "block", marginBottom: 6 }}>Período</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                  {(
+                    [
+                      { key: "semana",        label: "Esta semana" },
+                      { key: "semana_ant",    label: "Semana pasada" },
+                      { key: "3semanas",      label: "Últimas 3 sem." },
+                      { key: "mes",           label: "Último mes" },
+                      { key: "todo",          label: "Todo el historial" },
+                      { key: "personalizado", label: "Personalizado" },
+                    ] as { key: Periodo; label: string }[]
+                  ).map(({ key, label }) => (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        setPeriodo(key);
+                        if (key === "semana")          { setFiltroFechaDesde(lunesDeEstaSemana()); setFiltroFechaHasta(""); }
+                        else if (key === "semana_ant") { setFiltroFechaDesde(lunesDeSemanaAnterior()); setFiltroFechaHasta(domingoSemanaAnterior()); }
+                        else if (key === "3semanas")   { setFiltroFechaDesde(restarDias(21)); setFiltroFechaHasta(""); }
+                        else if (key === "mes")         { setFiltroFechaDesde(restarDias(30)); setFiltroFechaHasta(""); }
+                        else if (key === "todo")        { setFiltroFechaDesde(""); setFiltroFechaHasta(""); }
+                      }}
+                      style={{
+                        padding: "4px 12px", fontSize: 12, borderRadius: 20, cursor: "pointer", border: "1px solid",
+                        borderColor: periodo === key ? "#0891b2" : "#cbd5e1",
+                        background: periodo === key ? "#0891b2" : "#f8fafc",
+                        color: periodo === key ? "#fff" : "#475569",
+                        fontWeight: periodo === key ? 600 : 400,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {periodo === "personalizado" && (
+                  <div style={{ display: "flex", gap: 10, marginTop: 8, alignItems: "center" }}>
+                    <div>
+                      <label style={{ ...S.label, marginBottom: 2 }}>Desde</label>
+                      <input type="date" value={filtroFechaDesde} onChange={(e) => setFiltroFechaDesde(e.target.value)} style={{ ...S.input, width: 140 }} />
+                    </div>
+                    <div>
+                      <label style={{ ...S.label, marginBottom: 2 }}>Hasta</label>
+                      <input type="date" value={filtroFechaHasta} onChange={(e) => setFiltroFechaHasta(e.target.value)} style={{ ...S.input, width: 140 }} />
+                    </div>
+                  </div>
+                )}
+
+                {periodo === "todo" && (
+                  <p style={{ fontSize: 11, color: "#f59e0b", marginTop: 6, fontWeight: 500 }}>
+                    Mostrando historial completo — incluye certificados archivados (&gt;90 días).
+                  </p>
+                )}
               </div>
             </div>
 

@@ -22,14 +22,37 @@ async function siguienteCertificado(tag: string, fecha: string): Promise<string>
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const tag       = searchParams.get("tag");
-  const resultado = searchParams.get("resultado");
-  const limit     = Math.min(Number(searchParams.get("limit") || "50"), 200);
+  const tag               = searchParams.get("tag");
+  const resultado         = searchParams.get("resultado");
+  const fechaDesde        = searchParams.get("fechaDesde");
+  const fechaHasta        = searchParams.get("fechaHasta");
+  const incluirArchivados = searchParams.get("incluirArchivados") === "true";
+  const limit             = Math.min(Number(searchParams.get("limit") || "50"), 200);
+
+  // Capa 3: auto-archivo — excluir registros >90 días salvo que se pida historial completo
+  // y no haya filtro de fecha propio del cliente.
+  const ARCHIVO_DIAS = 90;
+  const fechaArchivoCorte = new Date();
+  fechaArchivoCorte.setDate(fechaArchivoCorte.getDate() - ARCHIVO_DIAS);
+  const aplicarFiltroArchivo = !incluirArchivados && !fechaDesde && !fechaHasta && !tag;
+
+  let fechaFilter: Record<string, Date> = {};
+  if (fechaDesde || fechaHasta) {
+    if (fechaDesde) fechaFilter.gte = new Date(fechaDesde);
+    if (fechaHasta) {
+      const h = new Date(fechaHasta);
+      h.setDate(h.getDate() + 1);
+      fechaFilter.lt = h;
+    }
+  } else if (aplicarFiltroArchivo) {
+    fechaFilter.gte = fechaArchivoCorte;
+  }
 
   const registros = await prisma.registroCalibracion.findMany({
     where: {
       ...(tag       ? { tag: { contains: tag, mode: "insensitive" } } : {}),
       ...(resultado ? { resultadoGeneral: resultado } : {}),
+      ...(Object.keys(fechaFilter).length ? { fecha: fechaFilter } : {}),
     },
     orderBy: { fecha: "desc" },
     take: limit,
