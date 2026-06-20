@@ -1302,12 +1302,12 @@ export default function ReporteOTPage() {
                           const key = `${l.tag}::${l.tipoOT}`;
                           const existing = lineasMap.get(key);
                           if (existing) {
-                            // Agregar adjuntos del hermano que no estén ya presentes (por id)
-                            const adjIds = new Set((existing.adjuntos ?? []).map((a: { id?: string }) => a.id));
+                            // Agregar adjuntos del hermano que no estén ya presentes (por nombre)
+                            const adjNombres = new Set((existing.adjuntos ?? []).map(a => a.nombre));
                             for (const adj of (l.adjuntos ?? [])) {
-                              if (!adjIds.has((adj as { id?: string }).id)) {
+                              if (!adjNombres.has(adj.nombre)) {
                                 existing.adjuntos.push(adj);
-                                adjIds.add((adj as { id?: string }).id);
+                                adjNombres.add(adj.nombre);
                               }
                             }
                             // Acumular tareas ejecutadas sin duplicar
