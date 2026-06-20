@@ -68,16 +68,24 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       // Detectar encabezado "NOMBRE" con números de días
       if (col3 === "NOMBRE" && filaInstrumentistas > 0) {
         filaEncabezado = i;
-        // Buscar números 1-30 en esta fila
-        for (let c = 4; c < row.length; c++) {
+        // Primero buscar dónde empiezan los números (día 1)
+        for (let c = 4; c < row.length && indiceDiaInicio === -1; c++) {
           const v = Number(row[c]);
-          if (Number.isInteger(v) && v >= 1 && v <= 31) {
-            if (indiceDiaInicio === -1) {
-              indiceDiaInicio = c; // Primera columna con número (día 1)
-              mesNumero = 6; // Asumimos Junio
+          if (Number.isInteger(v) && v === 1) {
+            indiceDiaInicio = c;
+            mesNumero = 6;
+            break;
+          }
+        }
+
+        // Ahora buscar solo en un rango razonable después del inicio (máximo 50 columnas)
+        if (indiceDiaInicio > -1) {
+          for (let c = indiceDiaInicio; c < Math.min(indiceDiaInicio + 50, row.length); c++) {
+            const v = Number(row[c]);
+            if (Number.isInteger(v) && v >= 1 && v <= 31) {
+              if (v === 22) indiceCol22 = c;
+              if (v === 28) indiceCol28 = c;
             }
-            if (v === 22) indiceCol22 = c;
-            if (v === 28) indiceCol28 = c;
           }
         }
         break; // Ya encontramos el encabezado de INST
