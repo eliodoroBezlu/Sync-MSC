@@ -1271,7 +1271,42 @@ export default function ReporteOTPage() {
               {isConcluido ? "OT concluida — solo lectura." : "OT revisada — lista para concluir."}
             </p>
             <button
-              onClick={() => void generarInformeOT(ot)}
+              onClick={async () => {
+                // Para OTs de plan con número JDE, fusionar datos de todos los registros
+                // del mismo otJdeNumero+programacionSemanalId antes de generar el PDF
+                let otParaPDF: typeof ot = ot;
+                if (ot.origenPlan && ot.otJdeNumero && ot.programacionSemanalId) {
+                  try {
+                    const hermanos: OTDoc[] = await fetch(
+                      `/api/ordenes?otJdeNumero=${encodeURIComponent(ot.otJdeNumero)}&limit=20`
+                    ).then(r => r.json());
+                    const mismos = hermanos.filter(
+                      h => h.programacionSemanalId === ot.programacionSemanalId && h._id !== ot._id
+                    );
+                    if (mismos.length > 0) {
+                      // Fusionar técnicos sin duplicar por nombre
+                      const nombresYa = new Set(ot.tecnicos.map(t => t.nombreCompleto));
+                      const tecnicosMerged = [
+                        ...ot.tecnicos,
+                        ...mismos.flatMap(h => h.tecnicos).filter(t => !nombresYa.has(t.nombreCompleto)),
+                      ];
+                      // Fusionar registrosDiarios ordenados por fecha
+                      const diariosMerged = [
+                        ...(ot.registrosDiarios ?? []),
+                        ...mismos.flatMap(h => h.registrosDiarios ?? []),
+                      ].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+                      // Fusionar lineas sin duplicar por tag+tipoOT
+                      const lineasKey = new Set(ot.lineas.map(l => `${l.tag}::${l.tipoOT}`));
+                      const lineasMerged = [
+                        ...ot.lineas,
+                        ...mismos.flatMap(h => h.lineas).filter(l => !lineasKey.has(`${l.tag}::${l.tipoOT}`)),
+                      ];
+                      otParaPDF = { ...ot, tecnicos: tecnicosMerged, registrosDiarios: diariosMerged, lineas: lineasMerged };
+                    }
+                  } catch { /* usa ot sin fusión si falla el fetch */ }
+                }
+                void generarInformeOT(otParaPDF);
+              }}
               style={{ background: "#0d2847", color: "#fff", border: "none", borderRadius: 6, padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
             >
               Descargar Informe PDF
