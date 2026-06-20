@@ -128,6 +128,8 @@ export async function GET(req: NextRequest) {
     andConditions.push({ NOT: { estado: "pendiente_revision", origenPlan: true, otJdeNumero: { not: null } } });
   }
 
+  const programacionSemanalId = searchParams.get("programacionSemanalId");
+
   const ordenes = await prisma.ordenTrabajo.findMany({
     where: {
       ...(area ? { areaCodigo: area } : {}),
@@ -138,6 +140,7 @@ export async function GET(req: NextRequest) {
       ...(origenPlan !== null ? { origenPlan: origenPlan === "true" } : {}),
       ...(Object.keys(fechaFilter).length ? { fecha: fechaFilter } : {}),
       ...(parentOtId ? { parentOtId } : {}),
+      ...(programacionSemanalId ? { programacionSemanalId } : {}),
       ...(andConditions.length > 0 ? { AND: andConditions } : {}),
     },
     include,
@@ -145,7 +148,21 @@ export async function GET(req: NextRequest) {
     take: limit,
   });
 
-  return NextResponse.json(ordenes.map(o => serializeOT(o as Parameters<typeof serializeOT>[0])));
+  // Deduplicar OTs de plan con mismo otJdeNumero+programacionSemanalId
+  // Ocurre cuando una OT recurrente creó múltiples registros antes de la corrección.
+  // Se mantiene la más reciente (primera en la lista ordenada por fecha desc).
+  const seen = new Set<string>();
+  const deduplicadas = ordenes.filter(o => {
+    const rec = o as Record<string, unknown>;
+    if (rec.origenPlan && rec.otJdeNumero && rec.programacionSemanalId) {
+      const key = `${rec.programacionSemanalId}::${rec.otJdeNumero}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+    }
+    return true;
+  });
+
+  return NextResponse.json(deduplicadas.map(o => serializeOT(o as Parameters<typeof serializeOT>[0])));
 }
 
 async function siguienteNumeroOT(): Promise<string> {
@@ -173,22 +190,16 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (otJdeNumero && esDePlan) {
-      const fechaOT = new Date(body.fecha);
-      const day = fechaOT.getUTCDay() || 7;
-      const lunes = new Date(fechaOT);
-      lunes.setUTCDate(fechaOT.getUTCDate() - day + 1);
-      lunes.setUTCHours(0, 0, 0, 0);
-      const domingo = new Date(lunes);
-      domingo.setUTCDate(lunes.getUTCDate() + 7);
+    if (esDePlan && body.programacionSemanalId) {
+      // Buscar OT existente para este plan+OT sin restricción de fecha (la semana ya está en el plan)
+      const whereExistente: Record<string, unknown> = {
+        origenPlan: true,
+        programacionSemanalId: body.programacionSemanalId,
+      };
+      if (otJdeNumero) whereExistente.otJdeNumero = otJdeNumero;
 
       const existente = await prisma.ordenTrabajo.findFirst({
-        where: {
-          origenPlan: true,
-          programacionSemanalId: body.programacionSemanalId,
-          otJdeNumero,
-          fecha: { gte: lunes, lt: domingo },
-        },
+        where: whereExistente,
         include,
         orderBy: { fecha: "asc" },
       });
@@ -225,14 +236,19 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        if (body.programacionSemanalId && otJdeDia) {
+        // Actualizar la OtProgramada del día actual con ordenTrabajoId Y estado
+        if (otJdeDia) {
           await prisma.otProgramada.updateMany({
             where: {
               programacionSemanalId: body.programacionSemanalId,
-              numeroOT: otJdeNumero,
+              ...(otJdeNumero ? { numeroOT: otJdeNumero } : {}),
               dia: otJdeDia,
             },
-            data: { estado: "completada" },
+            data: {
+              estado: "completada",
+              ordenTrabajoId: existente.id,
+              ordenTrabajoNum: existente.numeroOT,
+            },
           });
         }
 
