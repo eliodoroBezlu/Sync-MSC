@@ -116,16 +116,17 @@ export async function GET(req: NextRequest) {
   const parentOtId = searchParams.get("parentOtId");
   const esDomingo = new Date().getUTCDay() === 0;
 
-  // Filtro para ocultar OTs hijas OPEPLANT del panel principal:
-  // - Si se pide por parentOtId explícito → solo hijas de esa madre
-  // - Si se pide por otJdeNumero → mostrar todo (el turnero necesita ver las hijas)
-  // - Por defecto → ocultar OTs reactivas (origenPlan=false) que tienen otJdeNumero seteado
-  //   porque esas son siempre entradas de bitácora OPEPLANT, no OTs independientes
-  const parentFilter = parentOtId
-    ? { parentOtId }
-    : otJdeNumero
-      ? {}
-      : { NOT: { origenPlan: false, otJdeNumero: { not: null } } };
+  // Condiciones AND para combinar múltiples filtros NOT sin sobreescribirse
+  const andConditions: object[] = [];
+
+  // Ocultar OTs hijas OPEPLANT del panel principal (reactivas con otJdeNumero seteado)
+  if (!otJdeNumero && !parentOtId) {
+    andConditions.push({ NOT: { origenPlan: false, otJdeNumero: { not: null } } });
+  }
+  // Ocultar OTs OPEPLANT de plan pendientes fuera del domingo
+  if (!esDomingo) {
+    andConditions.push({ NOT: { estado: "pendiente_revision", origenPlan: true, otJdeNumero: { not: null } } });
+  }
 
   const ordenes = await prisma.ordenTrabajo.findMany({
     where: {
@@ -136,10 +137,8 @@ export async function GET(req: NextRequest) {
       ...(otJdeNumero ? { otJdeNumero } : {}),
       ...(origenPlan !== null ? { origenPlan: origenPlan === "true" } : {}),
       ...(Object.keys(fechaFilter).length ? { fecha: fechaFilter } : {}),
-      ...parentFilter,
-      ...(!esDomingo
-        ? { NOT: { estado: "pendiente_revision", origenPlan: true, otJdeNumero: { not: null } } }
-        : {}),
+      ...(parentOtId ? { parentOtId } : {}),
+      ...(andConditions.length > 0 ? { AND: andConditions } : {}),
     },
     include,
     orderBy: { fecha: "desc" },
