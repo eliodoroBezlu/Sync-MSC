@@ -740,7 +740,7 @@ export default function ReporteOTPage() {
                                 </button>
                               </>
                             )}
-                            {ot.estado === "revisado" && (
+                            {ot.estado === "revisado" && esSup && (
                               <button
                                 onClick={async (e) => {
                                   e.stopPropagation();
