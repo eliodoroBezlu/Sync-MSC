@@ -116,15 +116,16 @@ export async function GET(req: NextRequest) {
   const parentOtId = searchParams.get("parentOtId");
   const esDomingo = new Date().getUTCDay() === 0;
 
-  // Filtro parentOtId:
+  // Filtro para ocultar OTs hijas OPEPLANT del panel principal:
   // - Si se pide por parentOtId explícito → solo hijas de esa madre
-  // - Si se pide por otJdeNumero → mostrar todo (padre + hijas de esa OT)
-  // - Por defecto → solo OTs raíz (parentOtId: null) para no llenar el panel del supervisor
+  // - Si se pide por otJdeNumero → mostrar todo (el turnero necesita ver las hijas)
+  // - Por defecto → ocultar OTs reactivas (origenPlan=false) que tienen otJdeNumero seteado
+  //   porque esas son siempre entradas de bitácora OPEPLANT, no OTs independientes
   const parentFilter = parentOtId
     ? { parentOtId }
     : otJdeNumero
       ? {}
-      : { parentOtId: null };
+      : { NOT: { origenPlan: false, otJdeNumero: { not: null } } };
 
   const ordenes = await prisma.ordenTrabajo.findMany({
     where: {
