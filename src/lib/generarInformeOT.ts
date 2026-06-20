@@ -437,7 +437,9 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
   const totalEst  = ot.lineas.reduce((s, l) => s + (l.tiempoEstimadoHrs ?? 0), 0);
   const hhLineas  = ot.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0);
   const hhDiarios = (ot.registrosDiarios ?? []).reduce((s, r) => s + (r.hhTrabajadas ?? 0), 0);
-  const totalReal = hhLineas + hhDiarios;
+  // Si hay avances diarios, usarlos como fuente de verdad para HH reales (evita doble conteo
+  // con linea.tiempoRealHrs del primer día). Solo si no hay diarios se usa el valor de las lineas.
+  const totalReal = hhDiarios > 0 ? hhDiarios : hhLineas;
   const diff      = Math.round((totalReal - totalEst) * 10) / 10;
   const pct       = totalEst > 0 ? Math.round((totalReal / totalEst) * 100) : 0;
 
