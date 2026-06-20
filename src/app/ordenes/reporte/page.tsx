@@ -1274,35 +1274,46 @@ export default function ReporteOTPage() {
               onClick={async () => {
                 // Para OTs de plan con número JDE, fusionar datos de todos los registros
                 // del mismo otJdeNumero+programacionSemanalId antes de generar el PDF
-                let otParaPDF: typeof ot = ot;
-                if (ot.origenPlan && ot.otJdeNumero && ot.programacionSemanalId) {
+                // Recargar OT actual fresca para garantizar que adjuntos estén completos
+                let otBase: typeof ot = ot;
+                try {
+                  const fresca: OTDoc = await fetch(`/api/ordenes/${ot._id}`).then(r => r.json());
+                  if (fresca?._id) otBase = fresca;
+                } catch { /* usa ot cargado */ }
+
+                let otParaPDF: typeof ot = otBase;
+                if (otBase.origenPlan && otBase.otJdeNumero) {
                   try {
                     const hermanos: OTDoc[] = await fetch(
-                      `/api/ordenes?otJdeNumero=${encodeURIComponent(ot.otJdeNumero)}&limit=20`
+                      `/api/ordenes?otJdeNumero=${encodeURIComponent(otBase.otJdeNumero)}&limit=20`
                     ).then(r => r.json());
-                    const mismos = hermanos.filter(
-                      h => h.programacionSemanalId === ot.programacionSemanalId && h._id !== ot._id
-                    );
+                    // Filtrar: misma OT JDE, distinto _id, y misma semana si ambos la tienen
+                    const mismos = hermanos.filter(h => {
+                      if (h._id === otBase._id) return false;
+                      if (otBase.programacionSemanalId && h.programacionSemanalId) {
+                        return h.programacionSemanalId === otBase.programacionSemanalId;
+                      }
+                      return true;
+                    });
                     if (mismos.length > 0) {
                       // Fusionar técnicos sin duplicar por nombre
-                      const nombresYa = new Set(ot.tecnicos.map(t => t.nombreCompleto));
+                      const nombresYa = new Set(otBase.tecnicos.map(t => t.nombreCompleto));
                       const tecnicosMerged = [
-                        ...ot.tecnicos,
+                        ...otBase.tecnicos,
                         ...mismos.flatMap(h => h.tecnicos).filter(t => !nombresYa.has(t.nombreCompleto)),
                       ];
                       // Fusionar registrosDiarios ordenados por fecha
                       const diariosMerged = [
-                        ...(ot.registrosDiarios ?? []),
+                        ...(otBase.registrosDiarios ?? []),
                         ...mismos.flatMap(h => h.registrosDiarios ?? []),
                       ].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
                       // Fusionar lineas: misma tag+tipoOT → combinar adjuntos, tareas y observaciones
-                      const lineasMap = new Map(ot.lineas.map(l => [`${l.tag}::${l.tipoOT}`, { ...l, adjuntos: [...(l.adjuntos ?? [])] }]));
+                      const lineasMap = new Map(otBase.lineas.map(l => [`${l.tag}::${l.tipoOT}`, { ...l, adjuntos: [...(l.adjuntos ?? [])] }]));
                       for (const h of mismos) {
                         for (const l of h.lineas) {
                           const key = `${l.tag}::${l.tipoOT}`;
                           const existing = lineasMap.get(key);
                           if (existing) {
-                            // Agregar adjuntos del hermano que no estén ya presentes (por nombre)
                             const adjNombres = new Set((existing.adjuntos ?? []).map(a => a.nombre));
                             for (const adj of (l.adjuntos ?? [])) {
                               if (!adjNombres.has(adj.nombre)) {
@@ -1310,7 +1321,6 @@ export default function ReporteOTPage() {
                                 adjNombres.add(adj.nombre);
                               }
                             }
-                            // Acumular tareas ejecutadas sin duplicar
                             const tareasSet = new Set(existing.tareasEjecutadas ?? []);
                             for (const t of (l.tareasEjecutadas ?? [])) tareasSet.add(t);
                             existing.tareasEjecutadas = Array.from(tareasSet);
@@ -1320,9 +1330,9 @@ export default function ReporteOTPage() {
                         }
                       }
                       const lineasMerged = Array.from(lineasMap.values());
-                      otParaPDF = { ...ot, tecnicos: tecnicosMerged, registrosDiarios: diariosMerged, lineas: lineasMerged };
+                      otParaPDF = { ...otBase, tecnicos: tecnicosMerged, registrosDiarios: diariosMerged, lineas: lineasMerged };
                     }
-                  } catch { /* usa ot sin fusión si falla el fetch */ }
+                  } catch { /* usa otBase sin fusión si falla el fetch */ }
                 }
                 void generarInformeOT(otParaPDF);
               }}
