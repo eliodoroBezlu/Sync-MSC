@@ -4,15 +4,8 @@ import * as XLSX from "xlsx";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// Códigos de turno del roster E&I 2026
 const TURNO_CODIGO: Record<string, string> = {
-  D: "D",   // Turno Día
-  N: "N",   // Turno Noche
-  T: "T",   // Trasnochal
-  V: "V",   // Vacaciones
-  CS: "CS", // Comisión de Servicio
-  L: "L",   // Libre / descanso
-  "": "",
+  D: "D", N: "N", T: "T", V: "V", CS: "CS", L: "L", "": "",
 };
 
 function normalizarCodigo(v: unknown): string {
@@ -21,55 +14,10 @@ function normalizarCodigo(v: unknown): string {
 }
 
 function calcularGrupo(asistencia: string[]): string {
-  // Determinar D o N en base a mayoría de días trabajados
   const dias = asistencia.filter(a => a === "D" || a === "N");
   if (dias.length === 0) return "Diurno";
   const nocturno = dias.filter(a => a === "N").length;
   return nocturno > dias.length / 2 ? "Nocturno" : "Diurno";
-}
-
-/**
- * Calcula columna inicial y final para una semana ISO dentro del mes
- * Ej: Junio 2026, semana 26 → lunes 22 a domingo 28
- */
-function calcularColumnasParaSemana(
-  semana: number,
-  anio: number,
-  mesNumero: number
-): { colInicio: number; colFin: number; diasRango: string } {
-  // Primera semana del año en ISO
-  const jan4 = new Date(anio, 0, 4);
-  const lunesAno = new Date(jan4);
-  const dow = jan4.getDay() || 7;
-  lunesAno.setDate(jan4.getDate() - dow + 1);
-
-  // Lunes de la semana solicitada
-  const lunesSemana = new Date(lunesAno);
-  lunesSemana.setDate(lunesAno.getDate() + (semana - 1) * 7);
-
-  // Domingo de esa semana
-  const domingoSemana = new Date(lunesSemana);
-  domingoSemana.setDate(lunesSemana.getDate() + 6);
-
-  // Verificar si cae en el mes solicitado
-  const lunesEnMes = lunesSemana.getMonth() === mesNumero - 1;
-
-  if (!lunesEnMes) {
-    return { colInicio: -1, colFin: -1, diasRango: "fuera" };
-  }
-
-  // Columna inicial (día 1 del mes = columna 0)
-  const colInicio = lunesSemana.getDate() - 1;
-
-  // Columna final (máximo día del mes)
-  const ultimoDiaDelMes = new Date(anio, mesNumero, 0).getDate();
-  const colFin = Math.min(domingoSemana.getDate() - 1, ultimoDiaDelMes - 1);
-
-  return {
-    colInicio,
-    colFin,
-    diasRango: `${lunesSemana.getDate()}-${Math.min(domingoSemana.getDate(), ultimoDiaDelMes)}`,
-  };
 }
 
 export async function POST(req: NextRequest, { params }: Ctx) {
@@ -79,107 +27,114 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     const plan = await prisma.planBorrador.findUnique({ where: { id } });
     if (!plan) return NextResponse.json({ error: "Plan no encontrado" }, { status: 404 });
 
+    // Buscar solo técnicos (rol=4)
+    const usuariosPorNombre = new Map<string, string>();
+    const usuariosTecnicos = await prisma.usuario.findMany({
+      where: { rol: 4, activo: true },
+      select: { id: true, nombre: true },
+    });
+    for (const u of usuariosTecnicos) {
+      usuariosPorNombre.set(u.nombre.trim().toLowerCase(), u.id);
+    }
+
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     if (!file) return NextResponse.json({ error: "Archivo requerido" }, { status: 400 });
-
-    // Buscar usuarios técnicos (rol=4) solamente
-    const usuariosPorNombre = new Map<string, { id: string; rol: number }>();
-    const usuariosTecnicos = await prisma.usuario.findMany({
-      where: { rol: 4, activo: true }, // Solo técnicos (rol 4 = Técnico)
-      select: { id: true, nombre: true, rol: true },
-    });
-    for (const u of usuariosTecnicos) {
-      usuariosPorNombre.set(u.nombre.trim().toLowerCase(), { id: u.id, rol: u.rol });
-    }
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const wb = XLSX.read(buffer, { type: "buffer" });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
 
-    // El roster 2026 empieza en fila 741 (índice 740)
-    const INICIO = 740;
-    const personas: Array<{
-      nombre: string;
-      disciplina: string;
-      asistencia: string[];
-      usuarioId: string;
-    }> = [];
+    // ─── PASO 1: Encontrar la sección INST y el encabezado de días ───────
+    const INICIO_BUSQUEDA = 740; // Fila ~741 en Excel
+    let mesNumero = 0; // Enero=1, Junio=6, etc.
+    let indiceDiaInicio = -1; // Índice de columna donde empieza el mes
+    let indiceCol22 = -1; // Índice de columna del día 22
+    let indiceCol28 = -1; // Índice de columna del día 28
+    let filaEncabezado = -1;
+    let filaInstrumentistas = -1;
 
-    let disciplinaActual = plan.disciplina;
-    let encabezadoVisto = false;
-
-    for (let i = INICIO; i < rows.length; i++) {
+    for (let i = INICIO_BUSQUEDA; i < rows.length; i++) {
       const row = rows[i] as unknown[];
       const col3 = String(row[3] ?? "").trim();
 
-      // Detectar secciones de disciplina
-      if (["Instrumentistas", "Electricos", "Mecanicos", "Eléctricos", "Mecánicos"].includes(col3)) {
-        disciplinaActual = col3.startsWith("Inst")
-          ? "INST"
-          : col3.startsWith("El")
-            ? "ELEC"
-            : "MEC";
-        encabezadoVisto = false;
+      // Detectar "Instrumentistas"
+      if (col3 === "Instrumentistas") {
+        filaInstrumentistas = i;
         continue;
       }
 
-      // Fila de encabezado NOMBRE
-      if (col3 === "NOMBRE") {
-        encabezadoVisto = true;
-        continue;
-      }
-
-      // Fila de persona: col3 tiene un nombre
-      if (encabezadoVisto && col3 && col3 !== "2026" && !/^\d+$/.test(col3)) {
-        // Excluir filas de sección/leyenda
-        if (["Supervisores", "Dias trabajados", "Turno Dia", "Turno Noche"].includes(col3)) continue;
-
-        // **FILTRO CRÍTICO**: Solo incluir si es técnico (rol=4) en BD
-        const usuarioData = usuariosPorNombre.get(col3.toLowerCase());
-        if (!usuarioData) continue; // Salta supervisores y no-técnicos
-
-        // Leer los 30+ días del mes (columnas 4 en adelante)
-        const asistencia: string[] = [];
-        for (let c = 4; c < row.length && asistencia.length < 31; c++) {
-          asistencia.push(normalizarCodigo(row[c]));
+      // Detectar encabezado "NOMBRE" con números de días
+      if (col3 === "NOMBRE" && filaInstrumentistas > 0) {
+        filaEncabezado = i;
+        // Buscar números 1-30 en esta fila
+        for (let c = 4; c < row.length; c++) {
+          const v = Number(row[c]);
+          if (Number.isInteger(v) && v >= 1 && v <= 31) {
+            if (indiceDiaInicio === -1) {
+              indiceDiaInicio = c; // Primera columna con número (día 1)
+              mesNumero = 6; // Asumimos Junio
+            }
+            if (v === 22) indiceCol22 = c;
+            if (v === 28) indiceCol28 = c;
+          }
         }
-
-        personas.push({
-          nombre: col3,
-          disciplina: disciplinaActual,
-          asistencia,
-          usuarioId: usuarioData.id,
-        });
+        break; // Ya encontramos el encabezado de INST
       }
     }
 
-    // Filtrar por disciplina del plan
-    const delPlan = personas.filter(p => p.disciplina === plan.disciplina);
-
-    // Calcular columnas para la semana ISO (asumiendo Junio = mes 6)
-    const mesNumero = 6; // Junio
-    const { colInicio, colFin, diasRango } = calcularColumnasParaSemana(
-      plan.semana,
-      plan.anio,
-      mesNumero
-    );
-
-    if (colInicio < 0) {
+    if (indiceDiaInicio < 0 || indiceCol22 < 0 || indiceCol28 < 0) {
       return NextResponse.json(
-        {
-          error: `Semana ${plan.semana}/${plan.anio} no cae en Junio. Verifica la semana/año.`,
-        },
+        { error: "No se pudo encontrar la estructura de días en el Excel" },
         { status: 400 }
       );
     }
 
-    // Borrar roster anterior del plan
+    // ─── PASO 2: Leer técnicos desde filaInstrumentistas+1 ───────────────
+    const personas: Array<{
+      nombre: string;
+      usuarioId: string;
+      asistencia: string[];
+    }> = [];
+
+    for (let i = filaEncabezado + 1; i < rows.length; i++) {
+      const row = rows[i] as unknown[];
+      const col3 = String(row[3] ?? "").trim();
+
+      // Parar si encontramos otra sección
+      if (["Supervisores", "Electricos", "Mecanicos"].includes(col3)) break;
+
+      // Excluir filas vacías o de leyenda
+      if (!col3 || /^\d+$/.test(col3)) continue;
+      if (["Dias trabajados", "Turno Dia", "Turno Noche"].includes(col3)) continue;
+
+      // **FILTRO CRÍTICO**: Solo técnicos (rol=4)
+      const usuarioId = usuariosPorNombre.get(col3.toLowerCase());
+      if (!usuarioId) continue;
+
+      // Leer desde indiceDiaInicio hasta el final (max 31 días)
+      const asistencia: string[] = [];
+      for (let c = indiceDiaInicio; c < row.length && asistencia.length < 31; c++) {
+        asistencia.push(normalizarCodigo(row[c]));
+      }
+
+      personas.push({
+        nombre: col3,
+        usuarioId,
+        asistencia,
+      });
+    }
+
+    // ─── PASO 3: Extraer solo los 7 días de la semana (22-28) ────────────
+    const colInicio = indiceCol22 - indiceDiaInicio; // Índice relativo
+    const colFin = indiceCol28 - indiceDiaInicio;
+
+    // Borrar roster anterior
     await prisma.rosterSemanal.deleteMany({ where: { planBorradorId: id } });
 
-    // Guardar solo los 7 días de la semana relevante
-    for (const p of delPlan) {
+    // Guardar técnicos con sus 7 días
+    for (const p of personas) {
       const asistenciaSemana = p.asistencia.slice(colInicio, colFin + 1);
       if (asistenciaSemana.length === 0) continue;
 
@@ -189,7 +144,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
           planBorradorId: id,
           nombre: p.nombre,
           usuarioId: p.usuarioId,
-          disciplina: p.disciplina,
+          disciplina: "INST",
           grupo,
           asistencia: asistenciaSemana as unknown as import("@prisma/client").Prisma.InputJsonValue,
           esContratista: false,
@@ -199,9 +154,16 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
     return NextResponse.json({
       ok: true,
-      importados: delPlan.length,
-      diasSemana: diasRango,
-      mensaje: `${delPlan.length} técnicos importados para semana ${plan.semana} (días ${diasRango})`,
+      importados: personas.length,
+      diasSemana: "22-28 (Semana 26)",
+      mensaje: `${personas.length} técnicos importados correctamente`,
+      debug: {
+        indiceDiaInicio,
+        indiceCol22,
+        indiceCol28,
+        colInicio,
+        colFin,
+      },
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error importando roster";
