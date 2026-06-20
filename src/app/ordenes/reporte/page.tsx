@@ -1395,6 +1395,24 @@ export default function ReporteOTPage() {
                       otParaPDF = { ...otBase, tecnicos: tecnicosMerged, registrosDiarios: diariosMerged, lineas: lineasMerged };
                     }
                   } catch { /* usa otBase sin fusión si falla el fetch */ }
+
+                  // Sobrescribir tiempoEstimadoHrs con el total del plan semanal
+                  // (suma de hhTotal de todas las OtProgramadas con el mismo numeroOT en la semana)
+                  if (otBase.programacionSemanalId && otBase.otJdeNumero) {
+                    try {
+                      const plan = await fetch(`/api/programacion-semanal/${otBase.programacionSemanalId}`).then(r => r.json());
+                      const otsDelPlan: { numeroOT: string; hhTotal: number }[] = plan?.otsProgramadas ?? [];
+                      const hhEstPlan = otsDelPlan
+                        .filter(o => o.numeroOT === otBase.otJdeNumero)
+                        .reduce((s, o) => s + (o.hhTotal ?? 0), 0);
+                      if (hhEstPlan > 0) {
+                        otParaPDF = {
+                          ...otParaPDF,
+                          lineas: otParaPDF.lineas.map(l => ({ ...l, tiempoEstimadoHrs: hhEstPlan })),
+                        };
+                      }
+                    } catch { /* mantiene estimado original si falla */ }
+                  }
                 }
                 void generarInformeOT(otParaPDF);
               }}
