@@ -477,9 +477,9 @@ export default function CertificadoPage() {
         <SecTitle>Datos Responsable</SecTitle>
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "end" }}>
           <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
-            <div style={{ height: 42, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
+            <div style={{ height: 63, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
               {record.tecnicoFirma ? (
-                <img src={record.tecnicoFirma} alt="Firma Técnico" style={{ maxHeight: 42, maxWidth: 120, objectFit: "contain" }} />
+                <img src={record.tecnicoFirma} alt="Firma Técnico" style={{ maxHeight: 63, maxWidth: 180, objectFit: "contain" }} />
               ) : (
                 <div style={{ height: 1, width: 80, borderBottom: "1px solid #374151" }} />
               )}
@@ -504,9 +504,9 @@ export default function CertificadoPage() {
             </div>
           </div>
           <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
-            <div style={{ height: 42, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
+            <div style={{ height: 63, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
               {record.supervisorFirma ? (
-                <img src={record.supervisorFirma} alt="Firma Supervisor" style={{ maxHeight: 42, maxWidth: 120, objectFit: "contain" }} />
+                <img src={record.supervisorFirma} alt="Firma Supervisor" style={{ maxHeight: 63, maxWidth: 180, objectFit: "contain" }} />
               ) : (
                 <div style={{ height: 1, width: 80, borderBottom: "1px solid #374151" }} />
               )}
@@ -532,10 +532,10 @@ export default function CertificadoPage() {
           <div style={{ textAlign: "center", flexShrink: 0 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={`/api/qr?url=${encodeURIComponent(`https://sync-msc-production.up.railway.app/pub/cal/${encodeURIComponent(record.numeroCertificado)}`)}&size=160`}
+              src={`/api/qr?url=${encodeURIComponent(`https://sync-msc-production.up.railway.app/pub/cal/${encodeURIComponent(record.numeroCertificado)}`)}&size=208`}
               alt="QR Certificado"
-              width={72}
-              height={72}
+              width={94}
+              height={94}
               style={{ display: "block" }}
             />
             <div style={{ fontSize: 6, color: "#94a3b8", marginTop: 2 }}>Escanear para<br />ver en línea</div>
