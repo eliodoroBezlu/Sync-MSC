@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import { validarPlan } from "@/lib/planificacion/validarPlan";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -38,6 +39,39 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
   const totalHH   = borrador.ots.reduce((s, o) => s + o.hhTotal, 0);
 
   try {
+    // Validar plan ANTES de publicar
+    const alerts = await validarPlan(
+      id,
+      borrador.ots as unknown as Parameters<typeof validarPlan>[1],
+      borrador.roster as unknown as Parameters<typeof validarPlan>[2],
+      borrador.semana,
+      borrador.anio,
+      borrador.disciplina
+    );
+
+    // Guardar alertas
+    for (const alert of alerts) {
+      await prisma.planConstraintAlert.create({
+        data: {
+          planBorradorId: id,
+          tipo: alert.tipo,
+          severidad: alert.severidad,
+          mensaje: alert.mensaje,
+          detalles: (alert.detalles ?? null) as unknown as import("@prisma/client").Prisma.InputJsonValue,
+        },
+      });
+    }
+
+    // Si hay errores CRÍTICOS, bloquear publicación
+    const errores = alerts.filter(a => a.severidad === "error");
+    if (errores.length > 0) {
+      return NextResponse.json({
+        ok: false,
+        error: `No se puede publicar: ${errores.length} errores críticos`,
+        alertas: errores,
+      }, { status: 400 });
+    }
+
     const resultado = await prisma.$transaction(async (tx) => {
       // Crear o actualizar ProgramacionSemanal
       const ps = await tx.programacionSemanal.upsert({

@@ -437,6 +437,76 @@ model ChecklistMantto {
   @@index([areaCodigo, activo])
 }
 
+// ─── COMPETENCIAS Y DESEMPEÑO (mejoras mantenimiento) ────────────────────────
+
+model TecnicoCompetencia {
+  id            String   @id @default(cuid())
+  usuarioId     String
+  disciplina    String   // INST|ELEC|MEC|TESA|CON|VE
+  nivel         String   @default("Básico") // Básico|Intermedio|Avanzado|Experto
+  competencias  String[] // ["Calibración","Diagnóstico","Reparación",...]
+  certificado   Boolean  @default(false)
+  validaHasta   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([usuarioId, disciplina])
+  @@index([disciplina, nivel])
+}
+
+model EquipoMantenimientoPlan {
+  id               String   @id @default(cuid())
+  tag              String
+  disciplina       String
+  tipoOT           String   @default("PMT") // PMT|PMP|PDM
+  descripcion      String
+  frecuencia       String   // semanal|mensual|trimestral|anual|ciclos
+  basadoEn         String   @default("calendario") // calendario|horasOperacion|ciclos
+  personas         Int      @default(1)
+  hrsTrabajo       Float    @default(2)
+  grupo            String   @default("Diurno")
+  diasPreferidos   String[] @default(["Lu","Vi"]) // días preferidos
+  competenciaReq   String?
+  ultimoEjecutado  DateTime?
+  proximoVencimiento DateTime?
+  activo           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([tag, tipoOT])
+  @@index([proximoVencimiento, activo])
+}
+
+model TecnicoDesempenio {
+  id              String   @id @default(cuid())
+  usuarioId       String
+  tag             String
+  tipoOT          String
+  otasCompletadas Int      @default(0)
+  tiempoPromedio  Float    @default(0)
+  eficiencia      Float    @default(100) // porcentaje
+  ultimaFecha     DateTime?
+  tendencia       String   @default("estable") // mejorando|estable|empeorando
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([usuarioId, tag, tipoOT])
+  @@index([eficiencia])
+}
+
+model PlanConstraintAlert {
+  id                String   @id @default(cuid())
+  planBorradorId    String
+  tipo              String   // capacidad|turno|especialista|asignacion|conflicto
+  severidad         String   @default("warning") // error|warning|info
+  mensaje           String
+  detalles          Json?
+  resuelto          Boolean  @default(false)
+  createdAt         DateTime @default(now())
+
+  @@index([planBorradorId, resuelto])
+}
+
 // ─── PLANIFICACIÓN (módulo nuevo) ─────────────────────────────────────────────
 
 model PlanBorrador {

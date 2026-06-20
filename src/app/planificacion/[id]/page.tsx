@@ -33,6 +33,14 @@ type Plan = {
   roster: RosterItem[];
 };
 
+type Alert = {
+  id?: string;
+  tipo: "capacidad" | "turno" | "especialista" | "asignacion" | "conflicto" | "prioridad";
+  severidad: "error" | "warning" | "info";
+  mensaje: string;
+  detalles?: Record<string, unknown>;
+};
+
 function formatFecha(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -191,6 +199,8 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
   const [importandoRoster, setImportandoRoster] = useState(false);
   const [publicando, setPublicando] = useState(false);
   const [msg, setMsg] = useState("");
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [balanceando, setBalanceando] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -205,6 +215,33 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
   }, [id]);
 
   useEffect(() => { loadPlan(); }, [loadPlan]);
+
+  async function cargarAlertas() {
+    const res = await fetch(`/api/planificacion/${id}/alertas`);
+    const data = await res.json();
+    setAlerts(Array.isArray(data) ? data : []);
+  }
+
+  useEffect(() => { cargarAlertas(); }, [id]);
+
+  async function exportar(formato: "excel" | "json" | "ical") {
+    const url = `/api/planificacion/${id}/exportar?formato=${formato}`;
+    window.open(url, "_blank");
+  }
+
+  async function balancearCarga() {
+    setBalanceando(true);
+    setMsg("");
+    try {
+      const res = await fetch(`/api/planificacion/${id}/balancear`, { method: "POST" });
+      const data = await res.json();
+      setMsg(data.ok ? "✓ Carga balanceada automáticamente" : `Error: ${data.error}`);
+      await loadPlan();
+    } catch {
+      setMsg("Error de red");
+    }
+    setBalanceando(false);
+  }
 
   async function patchOt(otId: string, patch: Partial<OtBorrador>) {
     await fetch(`/api/planificacion/${id}/ots/${otId}`, {
@@ -301,17 +338,44 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {!yaPublicado && (
-                <button
-                  onClick={publicarPlan}
-                  disabled={publicando || plan.ots.length === 0}
-                  style={{
-                    padding: "8px 16px", borderRadius: 8, border: "none",
-                    background: plan.ots.length === 0 ? "#e2e8f0" : "#16a34a",
-                    color: plan.ots.length === 0 ? "#94a3b8" : "white",
-                    fontWeight: 700, fontSize: 13, cursor: plan.ots.length === 0 ? "not-allowed" : "pointer",
-                  }}
-                >{publicando ? "Publicando…" : "📤 Publicar plan"}</button>
+                <>
+                  <button
+                    onClick={balancearCarga}
+                    disabled={balanceando || plan.ots.length === 0}
+                    style={{
+                      padding: "8px 14px", borderRadius: 8, border: "1.5px solid #0891b2",
+                      background: "white", color: "#0891b2",
+                      fontWeight: 700, fontSize: 13, cursor: "pointer",
+                    }}
+                  >{balanceando ? "Balanceando…" : "⚖️ Balancear"}</button>
+                  <button
+                    onClick={publicarPlan}
+                    disabled={publicando || plan.ots.length === 0}
+                    style={{
+                      padding: "8px 16px", borderRadius: 8, border: "none",
+                      background: plan.ots.length === 0 ? "#e2e8f0" : "#16a34a",
+                      color: plan.ots.length === 0 ? "#94a3b8" : "white",
+                      fontWeight: 700, fontSize: 13, cursor: plan.ots.length === 0 ? "not-allowed" : "pointer",
+                    }}
+                  >{publicando ? "Publicando…" : "📤 Publicar plan"}</button>
+                </>
               )}
+              <button
+                onClick={() => exportar("excel")}
+                style={{
+                  padding: "8px 14px", borderRadius: 8, border: "1.5px solid #7c3aed",
+                  background: "white", color: "#7c3aed",
+                  fontWeight: 700, fontSize: 13, cursor: "pointer",
+                }}
+              >📥 Excel</button>
+              <button
+                onClick={() => exportar("ical")}
+                style={{
+                  padding: "8px 14px", borderRadius: 8, border: "1.5px solid #f97316",
+                  background: "white", color: "#f97316",
+                  fontWeight: 700, fontSize: 13, cursor: "pointer",
+                }}
+              >📅 iCal</button>
             </div>
           </div>
           {msg && (
@@ -321,6 +385,20 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
               color: msg.startsWith("✓") ? "#16a34a" : "#dc2626",
               fontSize: 13, fontWeight: 600,
             }}>{msg}</div>
+          )}
+          {alerts.length > 0 && (
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              {alerts.map((a, i) => (
+                <div key={i} style={{
+                  padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                  background: a.severidad === "error" ? "#fee2e2" : a.severidad === "warning" ? "#fef3c7" : "#e0f2fe",
+                  color: a.severidad === "error" ? "#dc2626" : a.severidad === "warning" ? "#d97706" : "#0369a1",
+                  borderLeft: `4px solid ${a.severidad === "error" ? "#dc2626" : a.severidad === "warning" ? "#d97706" : "#0369a1"}`,
+                }}>
+                  {a.severidad === "error" ? "⛔" : a.severidad === "warning" ? "⚠️" : "ℹ️"} {a.mensaje}
+                </div>
+              ))}
+            </div>
           )}
         </div>
 

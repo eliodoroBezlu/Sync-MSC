@@ -20,6 +20,68 @@ const migraciones = [
   "ALTER TABLE \"Usuario\" ADD COLUMN IF NOT EXISTS \"fechaExpiracion\" TIMESTAMP(3)",
   "ALTER TABLE \"OtProgramada\" ADD COLUMN IF NOT EXISTS \"personalAsignadoIds\" TEXT[] NOT NULL DEFAULT '{}'",
 
+  // ── Competencias y Desempeño (2026-06) ──────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS "TecnicoCompetencia" (
+    id TEXT NOT NULL PRIMARY KEY,
+    "usuarioId" TEXT NOT NULL,
+    disciplina TEXT NOT NULL,
+    nivel TEXT NOT NULL DEFAULT 'Básico',
+    competencias TEXT[] NOT NULL DEFAULT '{}',
+    certificado BOOLEAN NOT NULL DEFAULT false,
+    "validaHasta" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "TecnicoCompetencia_usuarioId_disciplina_key" UNIQUE ("usuarioId", disciplina)
+  )`,
+  `CREATE TABLE IF NOT EXISTS "EquipoMantenimientoPlan" (
+    id TEXT NOT NULL PRIMARY KEY,
+    tag TEXT NOT NULL,
+    disciplina TEXT NOT NULL,
+    "tipoOT" TEXT NOT NULL DEFAULT 'PMT',
+    descripcion TEXT NOT NULL,
+    frecuencia TEXT NOT NULL,
+    "basadoEn" TEXT NOT NULL DEFAULT 'calendario',
+    personas INTEGER NOT NULL DEFAULT 1,
+    "hrsTrabajo" DOUBLE PRECISION NOT NULL DEFAULT 2,
+    grupo TEXT NOT NULL DEFAULT 'Diurno',
+    "diasPreferidos" TEXT[] NOT NULL DEFAULT '{"Lu","Vi"}',
+    "competenciaReq" TEXT,
+    "ultimoEjecutado" TIMESTAMP(3),
+    "proximoVencimiento" TIMESTAMP(3),
+    activo BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "EquipoMantenimientoPlan_tag_tipoOT_key" UNIQUE (tag, "tipoOT")
+  )`,
+  `CREATE TABLE IF NOT EXISTS "TecnicoDesempenio" (
+    id TEXT NOT NULL PRIMARY KEY,
+    "usuarioId" TEXT NOT NULL,
+    tag TEXT NOT NULL,
+    "tipoOT" TEXT NOT NULL,
+    "otasCompletadas" INTEGER NOT NULL DEFAULT 0,
+    "tiempoPromedio" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    eficiencia DOUBLE PRECISION NOT NULL DEFAULT 100,
+    "ultimaFecha" TIMESTAMP(3),
+    tendencia TEXT NOT NULL DEFAULT 'estable',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "TecnicoDesempenio_usuarioId_tag_tipoOT_key" UNIQUE ("usuarioId", tag, "tipoOT")
+  )`,
+  `CREATE TABLE IF NOT EXISTS "PlanConstraintAlert" (
+    id TEXT NOT NULL PRIMARY KEY,
+    "planBorradorId" TEXT NOT NULL,
+    tipo TEXT NOT NULL,
+    severidad TEXT NOT NULL DEFAULT 'warning',
+    mensaje TEXT NOT NULL,
+    detalles JSONB,
+    resuelto BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  "CREATE INDEX IF NOT EXISTS \"TecnicoCompetencia_disciplina_nivel_idx\" ON \"TecnicoCompetencia\" (disciplina, nivel)",
+  "CREATE INDEX IF NOT EXISTS \"EquipoMantenimientoPlan_proximoVencimiento_activo_idx\" ON \"EquipoMantenimientoPlan\" (\"proximoVencimiento\", activo)",
+  "CREATE INDEX IF NOT EXISTS \"TecnicoDesempenio_eficiencia_idx\" ON \"TecnicoDesempenio\" (eficiencia)",
+  "CREATE INDEX IF NOT EXISTS \"PlanConstraintAlert_planBorradorId_resuelto_idx\" ON \"PlanConstraintAlert\" (\"planBorradorId\", resuelto)",
+
   // ── Planificación module (2026-06) ──────────────────────────────────────────
   `CREATE TABLE IF NOT EXISTS "PlanBorrador" (
     id TEXT NOT NULL PRIMARY KEY,
