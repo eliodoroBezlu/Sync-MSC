@@ -460,15 +460,17 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
             <div style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>Lista de OTs del plan</div>
               {!yaPublicado && (
-                <label style={{
-                  padding: "6px 14px", borderRadius: 8, background: "#7c3aed14",
-                  color: "#7c3aed", fontSize: 12, fontWeight: 700, cursor: "pointer",
-                  border: "1.5px solid #7c3aed30",
-                }}>
-                  {importandoOts ? "Importando…" : "⬆ Importar Excel JDE"}
-                  <input type="file" accept=".xlsx,.xls" style={{ display: "none" }}
+                <>
+                  <label htmlFor="input-ots" style={{
+                    padding: "6px 14px", borderRadius: 8, background: "#7c3aed14",
+                    color: "#7c3aed", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    border: "1.5px solid #7c3aed30",
+                  }}>
+                    {importandoOts ? "Importando…" : "⬆ Importar Excel JDE"}
+                  </label>
+                  <input id="input-ots" type="file" accept=".xlsx,.xls" style={{ display: "none" }}
                     onChange={e => e.target.files?.[0] && importarOts(e.target.files[0])} />
-                </label>
+                </>
               )}
             </div>
 
@@ -504,15 +506,17 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
             <div style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>Técnicos disponibles esta semana</div>
               {!yaPublicado && (
-                <label style={{
-                  padding: "6px 14px", borderRadius: 8, background: "#0891b214",
-                  color: "#0891b2", fontSize: 12, fontWeight: 700, cursor: "pointer",
-                  border: "1.5px solid #0891b230",
-                }}>
-                  {importandoRoster ? "Importando…" : "⬆ Importar Roster E&I"}
-                  <input type="file" accept=".xlsx,.xls" style={{ display: "none" }}
+                <>
+                  <label htmlFor="input-roster" style={{
+                    padding: "6px 14px", borderRadius: 8, background: "#0891b214",
+                    color: "#0891b2", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    border: "1.5px solid #0891b230",
+                  }}>
+                    {importandoRoster ? "Importando…" : "⬆ Importar Roster E&I"}
+                  </label>
+                  <input id="input-roster" type="file" accept=".xlsx,.xls" style={{ display: "none" }}
                     onChange={e => e.target.files?.[0] && importarRoster(e.target.files[0])} />
-                </label>
+                </>
               )}
             </div>
 
