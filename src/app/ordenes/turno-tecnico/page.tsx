@@ -323,6 +323,7 @@ export default function ReporteTurnoTecnicoPage() {
       const planSeleccionadas = otsPlan.filter(o => form.otsPlanIds.includes(o.id));
       const payload = {
         tipo: "tecnico",
+        estado: "enviado",
         turno: form.turno,
         fecha: form.fecha,
         supervisorId: user.id,
