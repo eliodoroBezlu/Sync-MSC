@@ -114,7 +114,16 @@ export async function GET(req: NextRequest) {
   }
 
   const parentOtId = searchParams.get("parentOtId");
+  const incluirArchivados = searchParams.get("incluirArchivados") === "true";
   const esDomingo = new Date().getUTCDay() === 0;
+
+  // Capa 3: auto-archivo — ocultar OTs concluidas con más de 90 días si no se pide el historial completo.
+  // Se omite cuando: el usuario pide explícitamente el historial, hay un filtro de fecha propio del cliente,
+  // o se consulta por otJdeNumero/parentOtId (contexto de merge o detalle).
+  const ARCHIVO_DIAS = 90;
+  const fechaArchivoCorte = new Date();
+  fechaArchivoCorte.setDate(fechaArchivoCorte.getDate() - ARCHIVO_DIAS);
+  const aplicarFiltroArchivo = !incluirArchivados && !otJdeNumero && !parentOtId && !fechaDesde && !fechaHasta && !fecha;
 
   // Condiciones AND para combinar múltiples filtros NOT sin sobreescribirse
   const andConditions: object[] = [];
@@ -128,6 +137,11 @@ export async function GET(req: NextRequest) {
   // TODOS los registros sin importar estado, así que se omite este filtro.
   if (!esDomingo && !otJdeNumero) {
     andConditions.push({ NOT: { estado: "pendiente_revision", origenPlan: true, otJdeNumero: { not: null } } });
+  }
+
+  // Capa 3: excluir OTs concluidas archivadas (>90 días) salvo que se pida historial completo
+  if (aplicarFiltroArchivo) {
+    andConditions.push({ NOT: { estado: "concluido", fecha: { lt: fechaArchivoCorte } } });
   }
 
   const programacionSemanalId = searchParams.get("programacionSemanalId");
