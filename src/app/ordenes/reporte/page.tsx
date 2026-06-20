@@ -1,9 +1,32 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
 import { generarInformeOT } from "@/lib/generarInformeOT";
+
+// ─── Utilidades de imagen ─────────────────────────────────────────────────────
+
+async function comprimirImagen(file: File): Promise<string> {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 1024;
+        const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width * ratio;
+        canvas.height = img.height * ratio;
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.75));
+      };
+      img.src = e.target!.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -242,6 +265,13 @@ export default function ReporteOTPage() {
   // Editar avance diario (supervisor/admin)
   const [editingAvanceId, setEditingAvanceId] = useState<string | null>(null);
   const [editAvanceForm, setEditAvanceForm] = useState<{ hhTrabajadas: number; tareasEjecutadas: string[]; observaciones: string; tareaInput: string }>({ hhTrabajadas: 0, tareasEjecutadas: [], observaciones: "", tareaInput: "" });
+
+  // Modal agregar evidencia (foto/documento) desde panel supervisor
+  const [evidenciaModal, setEvidenciaModal] = useState<{ lineaTag: string; lineaTipoOT: string } | null>(null);
+  const [evidenciaComentario, setEvidenciaComentario] = useState("");
+  const [evidenciaPreview, setEvidenciaPreview] = useState<{ dataUrl: string; nombre: string; tipo: "foto" | "documento" } | null>(null);
+  const [evidenciaSaving, setEvidenciaSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Avance diario (OTs multi-día)
   const [showAvance, setShowAvance]   = useState(false);
@@ -936,6 +966,38 @@ export default function ReporteOTPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Adjuntos existentes */}
+                {(l.adjuntos ?? []).length > 0 && (
+                  <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {(l.adjuntos ?? []).map((adj, ai) => (
+                      <div key={ai} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 10px", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
+                        {adj.tipo === "foto"
+                          ? <img src={adj.dataUrl} alt={adj.nombre} style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 4 }} />
+                          : <span style={{ fontSize: 18 }}>📄</span>
+                        }
+                        <div>
+                          <div style={{ fontWeight: 600, color: "#374151" }}>{adj.nombre}</div>
+                          {adj.comentario && <div style={{ color: "#94a3b8" }}>{adj.comentario}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Botón agregar evidencia — supervisores y admins en cualquier estado */}
+                {(esSup || esAdmin) && !isConcluido && (
+                  <button
+                    onClick={() => {
+                      setEvidenciaModal({ lineaTag: l.tag, lineaTipoOT: l.tipoOT });
+                      setEvidenciaComentario("");
+                      setEvidenciaPreview(null);
+                    }}
+                    style={{ marginTop: 8, background: "none", border: "1px dashed #94a3b8", borderRadius: 6, padding: "4px 12px", fontSize: 11, color: "#64748b", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}
+                  >
+                    📷 Agregar evidencia
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -1588,6 +1650,129 @@ export default function ReporteOTPage() {
 
       </div>
     </div>
+
+    {/* Modal agregar evidencia */}
+    {evidenciaModal && selected && (
+      <div
+        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+        onClick={() => { setEvidenciaModal(null); setEvidenciaPreview(null); }}
+      >
+        <div
+          style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 420, width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}
+          onClick={e => e.stopPropagation()}
+        >
+          <div style={{ fontWeight: 800, fontSize: 15, color: "#0f2847", marginBottom: 4 }}>
+            Agregar evidencia
+          </div>
+          <p style={{ fontSize: 12, color: "#94a3b8", marginBottom: 16 }}>
+            {evidenciaModal.lineaTag} · {evidenciaModal.lineaTipoOT}
+          </p>
+
+          {/* Preview de la imagen seleccionada */}
+          {evidenciaPreview ? (
+            <div style={{ marginBottom: 14, position: "relative" }}>
+              {evidenciaPreview.tipo === "foto"
+                ? <img src={evidenciaPreview.dataUrl} alt={evidenciaPreview.nombre} style={{ width: "100%", maxHeight: 200, objectFit: "contain", borderRadius: 8, border: "1px solid #e2e8f0" }} />
+                : <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 16, textAlign: "center" as const }}>📄 {evidenciaPreview.nombre}</div>
+              }
+              <button
+                onClick={() => { setEvidenciaPreview(null); }}
+                style={{ position: "absolute", top: 6, right: 6, background: "#dc2626", color: "white", border: "none", borderRadius: "50%", width: 22, height: 22, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              >✕</button>
+            </div>
+          ) : (
+            <div style={{ marginBottom: 14 }}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                style={{ display: "none" }}
+                onChange={async e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const esImagen = file.type.startsWith("image/");
+                  const dataUrl = esImagen ? await comprimirImagen(file) : await new Promise<string>(res => {
+                    const r = new FileReader(); r.onload = ev => res(ev.target!.result as string); r.readAsDataURL(file);
+                  });
+                  setEvidenciaPreview({ dataUrl, nombre: file.name, tipo: esImagen ? "foto" : "documento" });
+                  e.target.value = "";
+                }}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                style={{ width: "100%", border: "2px dashed #cbd5e1", borderRadius: 10, padding: "24px 0", background: "#f8fafc", color: "#64748b", fontSize: 13, cursor: "pointer", fontWeight: 600 }}
+              >
+                📷 Seleccionar foto o documento
+              </button>
+            </div>
+          )}
+
+          {/* Comentario */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ ...S.label, marginBottom: 4 }}>Comentario / descripción</label>
+            <input
+              value={evidenciaComentario}
+              onChange={e => setEvidenciaComentario(e.target.value)}
+              placeholder="Ej: Estado del equipo al momento de la intervención"
+              style={{ ...S.input, fontSize: 13 }}
+            />
+          </div>
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              onClick={() => { setEvidenciaModal(null); setEvidenciaPreview(null); }}
+              style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #e2e8f0", background: "white", fontWeight: 600, fontSize: 13, cursor: "pointer", color: "#64748b" }}
+            >
+              Cancelar
+            </button>
+            <button
+              disabled={!evidenciaPreview || !evidenciaComentario.trim() || evidenciaSaving}
+              onClick={async () => {
+                if (!evidenciaPreview || !evidenciaComentario.trim()) return;
+                setEvidenciaSaving(true);
+                try {
+                  // Construir lineas actualizadas con el nuevo adjunto en la linea correcta
+                  const lineasActualizadas = selected.lineas.map(l => {
+                    if (l.tag !== evidenciaModal.lineaTag || l.tipoOT !== evidenciaModal.lineaTipoOT) return l;
+                    return {
+                      ...l,
+                      adjuntos: [
+                        ...(l.adjuntos ?? []),
+                        { tipo: evidenciaPreview.tipo, nombre: evidenciaPreview.nombre, dataUrl: evidenciaPreview.dataUrl, comentario: evidenciaComentario.trim(), comentariosExtra: [] },
+                      ],
+                    };
+                  });
+                  const res = await fetch(`/api/ordenes/${selected._id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      lineas: lineasActualizadas,
+                      cambio: `Evidencia añadida en ${evidenciaModal.lineaTag} por ${user?.nombre ?? "supervisor"}`,
+                      usuarioId: user?.id ?? "sistema",
+                      nombreUsuario: user?.nombre ?? "Sistema",
+                    }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.error ?? "Error al guardar");
+                  setSelected(data.ot);
+                  setOrdenes(prev => prev.map(o => o._id === data.ot._id ? data.ot : o));
+                  setEvidenciaModal(null);
+                  setEvidenciaPreview(null);
+                  setEvidenciaComentario("");
+                } catch (e: unknown) {
+                  alert(e instanceof Error ? e.message : "Error al guardar la evidencia");
+                } finally {
+                  setEvidenciaSaving(false);
+                }
+              }}
+              style={{ flex: 2, padding: "10px 0", borderRadius: 8, border: "none", background: evidenciaPreview && evidenciaComentario.trim() ? "#16a34a" : "#94a3b8", fontWeight: 700, fontSize: 13, cursor: evidenciaPreview && evidenciaComentario.trim() ? "pointer" : "not-allowed", color: "white", opacity: evidenciaSaving ? 0.6 : 1 }}
+            >
+              {evidenciaSaving ? "Guardando…" : "Guardar evidencia"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* Modal confirmación eliminar */}
     {deletingId && (
