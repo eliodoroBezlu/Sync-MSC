@@ -100,9 +100,15 @@ const S = {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
+type EditForm = {
+  estado: string;
+  lineas: { tag: string; descripcionEquipo: string; tipoOT: string; sintoma: string; resolucionAplicada: string; tiempoRealHrs: string }[];
+};
+
 export default function TurneroPage() {
   const { user } = useUser();
   const esAdmin = user?.rol === 1;
+  const esSup   = user ? user.rol <= 3 : false;
   const hoy = new Date();
 
   const [semana, setSemana] = useState(isoWeekNumber(hoy));
@@ -111,6 +117,10 @@ export default function TurneroPage() {
   const [otsReactivas, setOtsReactivas] = useState<OTReactiva[]>([]);
   const [loading, setLoading]           = useState(false);
   const [deletingId, setDeletingId]     = useState<string | null>(null);
+  const [editingOt, setEditingOt]       = useState<OTReactiva | null>(null);
+  const [editForm, setEditForm]         = useState<EditForm | null>(null);
+  const [saving, setSaving]             = useState(false);
+  const [saveErr, setSaveErr]           = useState("");
 
   // Fechas de la semana
   const lunes = getMondayOfWeek(anio, semana);
@@ -168,6 +178,65 @@ export default function TurneroPage() {
   }, [semana, anio, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { cargar(); }, [cargar]);
+
+  function abrirEditar(ot: OTReactiva) {
+    setEditingOt(ot);
+    setEditForm({
+      estado: ot.estado,
+      lineas: ot.lineas.map(l => ({
+        tag: l.tag,
+        descripcionEquipo: l.descripcionEquipo ?? "",
+        tipoOT: l.tipoOT,
+        sintoma: l.sintoma ?? "",
+        resolucionAplicada: l.resolucionAplicada ?? "",
+        tiempoRealHrs: String(l.tiempoRealHrs ?? ""),
+      })),
+    });
+    setSaveErr("");
+  }
+
+  async function guardarEdicion() {
+    if (!editingOt || !editForm) return;
+    setSaving(true); setSaveErr("");
+    try {
+      const res = await fetch(`/api/ordenes/${editingOt._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          estado: editForm.estado,
+          lineas: editForm.lineas.map(l => ({
+            ...l,
+            tiempoRealHrs: l.tiempoRealHrs ? parseFloat(l.tiempoRealHrs) : null,
+          })),
+          cambio: `Edición desde Bitácora Turnero por ${user?.nombre ?? "usuario"}`,
+          usuarioId: user?.id ?? "",
+          nombreUsuario: user?.nombre ?? "",
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error ?? "Error al guardar");
+      }
+      // Actualizar estado local
+      setOtsReactivas(prev => prev.map(o => {
+        if (o._id !== editingOt._id) return o;
+        return {
+          ...o,
+          estado: editForm.estado,
+          lineas: editForm.lineas.map(l => ({
+            ...l,
+            tiempoRealHrs: l.tiempoRealHrs ? parseFloat(l.tiempoRealHrs) : undefined,
+          })),
+        };
+      }));
+      setEditingOt(null);
+      setEditForm(null);
+    } catch (e: unknown) {
+      setSaveErr(e instanceof Error ? e.message : "Error desconocido");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function navSemana(dir: -1 | 1) {
     const n = semana + dir;
@@ -382,13 +451,23 @@ export default function TurneroPage() {
                                       {hhOT > 0 && (
                                         <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: "#d97706" }}>{Math.round(hhOT * 10) / 10}HH</span>
                                       )}
-                                      {esAdmin && (
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); setDeletingId(ot._id); }}
-                                          style={{ marginLeft: "auto", fontSize: 11, color: "#dc2626", fontWeight: 600, background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                                        >
-                                          Eliminar
-                                        </button>
+                                      {esSup && (
+                                        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); abrirEditar(ot); }}
+                                            style={{ fontSize: 11, color: "#2563eb", fontWeight: 600, background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                                          >
+                                            Editar
+                                          </button>
+                                          {esAdmin && (
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); setDeletingId(ot._id); }}
+                                              style={{ fontSize: 11, color: "#dc2626", fontWeight: 600, background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                                            >
+                                              Eliminar
+                                            </button>
+                                          )}
+                                        </div>
                                       )}
                                     </div>
                                     <p style={{ fontSize: 12, color: "#475569", marginBottom: 3 }}>
@@ -444,6 +523,116 @@ export default function TurneroPage() {
         )}
       </div>
     </div>
+
+    {/* Modal edición de OT de bitácora */}
+    {editingOt && editForm && (
+      <div
+        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+        onClick={() => { setEditingOt(null); setEditForm(null); }}
+      >
+        <div
+          style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 500, width: "100%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{ fontWeight: 800, fontSize: 16, color: "#0f2847", marginBottom: 4 }}>
+            Editar OT {editingOt.otJdeNumero ? `OPEPLANT ${editingOt.otJdeNumero}` : `#${editingOt.numeroOT}`}
+          </div>
+          <p style={{ fontSize: 12, color: "#94a3b8", marginBottom: 18 }}>
+            {editingOt.tecnicos.map(t => t.nombreCompleto).join(" · ")}
+          </p>
+
+          {/* Estado */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: 6 }}>Estado</label>
+            <select
+              value={editForm.estado}
+              onChange={e => setEditForm(f => f ? { ...f, estado: e.target.value } : f)}
+              style={{ width: "100%", border: "1px solid #cbd5e1", borderRadius: 8, padding: "8px 10px", fontSize: 14, color: "#1e293b" }}
+            >
+              {["borrador","en_proceso","pendiente_revision","solicitar_correccion","revisado","concluido"].map(s => (
+                <option key={s} value={s}>{ESTADO_LABEL[s] ?? s}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Líneas */}
+          {editForm.lineas.map((l, i) => (
+            <div key={i} style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px", marginBottom: 12, border: "1px solid #e2e8f0" }}>
+              <div style={{ fontWeight: 700, fontSize: 12, color: "#1d4ed8", fontFamily: "monospace", marginBottom: 10 }}>
+                {l.tag} · <span style={{ color: TIPO_COLOR[l.tipoOT] ?? "#64748b" }}>{l.tipoOT}</span>
+              </div>
+
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: 4 }}>HH Reales</label>
+                <input
+                  type="number" min="0" step="0.5"
+                  value={l.tiempoRealHrs}
+                  onChange={e => setEditForm(f => {
+                    if (!f) return f;
+                    const lineas = [...f.lineas];
+                    lineas[i] = { ...lineas[i], tiempoRealHrs: e.target.value };
+                    return { ...f, lineas };
+                  })}
+                  style={{ width: 100, border: "1px solid #cbd5e1", borderRadius: 8, padding: "7px 10px", fontSize: 14 }}
+                />
+              </div>
+
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: 4 }}>Síntoma / Descripción</label>
+                <textarea
+                  value={l.sintoma}
+                  onChange={e => setEditForm(f => {
+                    if (!f) return f;
+                    const lineas = [...f.lineas];
+                    lineas[i] = { ...lineas[i], sintoma: e.target.value };
+                    return { ...f, lineas };
+                  })}
+                  rows={2}
+                  style={{ width: "100%", border: "1px solid #cbd5e1", borderRadius: 8, padding: "7px 10px", fontSize: 13, resize: "vertical", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", marginBottom: 4 }}>Resolución aplicada</label>
+                <textarea
+                  value={l.resolucionAplicada}
+                  onChange={e => setEditForm(f => {
+                    if (!f) return f;
+                    const lineas = [...f.lineas];
+                    lineas[i] = { ...lineas[i], resolucionAplicada: e.target.value };
+                    return { ...f, lineas };
+                  })}
+                  rows={2}
+                  style={{ width: "100%", border: "1px solid #cbd5e1", borderRadius: 8, padding: "7px 10px", fontSize: 13, resize: "vertical", boxSizing: "border-box" }}
+                />
+              </div>
+            </div>
+          ))}
+
+          {saveErr && (
+            <div style={{ background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 13, color: "#dc2626" }}>
+              {saveErr}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+            <button
+              onClick={() => { setEditingOt(null); setEditForm(null); }}
+              style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #e2e8f0", background: "white", fontWeight: 600, fontSize: 14, cursor: "pointer", color: "#64748b" }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={guardarEdicion}
+              disabled={saving}
+              style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: saving ? "#93c5fd" : "#2563eb", fontWeight: 700, fontSize: 14, cursor: saving ? "not-allowed" : "pointer", color: "white" }}
+            >
+              {saving ? "Guardando…" : "Guardar cambios"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* Modal confirmación eliminar */}
     {deletingId && (

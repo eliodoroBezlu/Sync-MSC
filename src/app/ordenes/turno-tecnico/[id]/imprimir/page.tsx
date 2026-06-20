@@ -71,22 +71,63 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
 
   // ── OTs del plan semanal (guardadas inline en otsPlanData) ───────────────
   const otsPlanRaw = (reporte.otsPlanData ?? []) as OTPlanRaw[];
-  const otsPlan: OTDisplay[] = otsPlanRaw.map(o => ({
-    id: o.otId ?? `plan-${o.numeroOT}`,
-    numeroOT: o.numeroOT,
-    tag: o.tag ?? "",
-    tipoOT: o.tipoOT ?? "",
-    descripcion: o.descripcion ?? "",
-    tecnicos: o.tecnicos ?? [],
-    hhTotal: o.hhTotal ?? 0,
-    estado: o.estado ?? "completada",
-    critica: criticas.has(o.otId ?? ""),
-    pendiente: pendientes.has(o.otId ?? ""),
-    nota: notasMap.get(o.otId ?? "") ?? "",
-    esPlan: true,
-    esGuardia: o.esGuardia ?? false,
-    bitacora: o.bitacora ?? [],
-  }));
+
+  // Para OTs OPEPLANT (esGuardia=true), buscar OTs hijas registradas por los turneros
+  // Las hijas tienen otJdeNumero == numeroOT de la OT OPEPLANT y parentOtId != null
+  const guardiaNumeros = otsPlanRaw
+    .filter(o => o.esGuardia)
+    .map(o => o.numeroOT)
+    .filter(Boolean);
+
+  const childOTs = guardiaNumeros.length > 0
+    ? await prisma.ordenTrabajo.findMany({
+        where: {
+          otJdeNumero: { in: guardiaNumeros },
+          parentOtId: { not: null },
+        },
+        include: { lineas: true, tecnicos: true },
+      })
+    : [];
+
+  // Agrupar hijas por otJdeNumero para armar la bitácora de cada OPEPLANT
+  const childByParentNum = new Map<string, typeof childOTs>();
+  for (const c of childOTs) {
+    if (!c.otJdeNumero) continue;
+    if (!childByParentNum.has(c.otJdeNumero)) childByParentNum.set(c.otJdeNumero, []);
+    childByParentNum.get(c.otJdeNumero)!.push(c);
+  }
+
+  const otsPlan: OTDisplay[] = otsPlanRaw.map(o => {
+    let bitacora: BitacoraEntry[] = o.bitacora ?? [];
+
+    // Si es OPEPLANT y hay hijas registradas, construir bitácora desde las hijas
+    if (o.esGuardia && childByParentNum.has(o.numeroOT)) {
+      bitacora = childByParentNum.get(o.numeroOT)!.map(c => ({
+        turno: c.turno,
+        supervisor: c.tecnicos.map(t => t.nombreCompleto).join(", "),
+        nota: c.lineas[0]?.descripcionTrabajo ?? c.lineas[0]?.sintoma ?? "",
+        hhAtendidas: c.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0),
+        fecha: c.fecha ? new Date(c.fecha).toLocaleDateString("es-BO") : undefined,
+      }));
+    }
+
+    return {
+      id: o.otId ?? `plan-${o.numeroOT}`,
+      numeroOT: o.numeroOT,
+      tag: o.tag ?? "",
+      tipoOT: o.tipoOT ?? "",
+      descripcion: o.descripcion ?? "",
+      tecnicos: o.tecnicos ?? [],
+      hhTotal: o.hhTotal ?? 0,
+      estado: o.estado ?? "completada",
+      critica: criticas.has(o.otId ?? ""),
+      pendiente: pendientes.has(o.otId ?? ""),
+      nota: notasMap.get(o.otId ?? "") ?? "",
+      esPlan: true,
+      esGuardia: o.esGuardia ?? false,
+      bitacora,
+    };
+  });
 
   // Todas las OTs: plan primero, luego registradas
   const todasOTs = [...otsPlan, ...otsRegistradas];

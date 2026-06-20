@@ -26,6 +26,7 @@ function serializePrograma(p: Record<string, unknown> & {
       pasarNoche: o.pasarNoche, pasarNocheMotivo: o.pasarNocheMotivo,
       pasarNocheNota: o.pasarNocheNota, pasarNochePor: o.pasarNochePor,
       pasarNocheAt: o.pasarNocheAt, esGuardia: o.esGuardia,
+      bitacora: Array.isArray(o.bitacora) ? o.bitacora : [],
     })),
     personal: (p.personal ?? []).map((per) => ({
       usuarioId: per.usuarioId, nombre: per.nombre, grupo: per.grupo,
@@ -122,6 +123,7 @@ export async function POST(req: NextRequest) {
             grupo: String(o.grupo), dia: String(o.dia),
             estado: (o.estado as string) ?? "no_iniciada",
             esGuardia: Boolean(o.esGuardia),
+            bitacora: Array.isArray(o.bitacora) ? o.bitacora : [],
           })),
         },
         personal: {

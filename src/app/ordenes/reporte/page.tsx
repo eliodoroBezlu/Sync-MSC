@@ -314,7 +314,7 @@ export default function ReporteOTPage() {
   const loadOrdenes = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ limit: "200" });
+      const params = new URLSearchParams({ limit: "200", incluirHijas: "true" });
       if (filtroEstado) params.set("estado", filtroEstado);
       if (filtroArea) params.set("area", filtroArea);
       if (filtroFechaDesde) params.set("fechaDesde", filtroFechaDesde);

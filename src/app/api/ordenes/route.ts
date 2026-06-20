@@ -115,6 +115,8 @@ export async function GET(req: NextRequest) {
 
   const parentOtId = searchParams.get("parentOtId");
   const incluirArchivados = searchParams.get("incluirArchivados") === "true";
+  // incluirHijas=true: muestra OTs hijas de OPEPLANT (para Reporte de OT del supervisor)
+  const incluirHijas = searchParams.get("incluirHijas") === "true";
   const esDomingo = new Date().getUTCDay() === 0;
 
   // Capa 3: auto-archivo — ocultar OTs concluidas con más de 90 días si no se pide el historial completo.
@@ -128,8 +130,9 @@ export async function GET(req: NextRequest) {
   // Condiciones AND para combinar múltiples filtros NOT sin sobreescribirse
   const andConditions: object[] = [];
 
-  // Ocultar OTs hijas OPEPLANT del panel principal (reactivas con otJdeNumero seteado)
-  if (!otJdeNumero && !parentOtId) {
+  // Ocultar OTs hijas OPEPLANT del panel principal (reactivas con otJdeNumero seteado).
+  // Se omite cuando incluirHijas=true (ej: Reporte de OT donde el supervisor debe verlas).
+  if (!otJdeNumero && !parentOtId && !incluirHijas) {
     andConditions.push({ NOT: { origenPlan: false, otJdeNumero: { not: null } } });
   }
   // Ocultar OTs OPEPLANT de plan pendientes fuera del domingo.
