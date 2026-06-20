@@ -25,6 +25,8 @@ function serializeOT(ot: Record<string, unknown> & {
     programacionSemanalId: ot.programacionSemanalId,
     otJdeNumero: ot.otJdeNumero,
     otJdeDia: ot.otJdeDia,
+    parentOtId: ot.parentOtId ?? null,
+    parentOtNum: ot.parentOtNum ?? null,
     createdAt: ot.createdAt,
     tecnicos: (ot.tecnicos ?? []).map(t => ({
       usuarioId: t.usuarioId ?? "",
@@ -111,7 +113,19 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const parentOtId = searchParams.get("parentOtId");
   const esDomingo = new Date().getUTCDay() === 0;
+
+  // Filtro parentOtId:
+  // - Si se pide por parentOtId explícito → solo hijas de esa madre
+  // - Si se pide por otJdeNumero → mostrar todo (padre + hijas de esa OT)
+  // - Por defecto → solo OTs raíz (parentOtId: null) para no llenar el panel del supervisor
+  const parentFilter = parentOtId
+    ? { parentOtId }
+    : otJdeNumero
+      ? {}
+      : { parentOtId: null };
+
   const ordenes = await prisma.ordenTrabajo.findMany({
     where: {
       ...(area ? { areaCodigo: area } : {}),
@@ -121,6 +135,7 @@ export async function GET(req: NextRequest) {
       ...(otJdeNumero ? { otJdeNumero } : {}),
       ...(origenPlan !== null ? { origenPlan: origenPlan === "true" } : {}),
       ...(Object.keys(fechaFilter).length ? { fecha: fechaFilter } : {}),
+      ...parentFilter,
       ...(!esDomingo
         ? { NOT: { estado: "pendiente_revision", origenPlan: true, otJdeNumero: { not: null } } }
         : {}),
@@ -233,6 +248,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Detectar si otJdeNumero corresponde a una OT OPEPLANT madre existente
+    let parentOtId: string | null = null;
+    let parentOtNum: string | null = null;
+    if (otJdeNumero && !esDePlan) {
+      const otMadre = await prisma.ordenTrabajo.findFirst({
+        where: { otJdeNumero, origenPlan: true, parentOtId: null },
+        select: { id: true, numeroOT: true },
+      });
+      if (otMadre) {
+        parentOtId = otMadre.id;
+        parentOtNum = otMadre.numeroOT;
+      }
+    }
+
     const numeroOT = await siguienteNumeroOT();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ot = await (prisma.ordenTrabajo.create as any)({
@@ -246,6 +275,8 @@ export async function POST(req: NextRequest) {
         programacionSemanalId: body.programacionSemanalId || null,
         otJdeNumero,
         otJdeDia,
+        parentOtId,
+        parentOtNum,
         tecnicos: {
           create: (body.tecnicos ?? []).map((t: { usuarioId?: string; nombreCompleto: string }) => ({
             usuarioId: t.usuarioId || null,

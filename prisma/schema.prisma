@@ -122,6 +122,9 @@ model OrdenTrabajo {
   programacionSemanalId String?
   otJdeNumero           String?
   otJdeDia              String?
+  // OT hija de una OPEPLANT madre
+  parentOtId            String?
+  parentOtNum           String?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -134,6 +137,7 @@ model OrdenTrabajo {
   @@index([areaCodigo, estado, fecha(sort: Desc)])
   @@index([otJdeNumero])
   @@index([origenPlan, estado])
+  @@index([parentOtId])
 }
 
 model OtTecnico {

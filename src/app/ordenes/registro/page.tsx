@@ -1167,7 +1167,24 @@ export default function RegistroOTPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState("");
   const [done, setDone] = useState(false);
-  const [doneOT, setDoneOT] = useState<{ numeroOT: string; estado: string; consolidado?: boolean } | null>(null);
+  const [doneOT, setDoneOT] = useState<{ numeroOT: string; estado: string; consolidado?: boolean; parentOtNum?: string | null } | null>(null);
+
+  // Detección de OT madre OPEPLANT al escribir N° OT
+  const [otMadreInfo, setOtMadreInfo] = useState<{ id: string; numeroOT: string } | null>(null);
+  const otMadreTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function detectarOtMadre(valor: string) {
+    if (otMadreTimer.current) clearTimeout(otMadreTimer.current);
+    if (!valor || valor.length < 4) { setOtMadreInfo(null); return; }
+    otMadreTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/ordenes?otJdeNumero=${encodeURIComponent(valor)}&origenPlan=true&limit=1`);
+        const data = await res.json();
+        const madre = Array.isArray(data) && data.length > 0 ? data[0] : null;
+        setOtMadreInfo(madre ? { id: madre._id, numeroOT: madre.numeroOT } : null);
+      } catch { setOtMadreInfo(null); }
+    }, 400);
+  }
 
   // ── OTs recurrentes: misma numeroOT en 2+ días del plan ──
   const recurrentesNums = React.useMemo(() => {
@@ -1478,7 +1495,7 @@ export default function RegistroOTPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error al guardar");
       setDone(true);
-      setDoneOT({ numeroOT: data.ot.numeroOT, estado: data.ot.estado, consolidado: data.consolidado ?? false });
+      setDoneOT({ numeroOT: data.ot.numeroOT, estado: data.ot.estado, consolidado: data.consolidado ?? false, parentOtNum: data.ot.parentOtNum ?? null });
     } catch (e: unknown) {
       setSubmitErr(e instanceof Error ? e.message : "Error desconocido");
     } finally {
@@ -1503,10 +1520,17 @@ export default function RegistroOTPage() {
           ) : (
             <div style={{ fontSize: 30, fontWeight: 800, color: "#2563eb", letterSpacing: "0.04em", marginBottom: 10 }}>#{doneOT.numeroOT}</div>
           )}
+          {doneOT.parentOtNum && (
+            <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "8px 14px", marginBottom: 12, fontSize: 12, color: "#92400e" }}>
+              🔄 Vinculada a bitácora OPEPLANT <strong>{form.otJdeNumero}</strong> — se verá agrupada en el Turnero
+            </div>
+          )}
           <p style={{ color: "#64748b", fontSize: 14, lineHeight: 1.6, marginBottom: 28 }}>
             {doneOT.consolidado
               ? "Avance diario registrado en OT existente. La OT acumula todos los días de la semana."
-              : doneOT.estado === "pendiente_revision" ? "OT enviada al supervisor para revisión." : "OT guardada como borrador."}
+              : doneOT.parentOtNum
+                ? "OT registrada y vinculada a la OPEPLANT de la semana. No aparece suelta en el panel del supervisor."
+                : doneOT.estado === "pendiente_revision" ? "OT enviada al supervisor para revisión." : "OT guardada como borrador."}
           </p>
           <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
             <button onClick={() => { setDone(false); setDoneOT(null); setView("inicio"); }} style={S.btnPrimary()}>Volver al plan</button>
@@ -1935,10 +1959,25 @@ export default function RegistroOTPage() {
                         <input
                           type="text"
                           value={form.otJdeNumero}
-                          onChange={e => patchForm({ otJdeNumero: e.target.value.toUpperCase() })}
+                          onChange={e => {
+                            const val = e.target.value.toUpperCase();
+                            patchForm({ otJdeNumero: val });
+                            detectarOtMadre(val);
+                          }}
                           placeholder="100234"
-                          style={{ ...S.input, fontFamily: "monospace", letterSpacing: "0.05em", width: 150 }}
+                          style={{ ...S.input, fontFamily: "monospace", letterSpacing: "0.05em", width: 150, borderColor: otMadreInfo ? "#d97706" : undefined }}
                         />
+                        {otMadreInfo && (
+                          <div style={{ marginTop: 6, background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "8px 10px" }}>
+                            <p style={{ fontSize: 12, fontWeight: 700, color: "#92400e", marginBottom: 2 }}>
+                              🔄 OT OPEPLANT detectada
+                            </p>
+                            <p style={{ fontSize: 11, color: "#b45309", lineHeight: 1.5 }}>
+                              Esta OT se vinculará como entrada de bitácora de la semana bajo la <strong>OT {form.otJdeNumero}</strong>.
+                              No aparecerá suelta en el panel del supervisor — se verá agrupada en el Turnero.
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
