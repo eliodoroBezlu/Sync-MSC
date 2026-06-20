@@ -271,13 +271,22 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
   async function importarRoster(file: File) {
     setImportandoRoster(true);
     setMsg("");
-    const fd = new FormData();
-    fd.append("file", file);
-    const res = await fetch(`/api/planificacion/${id}/importar-roster`, { method: "POST", body: fd });
-    const data = await res.json();
-    setMsg(data.ok ? `✓ ${data.importados} técnicos importados del roster` : `Error: ${data.error}`);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/planificacion/${id}/importar-roster`, { method: "POST", body: fd });
+      const data = await res.json();
+      if (data.ok) {
+        setMsg(`✓ ${data.importados} técnicos importados para ${data.diasSemana}`);
+        await new Promise(r => setTimeout(r, 500)); // Brief delay para asegurar BD sync
+        await loadPlan();
+      } else {
+        setMsg(`Error: ${data.error}`);
+      }
+    } catch (err) {
+      setMsg(`Error de red: ${err}`);
+    }
     setImportandoRoster(false);
-    await loadPlan();
   }
 
   async function publicarPlan() {
@@ -313,6 +322,31 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
   const rosterNombres = plan.roster.map(r => r.nombre);
   const yaPublicado = plan.estado === "publicado";
 
+  // Calcular fechas de la semana ISO para mostrar
+  function formatoSemana(semana: number, anio: number): string {
+    const jan4 = new Date(anio, 0, 4);
+    const lunes = new Date(jan4);
+    const dow = jan4.getDay() || 7;
+    lunes.setDate(jan4.getDate() - dow + 1 + (semana - 1) * 7);
+    const domingo = new Date(lunes);
+    domingo.setDate(lunes.getDate() + 6);
+
+    const meses = [
+      "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+      "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+    ];
+    const mesLunes = meses[lunes.getMonth()];
+    const mesDomingo = meses[domingo.getMonth()];
+
+    if (mesLunes === mesDomingo) {
+      return `${mesLunes} ${lunes.getDate()}-${domingo.getDate()}`;
+    } else {
+      return `${lunes.getDate()} ${mesLunes} - ${domingo.getDate()} ${mesDomingo}`;
+    }
+  }
+
+  const rangofecha = formatoSemana(plan.semana, plan.anio);
+
   return (
     <div style={{ minHeight: "100vh", background: "#f1f5f9" }}>
       <AppHeader backHref="/planificacion" />
@@ -331,6 +365,9 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
                   background: `${ESTADO_COLOR[plan.estado]}20`, color: ESTADO_COLOR[plan.estado],
                   textTransform: "uppercase",
                 }}>{plan.estado}</span>
+              </div>
+              <div style={{ fontSize: 13, color: "#64748b", marginBottom: 6 }}>
+                📅 <strong>{rangofecha} de {plan.anio}</strong>
               </div>
               <div style={{ fontSize: 13, color: "#64748b" }}>
                 {plan.ots.length} OTs · {totalHH.toFixed(0)} HH totales · {plan.roster.length} técnicos en roster
