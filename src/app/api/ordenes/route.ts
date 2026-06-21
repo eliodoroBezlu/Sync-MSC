@@ -117,7 +117,9 @@ export async function GET(req: NextRequest) {
   const incluirArchivados = searchParams.get("incluirArchivados") === "true";
   // incluirHijas=true: muestra OTs hijas de OPEPLANT (para Reporte de OT del supervisor)
   const incluirHijas = searchParams.get("incluirHijas") === "true";
-  const esDomingo = new Date().getUTCDay() === 0;
+  // Usar hora Bolivia (UTC-4) para determinar si es domingo local
+  const boliviaTime = new Date(Date.now() - 4 * 60 * 60 * 1000);
+  const esDomingo = boliviaTime.getUTCDay() === 0;
 
   // Capa 3: auto-archivo — ocultar OTs concluidas con más de 90 días si no se pide el historial completo.
   // Se omite cuando: el usuario pide explícitamente el historial, hay un filtro de fecha propio del cliente,
