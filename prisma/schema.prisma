@@ -252,7 +252,6 @@ model OtProgramada {
   pasarNochePor         String?
   pasarNocheAt          DateTime?
   esGuardia             Boolean  @default(false)
-  bitacora              Json     @default("[]") // [{fecha, turno, supervisor, nota, hhAtendidas}]
   programacion          ProgramacionSemanal @relation(fields: [programacionSemanalId], references: [id], onDelete: Cascade)
 
   @@index([programacionSemanalId])
