@@ -156,6 +156,9 @@ export default function ReporteTurnoTecnicoPage() {
   const [form, setForm] = useState(emptyForm);
   const [editandoId, setEditandoId]   = useState<string | null>(null);
   const [novInput, setNovInput] = useState<{ prioridad: "URGENTE" | "ATENCION" | "INFORMACION"; tag: string; descripcion: string }>({ prioridad: "INFORMACION", tag: "", descripcion: "" });
+  const [todosLosTags, setTodosLosTags] = useState<string[]>([]);
+  const [tagQuery, setTagQuery]         = useState("");
+  const [tagDropdown, setTagDropdown]   = useState(false);
   const [filtroTexto, setFiltroTexto] = useState("");
   const [submitting, setSubmitting]   = useState(false);
   const [submitErr, setSubmitErr]     = useState("");
@@ -168,6 +171,13 @@ export default function ReporteTurnoTecnicoPage() {
 
   useEffect(() => {
     fetch("/api/areas").then(r => r.json()).then(setAreas).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/plan-turno/tags")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setTodosLosTags(data); })
+      .catch(() => {});
   }, []);
 
   // Preseleccionar área si el usuario tiene solo una
@@ -884,10 +894,47 @@ export default function ReporteTurnoTecnicoPage() {
                         <option value="INFORMACION">ℹ️ INFORMACIÓN</option>
                       </select>
                     </div>
-                    <div>
-                      <label style={S.label}>TAG <span style={{ fontWeight: 400 }}>(opcional)</span></label>
-                      <input value={novInput.tag} onChange={e => setNovInput(n => ({ ...n, tag: e.target.value.toUpperCase() }))}
-                        placeholder="FT-101A" style={S.input} />
+                    <div style={{ position: "relative" }}>
+                      <label style={S.label}>TAG / EQUIPO <span style={{ fontWeight: 400 }}>(opcional)</span></label>
+                      <div style={{ position: "relative" }}>
+                        <input
+                          value={novInput.tag || tagQuery}
+                          onChange={e => {
+                            const v = e.target.value.toUpperCase();
+                            setTagQuery(v);
+                            setNovInput(n => ({ ...n, tag: "" }));
+                            setTagDropdown(v.length >= 2);
+                          }}
+                          onFocus={() => { if ((novInput.tag || tagQuery).length >= 2) setTagDropdown(true); }}
+                          onBlur={() => setTimeout(() => setTagDropdown(false), 180)}
+                          placeholder="Buscar TAG..."
+                          style={{ ...S.input, fontFamily: "monospace", paddingRight: 28 }}
+                        />
+                        {(novInput.tag || tagQuery) && (
+                          <button type="button"
+                            onClick={() => { setNovInput(n => ({ ...n, tag: "" })); setTagQuery(""); setTagDropdown(false); }}
+                            style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 15, lineHeight: 1 }}>
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                      {tagDropdown && (
+                        <div style={{ position: "absolute", zIndex: 300, left: 0, right: 0, top: "100%", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, boxShadow: "0 4px 20px rgba(15,40,71,0.12)", maxHeight: 200, overflowY: "auto" as const }}>
+                          {todosLosTags.filter(t => t.includes(tagQuery)).slice(0, 40).map(t => (
+                            <button key={t} type="button"
+                              onMouseDown={() => { setNovInput(n => ({ ...n, tag: t })); setTagQuery(""); setTagDropdown(false); }}
+                              style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontFamily: "monospace", fontSize: 13, border: "none", background: "transparent", cursor: "pointer", color: "#1e293b", borderBottom: "1px solid #f8fafc" }}>
+                              {t}
+                            </button>
+                          ))}
+                          {todosLosTags.filter(t => t.includes(tagQuery)).length === 0 && (
+                            <p style={{ padding: "10px 12px", fontSize: 12, color: "#94a3b8", textAlign: "center" }}>Sin resultados</p>
+                          )}
+                        </div>
+                      )}
+                      {novInput.tag && (
+                        <div style={{ marginTop: 3, fontSize: 11, color: "#1d4ed8", fontFamily: "monospace", fontWeight: 700 }}>✓ {novInput.tag}</div>
+                      )}
                     </div>
                   </div>
                   <div style={{ marginBottom: 8 }}>
