@@ -347,6 +347,17 @@ export default function ReporteOTPage() {
     });
     setSaveErr("");
     setEditMode(false);
+    // Refrescar datos de la OT para mostrar avances actualizados
+    const id = selected._id;
+    fetch(`/api/ordenes/${id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?._id) {
+          setSelected((prev) => prev?._id === id ? data : prev);
+          setOrdenes(prev => prev.map(o => o._id === id ? data : o));
+        }
+      })
+      .catch(() => { /* mantener datos cacheados si falla */ });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?._id]);
 
