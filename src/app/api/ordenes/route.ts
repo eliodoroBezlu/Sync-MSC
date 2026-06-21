@@ -133,7 +133,7 @@ export async function GET(req: NextRequest) {
   // Ocultar OTs hijas OPEPLANT (tienen parentOtId seteado → se gestionan en Bitácora Turnero).
   // Las CMR/CMP autónomas (parentOtId: null) SÍ aparecen en Reporte de OT.
   if (!otJdeNumero && !parentOtId && !incluirHijas) {
-    andConditions.push({ NOT: { origenPlan: false, parentOtId: { not: null } } });
+    andConditions.push({ parentOtId: null });
   }
   // Ocultar OTs OPEPLANT de plan pendientes fuera del domingo.
   // Cuando se consulta por otJdeNumero explícito (ej: para PDF merge) se necesitan
