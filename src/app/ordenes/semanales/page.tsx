@@ -22,7 +22,6 @@ const DIAS_CORTO: Record<DiaSemana, string> = {
 const GRUPOS: GrupoTrabajo[] = ["G1", "G2", "G3", "G4", "Diurno", "Nocturno"];
 const AREAS_SEMANAL = new Set(["3310","3311","3312","3313","3315","3316","3318","3319","3320","3322","3338","3339","3343","3348","3351","3388"]);
 
-// Mapeo de areaCodigo → disciplina en MongoDB
 function areaToDisciplina(areaCodigo: string): string {
   if (areaCodigo === "3320") return "INST";
   if (areaCodigo === "3319") return "ELEC";
