@@ -154,6 +154,7 @@ export default function ReporteTurnoTecnicoPage() {
   });
 
   const [form, setForm] = useState(emptyForm);
+  const [editandoId, setEditandoId]   = useState<string | null>(null);
   const [novInput, setNovInput] = useState<{ prioridad: "URGENTE" | "ATENCION" | "INFORMACION"; tag: string; descripcion: string }>({ prioridad: "INFORMACION", tag: "", descripcion: "" });
   const [filtroTexto, setFiltroTexto] = useState("");
   const [submitting, setSubmitting]   = useState(false);
@@ -312,6 +313,28 @@ export default function ReporteTurnoTecnicoPage() {
     setNovInput({ prioridad: "INFORMACION", tag: "", descripcion: "" });
   }
 
+  // ─── Edición de reporte existente (solo admin) ─────────────────────────────
+
+  type ReporteConPlan = ReporteDoc & { otsPlanData?: { otId: string }[] };
+
+  function cargarParaEditar(r: ReporteDoc) {
+    const rep = r as ReporteConPlan;
+    setEditandoId(r._id);
+    setForm({
+      fecha: r.fecha.slice(0, 10),
+      turno: r.turno as TurnoTipo,
+      areaCodigo: user?.areas?.[0] ?? "",
+      otIds: r.otIds,
+      otsPlanIds: rep.otsPlanData?.map(o => o.otId) ?? [],
+      otsCriticas: r.otsCriticas,
+      otsPendientes: r.otsPendientesSiguienteTurno,
+      notasOTs: Object.fromEntries(r.notasOTs.map(n => [n.otId, n.nota])),
+      novedades: r.recomendaciones,
+    });
+    setStep(1);
+    setView("nuevo");
+  }
+
   // ─── Submit ─────────────────────────────────────────────────────────────────
 
   async function submit() {
@@ -319,50 +342,70 @@ export default function ReporteTurnoTecnicoPage() {
     setSubmitting(true); setSubmitErr("");
     try {
       const notasArr = Object.entries(form.notasOTs).filter(([, v]) => v.trim()).map(([otId, nota]) => ({ otId, nota }));
-      // OTs del plan seleccionadas para incluir en PDF
       const planSeleccionadas = otsPlan.filter(o => form.otsPlanIds.includes(o.id));
-      const payload = {
-        tipo: "tecnico",
-        estado: "enviado",
-        turno: form.turno,
-        fecha: form.fecha,
-        supervisorId: user.id,
-        supervisorNombre: `${user.nombre}${disciplina ? " — " + disciplina : ""}`,
-        otIds: form.otIds,
-        otsCriticas: [...form.otsCriticas],
-        otsPendientesSiguienteTurno: form.otsPendientes,
-        notasOTs: notasArr,
-        recomendaciones: form.novedades,
-        // Guardar OTs del plan para el PDF (mismo campo que usa el reporte supervisor)
-        otsPlanData: planSeleccionadas.map(o => ({
-          otId: o.id,
-          numeroOT: o.numeroOT,
-          tag: o.tag,
-          disciplina: o.disciplina,
-          tipoOT: o.tipoOT,
-          descripcion: o.descripcion,
-          tecnicos: o.personalAsignado,
-          hhTotal: o.hhTotal,
-          estado: o.estado,
-          esGuardia: o.esGuardia,
-          bitacora: o.bitacora ?? [],
-        })),
-      };
-      const res = await fetch("/api/reportes-turno", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Error al guardar");
-      const url = `/ordenes/turno-tecnico/${data.reporte._id}/imprimir`;
-      // Abrir en nueva pestaña — usar link temporal para evitar bloqueo de popups
-      const a = document.createElement("a");
-      a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer";
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setSubmitting(false);
-      setView("lista");
+      const planData = planSeleccionadas.map(o => ({
+        otId: o.id,
+        numeroOT: o.numeroOT,
+        tag: o.tag,
+        disciplina: o.disciplina,
+        tipoOT: o.tipoOT,
+        descripcion: o.descripcion,
+        tecnicos: o.personalAsignado,
+        hhTotal: o.hhTotal,
+        estado: o.estado,
+        esGuardia: o.esGuardia,
+        bitacora: o.bitacora ?? [],
+      }));
+
+      if (editandoId) {
+        const res = await fetch(`/api/reportes-turno/${editandoId}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            turno: form.turno,
+            fecha: form.fecha,
+            otIds: form.otIds,
+            otsCriticas: [...form.otsCriticas],
+            otsPendientesSiguienteTurno: form.otsPendientes,
+            notasOTs: notasArr,
+            recomendaciones: form.novedades,
+            otsPlanData: planData,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Error al guardar");
+        setEditandoId(null);
+        setView("lista");
+        loadReportes();
+      } else {
+        const payload = {
+          tipo: "tecnico",
+          estado: "enviado",
+          turno: form.turno,
+          fecha: form.fecha,
+          supervisorId: user.id,
+          supervisorNombre: `${user.nombre}${disciplina ? " — " + disciplina : ""}`,
+          otIds: form.otIds,
+          otsCriticas: [...form.otsCriticas],
+          otsPendientesSiguienteTurno: form.otsPendientes,
+          notasOTs: notasArr,
+          recomendaciones: form.novedades,
+          otsPlanData: planData,
+        };
+        const res = await fetch("/api/reportes-turno", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Error al guardar");
+        const url = `/ordenes/turno-tecnico/${data.reporte._id}/imprimir`;
+        const a = document.createElement("a");
+        a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer";
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setView("lista");
+      }
     } catch (e: unknown) {
       setSubmitErr(e instanceof Error ? e.message : "Error desconocido");
+    } finally {
       setSubmitting(false);
     }
   }
@@ -403,7 +446,7 @@ export default function ReporteTurnoTecnicoPage() {
         {/* ══ VISTA LISTA ══════════════════════════════════════════════════════ */}
         {view === "lista" && (
           <>
-            <button onClick={() => { setView("nuevo"); setStep(1); setForm(emptyForm()); }}
+            <button onClick={() => { setEditandoId(null); setView("nuevo"); setStep(1); setForm(emptyForm()); }}
               style={{ ...S.btnPrimary, marginBottom: 16, display: "block" }}>
               + Nuevo reporte de turno
             </button>
@@ -432,6 +475,12 @@ export default function ReporteTurnoTecnicoPage() {
                       <button onClick={() => setDetalle(r)} style={S.btnGhost}>Ver</button>
                       <button onClick={() => window.open(`/ordenes/turno-tecnico/${r._id}/imprimir`, "_blank")}
                         style={{ ...S.btnGreen, padding: "8px 14px", fontSize: 13 }}>🖨 PDF</button>
+                      {user && user.rol === 1 && (
+                        <button onClick={() => cargarParaEditar(r)}
+                          style={{ padding: "8px 12px", background: "#fefce8", color: "#d97706", border: "1px solid #fde68a", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+                          ✏ Editar
+                        </button>
+                      )}
                       {user && user.rol === 1 && (
                         <button onClick={async () => {
                           if (!confirm("¿Eliminar este reporte? Esta acción no se puede deshacer.")) return;
@@ -877,9 +926,11 @@ export default function ReporteTurnoTecnicoPage() {
                   </div>
                 )}
 
-                <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 14px", marginBottom: 16 }}>
-                  <p style={{ fontSize: 13, color: "#166534" }}>
-                    Al guardar se generará el PDF del reporte de turno. No requiere aprobación del supervisor.
+                <div style={{ background: editandoId ? "#fefce8" : "#f0fdf4", border: `1px solid ${editandoId ? "#fde68a" : "#bbf7d0"}`, borderRadius: 8, padding: "10px 14px", marginBottom: 16 }}>
+                  <p style={{ fontSize: 13, color: editandoId ? "#92400e" : "#166534" }}>
+                    {editandoId
+                      ? "Se guardarán los cambios en el reporte existente. El PDF actualizado estará disponible desde la lista."
+                      : "Al guardar se generará el PDF del reporte de turno. No requiere aprobación del supervisor."}
                   </p>
                 </div>
 
@@ -888,7 +939,7 @@ export default function ReporteTurnoTecnicoPage() {
                 <div style={{ display: "flex", gap: 8, justifyContent: "space-between" }}>
                   <button onClick={() => setStep(3)} style={S.btnGhost} disabled={submitting}>← Novedades</button>
                   <button onClick={submit} style={S.btnGreen} disabled={submitting}>
-                    {submitting ? "Guardando…" : "🖨 Guardar y generar PDF"}
+                    {submitting ? "Guardando…" : editandoId ? "💾 Guardar cambios" : "🖨 Guardar y generar PDF"}
                   </button>
                 </div>
               </div>

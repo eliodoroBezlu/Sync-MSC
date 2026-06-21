@@ -25,14 +25,25 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   try {
     const { id } = await params;
     const body = await req.json();
-    const { estado, recomendaciones } = body;
-    const r = await prisma.reporteTurno.update({
-      where: { id },
-      data: {
-        ...(estado          ? { estado } : {}),
-        ...(recomendaciones ? { recomendaciones } : {}),
-      },
-    });
+    const {
+      estado, recomendaciones,
+      otIds, otsCriticas, otsPendientesSiguienteTurno,
+      notasOTs, otsPlanData, turno, fecha, supervisorNombre,
+    } = body;
+
+    const data: Record<string, unknown> = {};
+    if (estado                       !== undefined) data.estado                       = estado;
+    if (recomendaciones              !== undefined) data.recomendaciones              = recomendaciones;
+    if (otIds                        !== undefined) data.otIds                        = otIds;
+    if (otsCriticas                  !== undefined) data.otsCriticas                  = otsCriticas;
+    if (otsPendientesSiguienteTurno  !== undefined) data.otsPendientesSiguienteTurno  = otsPendientesSiguienteTurno;
+    if (notasOTs                     !== undefined) data.notasOTs                     = notasOTs;
+    if (otsPlanData                  !== undefined) data.otsPlanData                  = otsPlanData;
+    if (turno                        !== undefined) data.turno                        = turno;
+    if (fecha                        !== undefined) data.fecha                        = new Date(fecha);
+    if (supervisorNombre             !== undefined) data.supervisorNombre             = supervisorNombre;
+
+    const r = await prisma.reporteTurno.update({ where: { id }, data });
     return Response.json({ ok: true, reporte: { ...r, _id: r.id } });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error interno";

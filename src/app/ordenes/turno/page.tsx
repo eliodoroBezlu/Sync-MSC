@@ -542,7 +542,7 @@ export default function ReporteTurnoPage() {
                         style={{ fontSize: 11, color: "#64748b", fontWeight: 600, textDecoration: "none" }}>
                         🖨 PDF
                       </a>
-                      {user && Number(user.rol) <= 2 && (
+                      {user && Number(user.rol) === 1 && (
                         <button
                           onClick={(e) => { e.stopPropagation(); abrirDetalle(r); }}
                           title="Editar reporte"
