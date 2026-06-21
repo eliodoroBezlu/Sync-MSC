@@ -130,10 +130,10 @@ export async function GET(req: NextRequest) {
   // Condiciones AND para combinar múltiples filtros NOT sin sobreescribirse
   const andConditions: object[] = [];
 
-  // Ocultar OTs hijas OPEPLANT del panel principal (reactivas con otJdeNumero seteado).
-  // Se omite cuando incluirHijas=true (ej: Reporte de OT donde el supervisor debe verlas).
+  // Ocultar OTs hijas OPEPLANT (tienen parentOtId seteado → se gestionan en Bitácora Turnero).
+  // Las CMR/CMP autónomas (parentOtId: null) SÍ aparecen en Reporte de OT.
   if (!otJdeNumero && !parentOtId && !incluirHijas) {
-    andConditions.push({ NOT: { origenPlan: false, otJdeNumero: { not: null } } });
+    andConditions.push({ NOT: { origenPlan: false, parentOtId: { not: null } } });
   }
   // Ocultar OTs OPEPLANT de plan pendientes fuera del domingo.
   // Cuando se consulta por otJdeNumero explícito (ej: para PDF merge) se necesitan

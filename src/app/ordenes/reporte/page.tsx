@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
 import { generarInformeOT } from "@/lib/generarInformeOT";
 
-// ─── Utilidades de imagen ─────────────────────────────────────────────────────
+// â”€â”€â”€ Utilidades de imagen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function comprimirImagen(file: File): Promise<string> {
   return new Promise(resolve => {
@@ -28,7 +28,7 @@ async function comprimirImagen(file: File): Promise<string> {
   });
 }
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type EstadoOT = "borrador" | "en_proceso" | "pendiente_revision" | "solicitar_correccion" | "revisado" | "concluido";
 
@@ -61,7 +61,7 @@ type Linea = {
 
 type SupForm = {
   requierePlanificacion: boolean; // "Requiere WR" en UI
-  comentariosSupervisor: string;  // separado por "\n" para múltiples comentarios
+  comentariosSupervisor: string;  // separado por "\n" para mÃºltiples comentarios
   generaOtHallazgo: boolean | null;
   otGenerada: string;
 };
@@ -98,7 +98,7 @@ type OTDoc = {
 
 type AreaOpt = { codigo: string; nombre: string };
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const ESTADO_COLOR: Record<string, string> = {
   borrador: "#64748b",
@@ -112,8 +112,8 @@ const ESTADO_COLOR: Record<string, string> = {
 const ESTADO_LABEL: Record<string, string> = {
   borrador: "Borrador",
   en_proceso: "En proceso",
-  pendiente_revision: "Pend. revisión",
-  solicitar_correccion: "Corrección",
+  pendiente_revision: "Pend. revisiÃ³n",
+  solicitar_correccion: "CorrecciÃ³n",
   revisado: "Revisado",
   concluido: "Concluido",
 };
@@ -137,13 +137,13 @@ const EMPTY_SUP: SupForm = {
 const COLS_TABLERO: { key: EstadoOT; label: string; color: string }[] = [
   { key: "borrador",             label: "Borradores",       color: "#64748b" },
   { key: "en_proceso",           label: "En proceso",       color: "#7c3aed" },
-  { key: "pendiente_revision",   label: "Pend. Revisión",   color: "#d97706" },
-  { key: "solicitar_correccion", label: "Corrección",       color: "#dc2626" },
+  { key: "pendiente_revision",   label: "Pend. RevisiÃ³n",   color: "#d97706" },
+  { key: "solicitar_correccion", label: "CorrecciÃ³n",       color: "#dc2626" },
   { key: "revisado",             label: "Revisado",         color: "#2563eb" },
   { key: "concluido",            label: "Concluido",        color: "#16a34a" },
 ];
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const S = {
   page: { minHeight: "100vh", background: "#f1f5f9" },
@@ -193,7 +193,7 @@ const S = {
   btnGhost:   { background: "transparent", color: "#64748b", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 16px", fontSize: 13, cursor: "pointer" as const },
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function diffLineas(original: Linea[], editado: Linea[]): string[] {
   const msgs: string[] = [];
@@ -201,22 +201,22 @@ function diffLineas(original: Linea[], editado: Linea[]): string[] {
     const orig = original[i];
     if (!orig) return;
     if (linea.tiempoEstimadoHrs !== orig.tiempoEstimadoHrs) {
-      msgs.push(`[${linea.tag}] HH estimadas: ${orig.tiempoEstimadoHrs ?? "—"}HH → ${linea.tiempoEstimadoHrs ?? "—"}HH`);
+      msgs.push(`[${linea.tag}] HH estimadas: ${orig.tiempoEstimadoHrs ?? "â€”"}HH â†’ ${linea.tiempoEstimadoHrs ?? "â€”"}HH`);
     }
     if (linea.tiempoRealHrs !== orig.tiempoRealHrs) {
-      msgs.push(`[${linea.tag}] HH trabajadas: ${orig.tiempoRealHrs ?? "—"}HH → ${linea.tiempoRealHrs ?? "—"}HH`);
+      msgs.push(`[${linea.tag}] HH trabajadas: ${orig.tiempoRealHrs ?? "â€”"}HH â†’ ${linea.tiempoRealHrs ?? "â€”"}HH`);
     }
     if (linea.resolucionAplicada !== orig.resolucionAplicada) {
-      msgs.push(`[${linea.tag}] Resolución actualizada`);
+      msgs.push(`[${linea.tag}] ResoluciÃ³n actualizada`);
     }
     if (linea.observaciones !== orig.observaciones) {
       msgs.push(`[${linea.tag}] Observaciones actualizadas`);
     }
   });
-  return msgs.length > 0 ? ["Edición con trazabilidad:", ...msgs] : ["Sin cambios detectados"];
+  return msgs.length > 0 ? ["EdiciÃ³n con trazabilidad:", ...msgs] : ["Sin cambios detectados"];
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function ReporteOTPage() {
   const { user } = useUser();
@@ -226,8 +226,8 @@ export default function ReporteOTPage() {
     setOtParamId(p);
   }, []);
 
-  // Derivados de rol — Admin(1) y Superintendente(2) tienen acceso total
-  const esTecnico   = user?.rol === 4 || user?.rol === 6; // rol 6 = Contratista, mismos permisos que técnico
+  // Derivados de rol â€” Admin(1) y Superintendente(2) tienen acceso total
+  const esTecnico   = user?.rol === 4 || user?.rol === 6; // rol 6 = Contratista, mismos permisos que tÃ©cnico
   const esSup       = user ? user.rol <= 3 || user.rol === 5 : false; // 1, 2, 3 y 5 pueden revisar
   const esAdmin     = user?.rol === 1;
 
@@ -237,7 +237,7 @@ export default function ReporteOTPage() {
   const [selected, setSelected] = useState<OTDoc | null>(null);
   const [viewMode, setViewMode] = useState<"lista" | "tablero">("lista");
 
-  // ─── Helpers de fechas para filtros de período ───────────────────────────────
+  // â”€â”€â”€ Helpers de fechas para filtros de perÃ­odo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function hoy() { return new Date().toISOString().split("T")[0]; }
   function restarDias(n: number) {
     const d = new Date(); d.setDate(d.getDate() - n);
@@ -268,18 +268,18 @@ export default function ReporteOTPage() {
   const [filtroEstado, setFiltroEstado] = useState("");
   const [filtroArea, setFiltroArea] = useState("");
   const [filtroBuscar, setFiltroBuscar] = useState("");
-  // Capa 1 & 2 — Filtro de período (default: últimas 3 semanas)
+  // Capa 1 & 2 â€” Filtro de perÃ­odo (default: Ãºltimas 3 semanas)
   const [periodo, setPeriodo] = useState<Periodo>("3semanas");
   const [filtroFechaDesde, setFiltroFechaDesde] = useState(restarDias(21));
   const [filtroFechaHasta, setFiltroFechaHasta] = useState("");
 
-  // Supervisión
+  // SupervisiÃ³n
   const [supForm, setSupForm] = useState<SupForm>(EMPTY_SUP);
   const [supComentarioInput, setSupComentarioInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState("");
 
-  // Modo edición con trazabilidad
+  // Modo ediciÃ³n con trazabilidad
   const [editMode, setEditMode] = useState(false);
   const [editLineas, setEditLineas] = useState<Linea[]>([]);
   const [editOtJdeNumero, setEditOtJdeNumero] = useState("");
@@ -304,7 +304,7 @@ export default function ReporteOTPage() {
   const [evidenciaSaving, setEvidenciaSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Avance diario (OTs multi-día)
+  // Avance diario (OTs multi-dÃ­a)
   const [showAvance, setShowAvance]   = useState(false);
   const [avanceTareaInput, setAvanceTareaInput] = useState("");
   const [avanceForm, setAvanceForm]   = useState<{
@@ -314,7 +314,7 @@ export default function ReporteOTPage() {
   const loadOrdenes = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ limit: "200", incluirHijas: "true" });
+      const params = new URLSearchParams({ limit: "200" });
       if (filtroEstado) params.set("estado", filtroEstado);
       if (filtroArea) params.set("area", filtroArea);
       if (filtroFechaDesde) params.set("fechaDesde", filtroFechaDesde);
@@ -329,7 +329,7 @@ export default function ReporteOTPage() {
   useEffect(() => { fetch("/api/areas").then((r) => r.json()).then(setAreas).catch(() => {}); }, []);
   useEffect(() => { loadOrdenes(); }, [loadOrdenes]);
 
-  // Auto-seleccionar OT si viene el parámetro ?ot=<id> desde programa semanal
+  // Auto-seleccionar OT si viene el parÃ¡metro ?ot=<id> desde programa semanal
   useEffect(() => {
     if (!otParamId || ordenes.length === 0 || loading) return;
     const match = ordenes.find((o) => o._id === otParamId);
@@ -351,7 +351,7 @@ export default function ReporteOTPage() {
   }, [selected?._id]);
 
   const ordenesFiltradas = ordenes.filter((o) => {
-    // Técnico/Contratista solo ve sus propias OTs
+    // TÃ©cnico/Contratista solo ve sus propias OTs
     if (esTecnico && user) {
       const tokensUser = user.nombre.toLowerCase().normalize("NFD").replace(/\p{Mn}/gu, "").split(/\s+/).filter(t => t.length > 2);
       const esAsignado = o.tecnicos.some(t => {
@@ -361,7 +361,7 @@ export default function ReporteOTPage() {
       });
       if (!esAsignado) return false;
     }
-    // Supervisor con áreas asignadas solo ve OTs de sus áreas
+    // Supervisor con Ã¡reas asignadas solo ve OTs de sus Ã¡reas
     if (user && user.rol === 3 && user.areas && user.areas.length > 0) {
       if (!user.areas.includes(o.areaCodigo)) return false;
     }
@@ -404,7 +404,7 @@ export default function ReporteOTPage() {
   }
 
   function getOrCreateInspeccion(l: Linea): Inspeccion {
-    return l.inspeccion ?? { checklistId: "", checklistNombre: "Checklist supervisión", items: [] };
+    return l.inspeccion ?? { checklistId: "", checklistNombre: "Checklist supervisiÃ³n", items: [] };
   }
 
   function addItemChecklist(i: number) {
@@ -449,13 +449,13 @@ export default function ReporteOTPage() {
         body: JSON.stringify({
           registroDiario: {
             fecha:            avanceForm.fecha,
-            tecnico:          user?.nombre ?? "Técnico",
+            tecnico:          user?.nombre ?? "TÃ©cnico",
             usuarioId:        user?.id,
             hhTrabajadas:     avanceForm.hhTrabajadas,
             tareasEjecutadas: avanceForm.tareasEjecutadas,
             observaciones:    avanceForm.observaciones,
           },
-          cambio: `Avance del día ${avanceForm.fecha} registrado por ${user?.nombre ?? "Técnico"} — ${avanceForm.hhTrabajadas}HH`,
+          cambio: `Avance del dÃ­a ${avanceForm.fecha} registrado por ${user?.nombre ?? "TÃ©cnico"} â€” ${avanceForm.hhTrabajadas}HH`,
           usuarioId: user?.id ?? "system",
           nombreUsuario: user?.nombre ?? "Sistema",
         }),
@@ -490,7 +490,7 @@ export default function ReporteOTPage() {
             tareasEjecutadas: editAvanceForm.tareasEjecutadas,
             observaciones:    editAvanceForm.observaciones,
           },
-          cambio: `Avance del día ${avance.fecha} editado por ${user?.nombre ?? "Supervisor"}`,
+          cambio: `Avance del dÃ­a ${avance.fecha} editado por ${user?.nombre ?? "Supervisor"}`,
           usuarioId: user?.id ?? "system",
           nombreUsuario: user?.nombre ?? "Sistema",
         }),
@@ -551,7 +551,7 @@ export default function ReporteOTPage() {
     finally { setSaving(false); }
   }
 
-  // ─── Lista ───────────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Lista â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   if (!selected) {
     return (
@@ -560,8 +560,8 @@ export default function ReporteOTPage() {
         <div style={S.wrap}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
             <div>
-              <h1 style={{ fontSize: 19, fontWeight: 800, color: "#0f2847", marginBottom: 2 }}>Órdenes de Trabajo</h1>
-              <p style={{ fontSize: 12, color: "#94a3b8" }}>Borradores · Revisión · Concluidas</p>
+              <h1 style={{ fontSize: 19, fontWeight: 800, color: "#0f2847", marginBottom: 2 }}>Ã“rdenes de Trabajo</h1>
+              <p style={{ fontSize: 12, color: "#94a3b8" }}>Borradores Â· RevisiÃ³n Â· Concluidas</p>
             </div>
             {/* Toggle lista / tablero */}
             <div style={{ display: "flex", border: "1px solid #e2e8f0", borderRadius: 9, overflow: "hidden", background: "white" }}>
@@ -575,7 +575,7 @@ export default function ReporteOTPage() {
                     color: viewMode === m ? "white" : "#64748b",
                   }}
                 >
-                  {m === "lista" ? "☰ Lista" : "⊞ Tablero"}
+                  {m === "lista" ? "â˜° Lista" : "âŠž Tablero"}
                 </button>
               ))}
             </div>
@@ -587,7 +587,7 @@ export default function ReporteOTPage() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
                 <div>
                   <label style={S.label}>Buscar</label>
-                  <input value={filtroBuscar} onChange={(e) => setFiltroBuscar(e.target.value)} placeholder="# OT, técnico, TAG…" style={S.input} />
+                  <input value={filtroBuscar} onChange={(e) => setFiltroBuscar(e.target.value)} placeholder="# OT, tÃ©cnico, TAGâ€¦" style={S.input} />
                 </div>
                 <div>
                   <label style={S.label}>Estado</label>
@@ -597,27 +597,27 @@ export default function ReporteOTPage() {
                   </select>
                 </div>
                 <div>
-                  <label style={S.label}>Área</label>
+                  <label style={S.label}>Ãrea</label>
                   <select value={filtroArea} onChange={(e) => setFiltroArea(e.target.value)} style={S.select}>
                     <option value="">Todas</option>
                     {(user?.rol === 3 && user.areas?.length > 0
                       ? areas.filter(a => user.areas.includes(a.codigo))
                       : areas
-                    ).map((a) => <option key={a.codigo} value={a.codigo}>{a.codigo} — {a.nombre}</option>)}
+                    ).map((a) => <option key={a.codigo} value={a.codigo}>{a.codigo} â€” {a.nombre}</option>)}
                   </select>
                 </div>
               </div>
 
-              {/* ─── Filtro de período (Capa 1 & 2) ─── */}
+              {/* â”€â”€â”€ Filtro de perÃ­odo (Capa 1 & 2) â”€â”€â”€ */}
               <div style={{ marginTop: 12, borderTop: "1px solid #e2e8f0", paddingTop: 10 }}>
-                <label style={{ ...S.label, display: "block", marginBottom: 6 }}>Período</label>
+                <label style={{ ...S.label, display: "block", marginBottom: 6 }}>PerÃ­odo</label>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
                   {(
                     [
                       { key: "semana",     label: "Esta semana" },
                       { key: "semana_ant", label: "Semana pasada" },
-                      { key: "3semanas",   label: "Últimas 3 sem." },
-                      { key: "mes",        label: "Último mes" },
+                      { key: "3semanas",   label: "Ãšltimas 3 sem." },
+                      { key: "mes",        label: "Ãšltimo mes" },
                       { key: "todo",       label: "Todo el historial" },
                       { key: "personalizado", label: "Personalizado" },
                     ] as { key: Periodo; label: string }[]
@@ -660,10 +660,10 @@ export default function ReporteOTPage() {
                   </div>
                 )}
 
-                {/* Aviso cuando se está viendo historial completo (Capa 3) */}
+                {/* Aviso cuando se estÃ¡ viendo historial completo (Capa 3) */}
                 {periodo === "todo" && (
                   <p style={{ fontSize: 11, color: "#f59e0b", marginTop: 6, fontWeight: 500 }}>
-                    Mostrando historial completo — incluye OTs concluidas archivadas (&gt;90 días).
+                    Mostrando historial completo â€” incluye OTs concluidas archivadas (&gt;90 dÃ­as).
                   </p>
                 )}
               </div>
@@ -672,23 +672,23 @@ export default function ReporteOTPage() {
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <p style={{ fontSize: 12, color: "#64748b" }}>
-              {loading ? "Cargando…" : `${ordenesFiltradas.length} orden(es)`}
+              {loading ? "Cargandoâ€¦" : `${ordenesFiltradas.length} orden(es)`}
               {periodo !== "todo" && !loading && (
                 <span style={{ marginLeft: 6, color: "#94a3b8" }}>
-                  · {periodo === "semana" ? "esta semana" : periodo === "semana_ant" ? "semana pasada" : periodo === "3semanas" ? "últimas 3 semanas" : periodo === "mes" ? "último mes" : "rango personalizado"}
+                  Â· {periodo === "semana" ? "esta semana" : periodo === "semana_ant" ? "semana pasada" : periodo === "3semanas" ? "Ãºltimas 3 semanas" : periodo === "mes" ? "Ãºltimo mes" : "rango personalizado"}
                 </span>
               )}
             </p>
-            <button onClick={loadOrdenes} style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12 }}>↻ Actualizar</button>
+            <button onClick={loadOrdenes} style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12 }}>â†» Actualizar</button>
           </div>
 
           {loading ? (
-            <div style={{ textAlign: "center", padding: 48, color: "#94a3b8", fontSize: 14 }}>Cargando…</div>
+            <div style={{ textAlign: "center", padding: 48, color: "#94a3b8", fontSize: 14 }}>Cargandoâ€¦</div>
           ) : viewMode === "lista" ? (
-            /* ── Vista Lista ── */
+            /* â”€â”€ Vista Lista â”€â”€ */
             ordenesFiltradas.length === 0 ? (
               <div style={{ ...S.card, textAlign: "center", padding: "40px 20px" }}>
-                <p style={{ color: "#94a3b8", fontSize: 14 }}>No hay órdenes con esos filtros.</p>
+                <p style={{ color: "#94a3b8", fontSize: 14 }}>No hay Ã³rdenes con esos filtros.</p>
               </div>
             ) : (
               ordenesFiltradas.map((ot) => {
@@ -709,14 +709,14 @@ export default function ReporteOTPage() {
                           {ot.lineas.map((l, i) => <span key={i} style={S.badge(TIPO_COLOR[l.tipoOT] ?? "#64748b")}>{l.tipoOT}</span>)}
                         </div>
                         <p style={{ fontSize: 12, color: "#64748b", marginBottom: 2 }}>
-                          {new Date(ot.fecha).toLocaleDateString("es-BO", { timeZone: "UTC" })} · {ot.turno} · {areaNombre(ot.areaCodigo)}
+                          {new Date(ot.fecha).toLocaleDateString("es-BO", { timeZone: "UTC" })} Â· {ot.turno} Â· {areaNombre(ot.areaCodigo)}
                         </p>
                         <p style={{ fontSize: 12, color: "#475569" }}>{ot.tecnicos.map((t) => t.nombreCompleto).join(", ")}</p>
-                        <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>{ot.lineas.map((l) => l.tag).join(" · ")}</p>
+                        <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>{ot.lineas.map((l) => l.tag).join(" Â· ")}</p>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
                         <span style={{ fontSize: 11, color: "#94a3b8" }}>{ot.lineas.length} equipo(s)</span>
-                        <span style={{ fontSize: 12, color: "#2563eb", fontWeight: 600 }}>Ver →</span>
+                        <span style={{ fontSize: 12, color: "#2563eb", fontWeight: 600 }}>Ver â†’</span>
                       </div>
                     </div>
                     {esAdmin && (
@@ -729,7 +729,7 @@ export default function ReporteOTPage() {
                           }}
                           style={{ fontSize: 11, color: "#dc2626", fontWeight: 600, background: "none", border: "1px solid #fecaca", borderRadius: 6, cursor: "pointer", padding: "3px 10px" }}
                         >
-                          🗑 Eliminar OT
+                          ðŸ—‘ Eliminar OT
                         </button>
                       </div>
                     )}
@@ -738,7 +738,7 @@ export default function ReporteOTPage() {
               })
             )
           ) : (
-            /* ── Vista Tablero ── */
+            /* â”€â”€ Vista Tablero â”€â”€ */
             <div style={{ overflowX: "auto", paddingBottom: 12 }}>
               <div style={{ display: "flex", gap: 12, minWidth: 900 }}>
                 {COLS_TABLERO.map((col) => {
@@ -761,7 +761,7 @@ export default function ReporteOTPage() {
 
                       {colOTs.length === 0 && (
                         <div style={{ padding: "16px 8px", textAlign: "center", color: "#cbd5e1", fontSize: 12, borderRadius: 8, border: "1px dashed #e2e8f0", background: "white" }}>
-                          Vacío
+                          VacÃ­o
                         </div>
                       )}
 
@@ -778,11 +778,11 @@ export default function ReporteOTPage() {
                           <div style={{ display: "flex", gap: 4, marginBottom: 4, flexWrap: "wrap" }}>
                             {ot.origenPlan ? (
                               <span style={{ fontSize: 9, fontWeight: 700, background: "#dbeafe", color: "#1d4ed8", borderRadius: 4, padding: "1px 5px", letterSpacing: "0.04em" }}>
-                                📋 PLAN · JDE {ot.otJdeNumero}
+                                ðŸ“‹ PLAN Â· JDE {ot.otJdeNumero}
                               </span>
                             ) : (
                               <span style={{ fontSize: 9, fontWeight: 700, background: "#fee2e2", color: "#dc2626", borderRadius: 4, padding: "1px 5px", letterSpacing: "0.04em" }}>
-                                ⚡ REACTIVA
+                                âš¡ REACTIVA
                               </span>
                             )}
                             {ot.lineas.map((l, i) => (
@@ -799,13 +799,13 @@ export default function ReporteOTPage() {
                             {ot.lineas.map((l) => l.tag).join(", ")}
                           </p>
 
-                          {/* Acciones rápidas */}
+                          {/* Acciones rÃ¡pidas */}
                           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                             <button
                               onClick={() => setSelected(ot)}
                               style={{ width: "100%", background: "#f1f5f9", color: "#374151", border: "none", borderRadius: 6, padding: "5px 0", fontSize: 11, fontWeight: 600, cursor: "pointer" }}
                             >
-                              Ver detalle →
+                              Ver detalle â†’
                             </button>
                             {ot.estado === "pendiente_revision" && (
                               <>
@@ -821,21 +821,21 @@ export default function ReporteOTPage() {
                                   }}
                                   style={{ width: "100%", background: "#dcfce7", color: "#15803d", border: "none", borderRadius: 6, padding: "5px 0", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
                                 >
-                                  ✓ Aprobar
+                                  âœ“ Aprobar
                                 </button>
                                 <button
                                   onClick={async (e) => {
                                     e.stopPropagation();
                                     const res = await fetch(`/api/ordenes/${ot._id}`, {
                                       method: "PATCH", headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ estado: "solicitar_correccion", cambio: "Supervisor solicitó corrección", usuarioId: user?.id ?? "sistema", nombreUsuario: user?.nombre ?? "Supervisor" }),
+                                      body: JSON.stringify({ estado: "solicitar_correccion", cambio: "Supervisor solicitÃ³ correcciÃ³n", usuarioId: user?.id ?? "sistema", nombreUsuario: user?.nombre ?? "Supervisor" }),
                                     });
                                     const data = await res.json();
                                     if (res.ok) setOrdenes((prev) => prev.map((o) => o._id === data.ot._id ? data.ot : o));
                                   }}
                                   style={{ width: "100%", background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 6, padding: "5px 0", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
                                 >
-                                  ✗ Corrección
+                                  âœ— CorrecciÃ³n
                                 </button>
                               </>
                             )}
@@ -852,7 +852,7 @@ export default function ReporteOTPage() {
                                 }}
                                 style={{ width: "100%", background: "#dcfce7", color: "#15803d", border: "none", borderRadius: 6, padding: "5px 0", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
                               >
-                                ✓ Concluir
+                                âœ“ Concluir
                               </button>
                             )}
                           </div>
@@ -869,16 +869,16 @@ export default function ReporteOTPage() {
     );
   }
 
-  // ─── Detalle ─────────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Detalle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const ot = selected;
   const estadoColor = ESTADO_COLOR[ot.estado] ?? "#64748b";
   const isConcluido = ot.estado === "concluido";
 
-  // Técnico edita en borrador/corrección; supervisor/admin en cualquier estado activo
+  // TÃ©cnico edita en borrador/correcciÃ³n; supervisor/admin en cualquier estado activo
   const enEstadoTecnico = ot.estado === "borrador" || ot.estado === "solicitar_correccion";
 
-  // Técnico solo puede editar OTs donde él está asignado (por id o por nombre)
+  // TÃ©cnico solo puede editar OTs donde Ã©l estÃ¡ asignado (por id o por nombre)
   const tokensNombre = (user?.nombre ?? "").toLowerCase().normalize("NFD").replace(/\p{Mn}/gu, "").split(/\s+/).filter(t => t.length > 2);
   const esOtPropia = esTecnico && ot.tecnicos.some(t => {
     if (t.usuarioId && user?.id && t.usuarioId === user.id) return true;
@@ -888,18 +888,18 @@ export default function ReporteOTPage() {
 
   const canEdit = !isConcluido && (esAdmin || (esTecnico && enEstadoTecnico && esOtPropia) || (esSup && !esTecnico));
 
-  // Solo técnico (o admin) puede enviar a revisión desde borrador/corrección
-  // Para OTs del plan (OPEPLANT): solo domingo o admin puede enviar a revisión (cierre semanal)
+  // Solo tÃ©cnico (o admin) puede enviar a revisiÃ³n desde borrador/correcciÃ³n
+  // Para OTs del plan (OPEPLANT): solo domingo o admin puede enviar a revisiÃ³n (cierre semanal)
   const bloqueoCierreSemanal = ot.origenPlan && new Date().getDay() !== 0 && !esAdmin;
   const canSendToReview = enEstadoTecnico && (esAdmin || (esTecnico && esOtPropia)) && !bloqueoCierreSemanal;
 
-  // Formulario de supervisión: solo supervisores/admins, cuando la OT está en pendiente_revision
+  // Formulario de supervisiÃ³n: solo supervisores/admins, cuando la OT estÃ¡ en pendiente_revision
   const showSupForm = esSup && ot.estado === "pendiente_revision";
 
   // Botones de aprobar/rechazar: supervisores/admins en pendiente_revision
   const canRevisar = esSup && ot.estado === "pendiente_revision";
 
-  // Botón concluir: supervisores/admins en revisado
+  // BotÃ³n concluir: supervisores/admins en revisado
   const canConcluir = esSup && ot.estado === "revisado";
 
   const showSupReadonly = !showSupForm && !isConcluido && !!(ot.datosSupervision?.comentariosSupervisor || ot.datosSupervision?.requierePlanificacion);
@@ -913,7 +913,7 @@ export default function ReporteOTPage() {
 
         {/* Cabecera */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
-          <button onClick={() => setSelected(null)} style={{ ...S.btnGhost, padding: "7px 14px" }}>← Lista</button>
+          <button onClick={() => setSelected(null)} style={{ ...S.btnGhost, padding: "7px 14px" }}>â† Lista</button>
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <h1 style={{ fontSize: 20, fontWeight: 800, color: "#0f2847" }}>
@@ -922,23 +922,23 @@ export default function ReporteOTPage() {
               <span style={S.badge(estadoColor)}>{ESTADO_LABEL[ot.estado]}</span>
               {ot.origenPlan ? (
                 <span style={{ ...S.badge("#1d4ed8"), fontSize: 11 }}>
-                  📋 Plan Semanal{ot.otJdeDia ? ` · ${ot.otJdeDia}` : ""}
+                  ðŸ“‹ Plan Semanal{ot.otJdeDia ? ` Â· ${ot.otJdeDia}` : ""}
                 </span>
               ) : (
-                <span style={{ ...S.badge("#dc2626"), fontSize: 11 }}>⚡ Reactiva</span>
+                <span style={{ ...S.badge("#dc2626"), fontSize: 11 }}>âš¡ Reactiva</span>
               )}
-              {editMode && <span style={{ ...S.badge("#f59e0b"), fontSize: 11 }}>✏ Modo edición</span>}
+              {editMode && <span style={{ ...S.badge("#f59e0b"), fontSize: 11 }}>âœ Modo ediciÃ³n</span>}
             </div>
-            <p style={{ fontSize: 12, color: "#94a3b8" }}>{new Date(ot.fecha).toLocaleDateString("es-BO", { timeZone: "UTC" })} · {ot.turno}</p>
+            <p style={{ fontSize: 12, color: "#94a3b8" }}>{new Date(ot.fecha).toLocaleDateString("es-BO", { timeZone: "UTC" })} Â· {ot.turno}</p>
           </div>
           {canEdit && !editMode && (
             <button onClick={enterEditMode} style={{ ...S.btnAmber, padding: "8px 16px", fontSize: 13 }}>
-              ✏ Editar OT
+              âœ Editar OT
             </button>
           )}
           {editMode && (
             <button onClick={() => setEditMode(false)} style={{ ...S.btnGhost, padding: "8px 16px", fontSize: 13 }}>
-              Cancelar edición
+              Cancelar ediciÃ³n
             </button>
           )}
         </div>
@@ -948,8 +948,8 @@ export default function ReporteOTPage() {
           <div style={{ fontWeight: 700, fontSize: 13, color: "#0f2847", marginBottom: 12 }}>Encabezado</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 24px" }}>
             <div>
-              <span style={S.label}>Área</span>
-              <p style={{ fontSize: 14, color: "#1e293b" }}>{ot.areaCodigo} — {areaNombre(ot.areaCodigo)}</p>
+              <span style={S.label}>Ãrea</span>
+              <p style={{ fontSize: 14, color: "#1e293b" }}>{ot.areaCodigo} â€” {areaNombre(ot.areaCodigo)}</p>
             </div>
             <div>
               <span style={S.label}>Turno</span>
@@ -968,14 +968,14 @@ export default function ReporteOTPage() {
               )}
             </div>
             <div style={{ gridColumn: "1 / -1" }}>
-              <span style={S.label}>Técnico(s)</span>
+              <span style={S.label}>TÃ©cnico(s)</span>
               {editMode ? (
                 <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 6 }}>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     {editTecnicos.map((t, i) => (
                       <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#dbeafe", color: "#1d4ed8", borderRadius: 6, padding: "3px 10px", fontSize: 13, fontWeight: 600 }}>
                         {t.nombreCompleto}
-                        <button type="button" onClick={() => setEditTecnicos(prev => prev.filter((_, j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer", color: "#1d4ed8", fontWeight: 800, fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
+                        <button type="button" onClick={() => setEditTecnicos(prev => prev.filter((_, j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer", color: "#1d4ed8", fontWeight: 800, fontSize: 14, lineHeight: 1, padding: 0 }}>Ã—</button>
                       </span>
                     ))}
                   </div>
@@ -990,7 +990,7 @@ export default function ReporteOTPage() {
                     }}
                     style={{ padding: "6px 10px", border: "1px solid #fcd34d", borderRadius: 6, fontSize: 13, background: "#fffbeb", maxWidth: 300 }}
                   >
-                    <option value="">+ Agregar técnico…</option>
+                    <option value="">+ Agregar tÃ©cnicoâ€¦</option>
                     {usuariosDisponibles.filter(u => !editTecnicos.some(t => t.usuarioId === u._id)).map(u => (
                       <option key={u._id} value={u._id}>{u.nombre}</option>
                     ))}
@@ -1001,7 +1001,7 @@ export default function ReporteOTPage() {
               )}
             </div>
             <div style={{ gridColumn: "1 / -1" }}>
-              <span style={S.label}>N° OT JDE / OPEPLANT</span>
+              <span style={S.label}>NÂ° OT JDE / OPEPLANT</span>
               {editMode ? (
                 <input
                   type="text"
@@ -1019,7 +1019,7 @@ export default function ReporteOTPage() {
           </div>
         </div>
 
-        {/* Equipos — modo lectura */}
+        {/* Equipos â€” modo lectura */}
         {!editMode && (
           <div style={S.card}>
             <div style={{ fontWeight: 700, fontSize: 13, color: "#0f2847", marginBottom: 12 }}>
@@ -1032,9 +1032,9 @@ export default function ReporteOTPage() {
                   <span style={S.badge(TIPO_COLOR[l.tipoOT] ?? "#64748b")}>{l.tipoOT}</span>
                 </div>
                 <p style={{ fontSize: 12, color: "#64748b", marginBottom: 3 }}>{l.descripcionEquipo}</p>
-                {l.sintoma && <p style={{ fontSize: 12, color: "#475569" }}>Síntoma: {l.sintoma}</p>}
+                {l.sintoma && <p style={{ fontSize: 12, color: "#475569" }}>SÃ­ntoma: {l.sintoma}</p>}
                 {l.causaProbable && <p style={{ fontSize: 12, color: "#475569" }}>Causa: {l.causaProbable}</p>}
-                {l.resolucionAplicada && <p style={{ fontSize: 12, color: "#475569" }}>Resolución: {l.resolucionAplicada}</p>}
+                {l.resolucionAplicada && <p style={{ fontSize: 12, color: "#475569" }}>ResoluciÃ³n: {l.resolucionAplicada}</p>}
                 {l.descripcionTrabajo && <p style={{ fontSize: 12, color: "#475569" }}>{l.descripcionTrabajo}</p>}
                 {l.tareasEjecutadas && l.tareasEjecutadas.length > 0 && (
                   <ul style={{ margin: "4px 0", paddingLeft: 16 }}>{l.tareasEjecutadas.map((t, ti) => <li key={ti} style={{ fontSize: 12, color: "#64748b" }}>{t}</li>)}</ul>
@@ -1050,15 +1050,15 @@ export default function ReporteOTPage() {
                 {l.inspeccion && (["PMP", "PMT", "PTJ"].includes(l.tipoOT)) && (
                   <div style={{ marginTop: 8, background: "#f0fdff", border: "1px solid #a5f3fc", borderRadius: 8, padding: "10px 12px" }}>
                     <div style={{ fontWeight: 700, fontSize: 11, color: "#0891b2", marginBottom: 6, textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>
-                      Inspección: {l.inspeccion.checklistNombre}
+                      InspecciÃ³n: {l.inspeccion.checklistNombre}
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       {l.inspeccion.items.map((it, ii) => (
                         <div key={ii} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12 }}>
-                          <span style={{ color: it.ok ? "#0891b2" : "#94a3b8", fontWeight: 800, flexShrink: 0 }}>{it.ok ? "✓" : "○"}</span>
+                          <span style={{ color: it.ok ? "#0891b2" : "#94a3b8", fontWeight: 800, flexShrink: 0 }}>{it.ok ? "âœ“" : "â—‹"}</span>
                           <span style={{ color: it.ok ? "#0f172a" : "#64748b", textDecoration: it.ok ? "none" : "none", flex: 1 }}>
                             {it.descripcion}
-                            {it.obs && <span style={{ color: "#94a3b8", fontStyle: "italic" }}> — {it.obs}</span>}
+                            {it.obs && <span style={{ color: "#94a3b8", fontStyle: "italic" }}> â€” {it.obs}</span>}
                           </span>
                         </div>
                       ))}
@@ -1073,7 +1073,7 @@ export default function ReporteOTPage() {
                       <div key={ai} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 10px", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
                         {adj.tipo === "foto"
                           ? <img src={adj.dataUrl} alt={adj.nombre} style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 4 }} />
-                          : <span style={{ fontSize: 18 }}>📄</span>
+                          : <span style={{ fontSize: 18 }}>ðŸ“„</span>
                         }
                         <div>
                           <div style={{ fontWeight: 600, color: "#374151" }}>{adj.nombre}</div>
@@ -1084,7 +1084,7 @@ export default function ReporteOTPage() {
                   </div>
                 )}
 
-                {/* Botón agregar evidencia — supervisores y admins en cualquier estado */}
+                {/* BotÃ³n agregar evidencia â€” supervisores y admins en cualquier estado */}
                 {(esSup || esAdmin) && !isConcluido && (
                   <button
                     onClick={() => {
@@ -1094,7 +1094,7 @@ export default function ReporteOTPage() {
                     }}
                     style={{ marginTop: 8, background: "none", border: "1px dashed #94a3b8", borderRadius: 6, padding: "4px 12px", fontSize: 11, color: "#64748b", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}
                   >
-                    📷 Agregar evidencia
+                    ðŸ“· Agregar evidencia
                   </button>
                 )}
               </div>
@@ -1102,19 +1102,19 @@ export default function ReporteOTPage() {
           </div>
         )}
 
-        {/* Equipos — modo edición con trazabilidad */}
+        {/* Equipos â€” modo ediciÃ³n con trazabilidad */}
         {editMode && (
           <div style={{ ...S.card, border: "2px solid #f59e0b", background: "#fffbeb" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 13, color: "#92400e" }}>✏ Edición con Trazabilidad</div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: "#92400e" }}>âœ EdiciÃ³n con Trazabilidad</div>
                 <p style={{ fontSize: 11, color: "#b45309", marginTop: 2 }}>Cada cambio queda registrado en el historial con fecha y autor.</p>
               </div>
             </div>
             {editLineas.map((l, i) => {
               const hasChecklist = ["PMP", "PMT", "PTJ"].includes(l.tipoOT);
               const isCorrectivo = ["CMP", "CMR"].includes(l.tipoOT);
-              const insp = l.inspeccion ?? (hasChecklist ? { checklistId: "", checklistNombre: "Checklist supervisión", items: [] } : null);
+              const insp = l.inspeccion ?? (hasChecklist ? { checklistId: "", checklistNombre: "Checklist supervisiÃ³n", items: [] } : null);
               return (
                 <div key={i} style={{ borderLeft: `3px solid ${TIPO_COLOR[l.tipoOT] ?? "#e2e8f0"}`, paddingLeft: 12, marginBottom: i < editLineas.length - 1 ? 20 : 0, paddingBottom: i < editLineas.length - 1 ? 20 : 0, borderBottom: i < editLineas.length - 1 ? "1px solid #fde68a" : "none" }}>
                   <div style={{ display: "flex", gap: 7, alignItems: "center", marginBottom: 10 }}>
@@ -1138,7 +1138,7 @@ export default function ReporteOTPage() {
                       )}
                     </div>
                     <div>
-                      <label style={{ ...S.label, marginBottom: 3 }}>HH Trabajadas <span style={{ fontWeight: 400, textTransform: "none" as const }}>(personas × horas)</span></label>
+                      <label style={{ ...S.label, marginBottom: 3 }}>HH Trabajadas <span style={{ fontWeight: 400, textTransform: "none" as const }}>(personas Ã— horas)</span></label>
                       <input
                         type="number" min="0" step="0.5"
                         value={l.tiempoRealHrs ?? ""}
@@ -1151,11 +1151,11 @@ export default function ReporteOTPage() {
                     </div>
                   </div>
 
-                  {/* Síntoma / Causa / Resolución — CMP y CMR (correctivos) */}
+                  {/* SÃ­ntoma / Causa / ResoluciÃ³n â€” CMP y CMR (correctivos) */}
                   {isCorrectivo && (
                     <>
                       <div style={{ marginBottom: 10 }}>
-                        <label style={{ ...S.label, marginBottom: 3 }}>Síntoma</label>
+                        <label style={{ ...S.label, marginBottom: 3 }}>SÃ­ntoma</label>
                         <textarea value={l.sintoma ?? ""} onChange={(e) => patchLinea(i, { sintoma: e.target.value })} style={S.textareaSm} />
                       </div>
                       <div style={{ marginBottom: 10 }}>
@@ -1163,23 +1163,23 @@ export default function ReporteOTPage() {
                         <textarea value={l.causaProbable ?? ""} onChange={(e) => patchLinea(i, { causaProbable: e.target.value })} style={S.textareaSm} />
                       </div>
                       <div style={{ marginBottom: 12 }}>
-                        <label style={{ ...S.label, marginBottom: 3 }}>Resolución aplicada</label>
+                        <label style={{ ...S.label, marginBottom: 3 }}>ResoluciÃ³n aplicada</label>
                         <textarea value={l.resolucionAplicada ?? ""} onChange={(e) => patchLinea(i, { resolucionAplicada: e.target.value })} style={S.textareaSm} />
                       </div>
                     </>
                   )}
 
-                  {/* Checklist — CMP, PMP, PTJ */}
+                  {/* Checklist â€” CMP, PMP, PTJ */}
                   {hasChecklist && insp && (
                     <div style={{ marginBottom: 12, background: "#f0fdff", border: "1px solid #a5f3fc", borderRadius: 10, padding: "12px 14px" }}>
                       <label style={{ ...S.label, marginBottom: 8, color: "#0891b2" }}>
-                        Checklist — {insp.checklistNombre || "sin nombre"}
+                        Checklist â€” {insp.checklistNombre || "sin nombre"}
                       </label>
 
-                      {/* Ítems existentes */}
+                      {/* Ãtems existentes */}
                       {insp.items.length === 0 && (
                         <p style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic", marginBottom: 8 }}>
-                          Sin ítems aún. Agregue uno abajo.
+                          Sin Ã­tems aÃºn. Agregue uno abajo.
                         </p>
                       )}
                       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
@@ -1199,7 +1199,7 @@ export default function ReporteOTPage() {
                                 type="button"
                                 onClick={() => removeItemChecklist(i, ii)}
                                 style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 13, flexShrink: 0 }}
-                              >✕</button>
+                              >âœ•</button>
                             </div>
                             <input
                               type="text"
@@ -1212,32 +1212,32 @@ export default function ReporteOTPage() {
                         ))}
                       </div>
 
-                      {/* Agregar ítem nuevo */}
+                      {/* Agregar Ã­tem nuevo */}
                       <div style={{ display: "flex", gap: 6 }}>
                         <input
                           value={itemCheckInputs[i] ?? ""}
                           onChange={(e) => setItemCheckInputs((ts) => ts.map((t, ii) => (ii === i ? e.target.value : t)))}
                           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addItemChecklist(i); } }}
-                          placeholder="Nuevo ítem del checklist…"
+                          placeholder="Nuevo Ã­tem del checklistâ€¦"
                           style={{ ...S.input, fontSize: 12, padding: "6px 10px" }}
                         />
                         <button
                           type="button"
                           onClick={() => addItemChecklist(i)}
                           style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12, whiteSpace: "nowrap" as const, borderColor: "#a5f3fc", color: "#0891b2" }}
-                        >+ Ítem</button>
+                        >+ Ãtem</button>
                       </div>
                     </div>
                   )}
 
-                  {/* Tareas — PMP, PMT, PTJ */}
+                  {/* Tareas â€” PMP, PMT, PTJ */}
                   {hasChecklist && (
                     <div style={{ marginBottom: 12 }}>
                       <label style={{ ...S.label, marginBottom: 6 }}>Tareas</label>
                       {(l.tareasEjecutadas ?? []).map((t, ti) => (
                         <div key={ti} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
                           <span style={{ flex: 1, fontSize: 13, color: "#1e293b", background: "#f8fafc", borderRadius: 6, padding: "5px 9px" }}>{t}</span>
-                          <button type="button" onClick={() => removeTareaLinea(i, ti)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 14 }}>✕</button>
+                          <button type="button" onClick={() => removeTareaLinea(i, ti)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 14 }}>âœ•</button>
                         </div>
                       ))}
                       <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
@@ -1245,7 +1245,7 @@ export default function ReporteOTPage() {
                           value={tareaInputs[i] ?? ""}
                           onChange={(e) => setTareaInputs((ts) => ts.map((t, ii) => (ii === i ? e.target.value : t)))}
                           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTareaLinea(i); } }}
-                          placeholder="Nueva tarea…"
+                          placeholder="Nueva tareaâ€¦"
                           style={{ ...S.input, fontSize: 13, padding: "6px 10px" }}
                         />
                         <button type="button" onClick={() => addTareaLinea(i)} style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12, whiteSpace: "nowrap" as const }}>+ Tarea</button>
@@ -1253,39 +1253,39 @@ export default function ReporteOTPage() {
                     </div>
                   )}
 
-                  {/* Observaciones — siempre */}
+                  {/* Observaciones â€” siempre */}
                   <div>
                     <label style={{ ...S.label, marginBottom: 3 }}>Observaciones</label>
                     <textarea
                       value={l.observaciones ?? ""}
                       onChange={(e) => patchLinea(i, { observaciones: e.target.value })}
-                      placeholder="Observación adicional (opcional)"
+                      placeholder="ObservaciÃ³n adicional (opcional)"
                       style={{ ...S.textareaSm, minHeight: 40 }}
                     />
                   </div>
                 </div>
               );
             })}
-            {saveErr && <p style={{ color: "#dc2626", fontSize: 12, marginTop: 8 }}>⚠ {saveErr}</p>}
+            {saveErr && <p style={{ color: "#dc2626", fontSize: 12, marginTop: 8 }}>âš  {saveErr}</p>}
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
               <button onClick={() => setEditMode(false)} style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 13 }}>Cancelar</button>
               <button onClick={saveEdit} disabled={saving} style={{ ...S.btnAmber, padding: "8px 18px", fontSize: 13, opacity: saving ? 0.6 : 1 }}>
-                {saving ? "Guardando…" : "Guardar cambios con trazabilidad"}
+                {saving ? "Guardandoâ€¦" : "Guardar cambios con trazabilidad"}
               </button>
             </div>
           </div>
         )}
 
-        {/* Supervisión editable */}
+        {/* SupervisiÃ³n editable */}
         {showSupForm && (
           <div style={S.card}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#0f2847", marginBottom: 14 }}>Datos de Supervisión</div>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#0f2847", marginBottom: 14 }}>Datos de SupervisiÃ³n</div>
 
             {/* Preventivos: Genera OT de Hallazgo */}
             {!hasReactivas && (
               <>
                 <div style={{ marginBottom: 12 }}>
-                  <label style={S.label}>¿Genera OT de Hallazgo?</label>
+                  <label style={S.label}>Â¿Genera OT de Hallazgo?</label>
                   <div style={{ display: "flex", gap: 16, marginTop: 4 }}>
                     {([true, false] as const).map((val) => (
                       <label key={String(val)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13, color: "#374151" }}>
@@ -1296,7 +1296,7 @@ export default function ReporteOTPage() {
                           onChange={() => patchSup({ generaOtHallazgo: val })}
                           style={{ accentColor: "#2563eb" }}
                         />
-                        {val ? "Sí" : "No"}
+                        {val ? "SÃ­" : "No"}
                       </label>
                     ))}
                   </div>
@@ -1307,7 +1307,7 @@ export default function ReporteOTPage() {
                     <input
                       value={supForm.otGenerada}
                       onChange={(e) => patchSup({ otGenerada: e.target.value })}
-                      placeholder="Número de OT generada"
+                      placeholder="NÃºmero de OT generada"
                       style={S.input}
                     />
                   </div>
@@ -1322,7 +1322,7 @@ export default function ReporteOTPage() {
               </label>
             </div>
 
-            {/* Comentarios del supervisor — múltiples */}
+            {/* Comentarios del supervisor â€” mÃºltiples */}
             <div>
               <label style={S.label}>Comentarios del supervisor</label>
               {/* Lista de comentarios ya agregados */}
@@ -1334,7 +1334,7 @@ export default function ReporteOTPage() {
                       const lines = supForm.comentariosSupervisor.split("\n").filter(Boolean);
                       patchSup({ comentariosSupervisor: lines.filter((_, j) => j !== ci).join("\n") });
                     }}
-                    style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 15, paddingTop: 4 }}>✕</button>
+                    style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 15, paddingTop: 4 }}>âœ•</button>
                 </div>
               ))}
               {/* Input + Agregar */}
@@ -1352,7 +1352,7 @@ export default function ReporteOTPage() {
                       setSupComentarioInput("");
                     }
                   }}
-                  placeholder="Agregar comentario — Enter para confirmar"
+                  placeholder="Agregar comentario â€” Enter para confirmar"
                   style={{ ...S.input, fontSize: 13, flex: 1 }}
                 />
                 <button type="button"
@@ -1371,13 +1371,13 @@ export default function ReporteOTPage() {
           </div>
         )}
 
-        {/* Supervisión solo lectura */}
+        {/* SupervisiÃ³n solo lectura */}
         {showSupReadonly && (
           <div style={S.card}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#0f2847", marginBottom: 12 }}>Datos de Supervisión</div>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#0f2847", marginBottom: 12 }}>Datos de SupervisiÃ³n</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {ot.datosSupervision.requierePlanificacion && (
-                <div><span style={S.label}>Requiere WR</span><p style={{ fontSize: 13 }}>Sí</p></div>
+                <div><span style={S.label}>Requiere WR</span><p style={{ fontSize: 13 }}>SÃ­</p></div>
               )}
               {ot.datosSupervision.comentariosSupervisor && (
                 <div>
@@ -1395,31 +1395,31 @@ export default function ReporteOTPage() {
         {!isConcluido && !editMode && (canSendToReview || canRevisar || canConcluir) && (
           <div style={{ ...S.card, background: "#f8fafc" }}>
             <div style={{ fontWeight: 700, fontSize: 13, color: "#0f2847", marginBottom: 10 }}>Acciones</div>
-            {saveErr && <p style={{ color: "#dc2626", fontSize: 12, marginBottom: 10 }}>⚠ {saveErr}</p>}
+            {saveErr && <p style={{ color: "#dc2626", fontSize: 12, marginBottom: 10 }}>âš  {saveErr}</p>}
             {bloqueoCierreSemanal && enEstadoTecnico && (
               <p style={{ fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>
-                ⏳ Esta OT es del plan semanal. El envío a revisión se habilita el <strong>domingo</strong> al finalizar la semana.
+                â³ Esta OT es del plan semanal. El envÃ­o a revisiÃ³n se habilita el <strong>domingo</strong> al finalizar la semana.
               </p>
             )}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {canSendToReview && (
-                <button onClick={() => cambiarEstado("pendiente_revision", "OT enviada a revisión por " + (user?.nombre ?? "técnico"))} disabled={saving} style={{ ...S.btnPrimary, opacity: saving ? 0.6 : 1 }}>
-                  {saving ? "Guardando…" : "Enviar a revisión ↑"}
+                <button onClick={() => cambiarEstado("pendiente_revision", "OT enviada a revisiÃ³n por " + (user?.nombre ?? "tÃ©cnico"))} disabled={saving} style={{ ...S.btnPrimary, opacity: saving ? 0.6 : 1 }}>
+                  {saving ? "Guardandoâ€¦" : "Enviar a revisiÃ³n â†‘"}
                 </button>
               )}
               {canRevisar && (
                 <>
-                  <button onClick={() => cambiarEstado("solicitar_correccion", "Supervisor solicitó corrección")} disabled={saving} style={{ ...S.btnRed, opacity: saving ? 0.6 : 1 }}>
-                    {saving ? "Guardando…" : "Solicitar corrección"}
+                  <button onClick={() => cambiarEstado("solicitar_correccion", "Supervisor solicitÃ³ correcciÃ³n")} disabled={saving} style={{ ...S.btnRed, opacity: saving ? 0.6 : 1 }}>
+                    {saving ? "Guardandoâ€¦" : "Solicitar correcciÃ³n"}
                   </button>
                   <button onClick={() => cambiarEstado("revisado", "OT aprobada por " + (user?.nombre ?? "supervisor"))} disabled={saving} style={{ ...S.btnGreen, opacity: saving ? 0.6 : 1 }}>
-                    {saving ? "Guardando…" : "Aprobar OT ✓"}
+                    {saving ? "Guardandoâ€¦" : "Aprobar OT âœ“"}
                   </button>
                 </>
               )}
               {canConcluir && (
                 <button onClick={() => cambiarEstado("concluido", "OT concluida y cerrada")} disabled={saving} style={{ ...S.btnGreen, opacity: saving ? 0.6 : 1 }}>
-                  {saving ? "Guardando…" : "Concluir OT ✓"}
+                  {saving ? "Guardandoâ€¦" : "Concluir OT âœ“"}
                 </button>
               )}
             </div>
@@ -1429,13 +1429,13 @@ export default function ReporteOTPage() {
         {(isConcluido || (esSup && ot.estado === "revisado")) && (
           <div style={{ ...S.card, background: "#f0fdf4", border: "1px solid #bbf7d0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <p style={{ fontSize: 13, color: "#15803d", fontWeight: 600, margin: 0 }}>
-              {isConcluido ? "OT concluida — solo lectura." : "OT revisada — lista para concluir."}
+              {isConcluido ? "OT concluida â€” solo lectura." : "OT revisada â€” lista para concluir."}
             </p>
             <button
               onClick={async () => {
-                // Para OTs de plan con número JDE, fusionar datos de todos los registros
+                // Para OTs de plan con nÃºmero JDE, fusionar datos de todos los registros
                 // del mismo otJdeNumero+programacionSemanalId antes de generar el PDF
-                // Recargar OT actual fresca para garantizar que adjuntos estén completos
+                // Recargar OT actual fresca para garantizar que adjuntos estÃ©n completos
                 let otBase: typeof ot = ot;
                 try {
                   const fresca: OTDoc = await fetch(`/api/ordenes/${ot._id}`).then(r => r.json());
@@ -1457,7 +1457,7 @@ export default function ReporteOTPage() {
                       return true;
                     });
                     if (mismos.length > 0) {
-                      // Fusionar técnicos sin duplicar por nombre
+                      // Fusionar tÃ©cnicos sin duplicar por nombre
                       const nombresYa = new Set(otBase.tecnicos.map(t => t.nombreCompleto));
                       const tecnicosMerged = [
                         ...otBase.tecnicos,
@@ -1468,7 +1468,7 @@ export default function ReporteOTPage() {
                         ...(otBase.registrosDiarios ?? []),
                         ...mismos.flatMap(h => h.registrosDiarios ?? []),
                       ].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
-                      // Fusionar lineas: misma tag+tipoOT → combinar adjuntos, tareas y observaciones
+                      // Fusionar lineas: misma tag+tipoOT â†’ combinar adjuntos, tareas y observaciones
                       const lineasMap = new Map(otBase.lineas.map(l => [`${l.tag}::${l.tipoOT}`, { ...l, adjuntos: [...(l.adjuntos ?? [])] }]));
                       for (const h of mismos) {
                         for (const l of h.lineas) {
@@ -1493,7 +1493,7 @@ export default function ReporteOTPage() {
                       const lineasMerged = Array.from(lineasMap.values());
                       otParaPDF = { ...otBase, tecnicos: tecnicosMerged, registrosDiarios: diariosMerged, lineas: lineasMerged };
                     }
-                  } catch { /* usa otBase sin fusión si falla el fetch */ }
+                  } catch { /* usa otBase sin fusiÃ³n si falla el fetch */ }
 
                   // Sobrescribir tiempoEstimadoHrs con el total del plan semanal
                   // (suma de hhTotal de todas las OtProgramadas con el mismo numeroOT en la semana)
@@ -1522,7 +1522,7 @@ export default function ReporteOTPage() {
           </div>
         )}
 
-        {/* ── Avances Diarios (OTs multi-día del plan) ── */}
+        {/* â”€â”€ Avances Diarios (OTs multi-dÃ­a del plan) â”€â”€ */}
         {ot.origenPlan && (() => {
           const hhLineas = ot.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0);
           const diasLineas = hhLineas > 0 ? 1 : 0;
@@ -1539,17 +1539,17 @@ export default function ReporteOTPage() {
                   Avances diarios
                   {totalDias > 0 && (
                     <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, background: "#dbeafe", color: "#1d4ed8", borderRadius: 4, padding: "2px 7px" }}>
-                      {totalDias} día{totalDias !== 1 ? "s" : ""} · {totalHH}HH acumuladas
+                      {totalDias} dÃ­a{totalDias !== 1 ? "s" : ""} Â· {totalHH}HH acumuladas
                     </span>
                   )}
                 </div>
-                <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Registro de trabajo por día para esta OT del plan</p>
+                <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Registro de trabajo por dÃ­a para esta OT del plan</p>
               </div>
               {puedeAgregarAvance && (esTecnico || esAdmin) && !showAvance && (
                 <button
                   onClick={() => setShowAvance(true)}
                   style={{ background: "#2563eb", color: "white", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                  + Agregar avance del día
+                  + Agregar avance del dÃ­a
                 </button>
               )}
             </div>
@@ -1557,7 +1557,7 @@ export default function ReporteOTPage() {
             {/* Formulario de nuevo avance */}
             {showAvance && (
               <div style={{ background: "#eff6ff", border: "2px solid #bfdbfe", borderRadius: 10, padding: "14px", marginBottom: 14 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, color: "#1d4ed8", marginBottom: 12 }}>Avance del día</div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: "#1d4ed8", marginBottom: 12 }}>Avance del dÃ­a</div>
                 <div style={{ display: "grid", gridTemplateColumns: "160px 120px", gap: 10, marginBottom: 10 }}>
                   <div>
                     <label style={S.label}>Fecha</label>
@@ -1573,7 +1573,7 @@ export default function ReporteOTPage() {
                   </div>
                 </div>
 
-                {/* Tareas del día */}
+                {/* Tareas del dÃ­a */}
                 <div style={{ marginBottom: 10 }}>
                   <label style={S.label}>Tareas ejecutadas hoy</label>
                   {avanceForm.tareasEjecutadas.map((t, i) => (
@@ -1581,7 +1581,7 @@ export default function ReporteOTPage() {
                       <span style={{ flex: 1, fontSize: 13, background: "white", borderRadius: 6, padding: "5px 9px", border: "1px solid #e2e8f0" }}>{t}</span>
                       <button type="button"
                         onClick={() => setAvanceForm(f => ({ ...f, tareasEjecutadas: f.tareasEjecutadas.filter((_, j) => j !== i) }))}
-                        style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 14 }}>✕</button>
+                        style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 14 }}>âœ•</button>
                     </div>
                   ))}
                   <div style={{ display: "flex", gap: 6 }}>
@@ -1594,7 +1594,7 @@ export default function ReporteOTPage() {
                           setAvanceTareaInput("");
                         }
                       }}
-                      placeholder="Describir tarea y presionar Enter…"
+                      placeholder="Describir tarea y presionar Enterâ€¦"
                       style={{ ...S.input, fontSize: 13 }} />
                     <button type="button"
                       onClick={() => { if (avanceTareaInput.trim()) { setAvanceForm(f => ({ ...f, tareasEjecutadas: [...f.tareasEjecutadas, avanceTareaInput.trim()] })); setAvanceTareaInput(""); } }}
@@ -1606,15 +1606,15 @@ export default function ReporteOTPage() {
                   <label style={S.label}>Observaciones</label>
                   <textarea value={avanceForm.observaciones}
                     onChange={e => setAvanceForm(f => ({ ...f, observaciones: e.target.value }))}
-                    placeholder="Estado del trabajo, materiales usados, pendientes…"
+                    placeholder="Estado del trabajo, materiales usados, pendientesâ€¦"
                     style={{ ...S.textarea, minHeight: 52 }} />
                 </div>
 
-                {saveErr && <p style={{ color: "#dc2626", fontSize: 12, marginBottom: 8 }}>⚠ {saveErr}</p>}
+                {saveErr && <p style={{ color: "#dc2626", fontSize: 12, marginBottom: 8 }}>âš  {saveErr}</p>}
                 <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                   <button onClick={() => { setShowAvance(false); setSaveErr(""); }} style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 13 }}>Cancelar</button>
                   <button onClick={guardarAvance} disabled={saving} style={{ ...S.btnGreen, padding: "8px 18px", fontSize: 13, opacity: saving ? 0.6 : 1 }}>
-                    {saving ? "Guardando…" : "Guardar avance"}
+                    {saving ? "Guardandoâ€¦" : "Guardar avance"}
                   </button>
                 </div>
               </div>
@@ -1622,7 +1622,7 @@ export default function ReporteOTPage() {
 
             {/* Lista de avances existentes */}
             {(ot.registrosDiarios?.length ?? 0) === 0 && !showAvance ? (
-              <p style={{ fontSize: 13, color: "#94a3b8", fontStyle: "italic" }}>Sin avances registrados aún. El técnico debe agregar el trabajo de cada día.</p>
+              <p style={{ fontSize: 13, color: "#94a3b8", fontStyle: "italic" }}>Sin avances registrados aÃºn. El tÃ©cnico debe agregar el trabajo de cada dÃ­a.</p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {(ot.registrosDiarios ?? []).map((r, i) => {
@@ -1646,7 +1646,7 @@ export default function ReporteOTPage() {
                             }}
                             style={{ background: "#fffbeb", color: "#d97706", border: "1px solid #fde68a", borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
                             title="Editar este avance">
-                            ✏
+                            âœ
                           </button>
                         )}
                         {esSup && r._id && !isEditing && (
@@ -1654,13 +1654,13 @@ export default function ReporteOTPage() {
                             onClick={() => setDeletingAvanceId(r._id!)}
                             style={{ background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
                             title="Eliminar este avance">
-                            ✕
+                            âœ•
                           </button>
                         )}
                       </div>
                     </div>
 
-                    {/* Formulario de edición inline */}
+                    {/* Formulario de ediciÃ³n inline */}
                     {isEditing ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
                         <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10 }}>
@@ -1676,7 +1676,7 @@ export default function ReporteOTPage() {
                             <input type="text"
                               value={editAvanceForm.observaciones}
                               onChange={e => setEditAvanceForm(f => ({ ...f, observaciones: e.target.value }))}
-                              placeholder="Observaciones del día…"
+                              placeholder="Observaciones del dÃ­aâ€¦"
                               style={S.input} />
                           </div>
                         </div>
@@ -1687,25 +1687,25 @@ export default function ReporteOTPage() {
                               <span style={{ flex: 1, fontSize: 12, background: "white", borderRadius: 6, padding: "4px 8px", border: "1px solid #e2e8f0" }}>{t}</span>
                               <button type="button"
                                 onClick={() => setEditAvanceForm(f => ({ ...f, tareasEjecutadas: f.tareasEjecutadas.filter((_, j) => j !== ti) }))}
-                                style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 13 }}>✕</button>
+                                style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 13 }}>âœ•</button>
                             </div>
                           ))}
                           <div style={{ display: "flex", gap: 6 }}>
                             <input value={editAvanceForm.tareaInput}
                               onChange={e => setEditAvanceForm(f => ({ ...f, tareaInput: e.target.value }))}
                               onKeyDown={e => { if (e.key === "Enter" && editAvanceForm.tareaInput.trim()) { e.preventDefault(); setEditAvanceForm(f => ({ ...f, tareasEjecutadas: [...f.tareasEjecutadas, f.tareaInput.trim()], tareaInput: "" })); } }}
-                              placeholder="Nueva tarea — Enter para agregar"
+                              placeholder="Nueva tarea â€” Enter para agregar"
                               style={{ ...S.input, fontSize: 12 }} />
                             <button type="button"
                               onClick={() => { if (editAvanceForm.tareaInput.trim()) setEditAvanceForm(f => ({ ...f, tareasEjecutadas: [...f.tareasEjecutadas, f.tareaInput.trim()], tareaInput: "" })); }}
                               style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12, whiteSpace: "nowrap" as const }}>+ Tarea</button>
                           </div>
                         </div>
-                        {saveErr && <p style={{ color: "#dc2626", fontSize: 12 }}>⚠ {saveErr}</p>}
+                        {saveErr && <p style={{ color: "#dc2626", fontSize: 12 }}>âš  {saveErr}</p>}
                         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                           <button onClick={() => { setEditingAvanceId(null); setSaveErr(""); }} style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12 }}>Cancelar</button>
                           <button onClick={guardarEdicionAvance} disabled={saving} style={{ ...S.btnAmber, padding: "6px 14px", fontSize: 12, opacity: saving ? 0.6 : 1 }}>
-                            {saving ? "Guardando…" : "Guardar cambios"}
+                            {saving ? "Guardandoâ€¦" : "Guardar cambios"}
                           </button>
                         </div>
                       </div>
@@ -1730,7 +1730,7 @@ export default function ReporteOTPage() {
                 {totalDias > 1 && (
                   <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, padding: "10px 14px", display: "flex", gap: 24 }}>
                     <div>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#0369a1" }}>Total días</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#0369a1" }}>Total dÃ­as</span>
                       <p style={{ fontSize: 16, fontWeight: 800, color: "#0369a1" }}>{totalDias}</p>
                     </div>
                     <div>
@@ -1738,7 +1738,7 @@ export default function ReporteOTPage() {
                       <p style={{ fontSize: 16, fontWeight: 800, color: "#0369a1" }}>{totalHH}HH</p>
                     </div>
                     <div style={{ flex: 1 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#0369a1" }}>Técnicos</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#0369a1" }}>TÃ©cnicos</span>
                       <p style={{ fontSize: 12, color: "#0369a1" }}>{[...new Set(ot.tecnicos.map(t => t.nombreCompleto).concat((ot.registrosDiarios ?? []).map(r => r.tecnico)))].join(", ")}</p>
                     </div>
                   </div>
@@ -1758,7 +1758,7 @@ export default function ReporteOTPage() {
                 <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#2563eb", marginTop: 5, flexShrink: 0 }} />
                 <div>
                   <p style={{ fontSize: 13, color: "#1e293b", fontWeight: 500, lineHeight: 1.4 }}>{c.cambio}</p>
-                  <p style={{ fontSize: 11, color: "#94a3b8" }}>{c.nombreUsuario} · {new Date(c.fechaHora).toLocaleString("es-BO")}</p>
+                  <p style={{ fontSize: 11, color: "#94a3b8" }}>{c.nombreUsuario} Â· {new Date(c.fechaHora).toLocaleString("es-BO")}</p>
                 </div>
               </div>
             ))}
@@ -1782,7 +1782,7 @@ export default function ReporteOTPage() {
             Agregar evidencia
           </div>
           <p style={{ fontSize: 12, color: "#94a3b8", marginBottom: 16 }}>
-            {evidenciaModal.lineaTag} · {evidenciaModal.lineaTipoOT}
+            {evidenciaModal.lineaTag} Â· {evidenciaModal.lineaTipoOT}
           </p>
 
           {/* Preview de la imagen seleccionada */}
@@ -1790,12 +1790,12 @@ export default function ReporteOTPage() {
             <div style={{ marginBottom: 14, position: "relative" }}>
               {evidenciaPreview.tipo === "foto"
                 ? <img src={evidenciaPreview.dataUrl} alt={evidenciaPreview.nombre} style={{ width: "100%", maxHeight: 200, objectFit: "contain", borderRadius: 8, border: "1px solid #e2e8f0" }} />
-                : <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 16, textAlign: "center" as const }}>📄 {evidenciaPreview.nombre}</div>
+                : <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 16, textAlign: "center" as const }}>ðŸ“„ {evidenciaPreview.nombre}</div>
               }
               <button
                 onClick={() => { setEvidenciaPreview(null); }}
                 style={{ position: "absolute", top: 6, right: 6, background: "#dc2626", color: "white", border: "none", borderRadius: "50%", width: 22, height: 22, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-              >✕</button>
+              >âœ•</button>
             </div>
           ) : (
             <div style={{ marginBottom: 14 }}>
@@ -1819,18 +1819,18 @@ export default function ReporteOTPage() {
                 onClick={() => fileInputRef.current?.click()}
                 style={{ width: "100%", border: "2px dashed #cbd5e1", borderRadius: 10, padding: "24px 0", background: "#f8fafc", color: "#64748b", fontSize: 13, cursor: "pointer", fontWeight: 600 }}
               >
-                📷 Seleccionar foto o documento
+                ðŸ“· Seleccionar foto o documento
               </button>
             </div>
           )}
 
           {/* Comentario */}
           <div style={{ marginBottom: 16 }}>
-            <label style={{ ...S.label, marginBottom: 4 }}>Comentario / descripción</label>
+            <label style={{ ...S.label, marginBottom: 4 }}>Comentario / descripciÃ³n</label>
             <input
               value={evidenciaComentario}
               onChange={e => setEvidenciaComentario(e.target.value)}
-              placeholder="Ej: Estado del equipo al momento de la intervención"
+              placeholder="Ej: Estado del equipo al momento de la intervenciÃ³n"
               style={{ ...S.input, fontSize: 13 }}
             />
           </div>
@@ -1864,7 +1864,7 @@ export default function ReporteOTPage() {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                       lineas: lineasActualizadas,
-                      cambio: `Evidencia añadida en ${evidenciaModal.lineaTag} por ${user?.nombre ?? "supervisor"}`,
+                      cambio: `Evidencia aÃ±adida en ${evidenciaModal.lineaTag} por ${user?.nombre ?? "supervisor"}`,
                       usuarioId: user?.id ?? "sistema",
                       nombreUsuario: user?.nombre ?? "Sistema",
                     }),
@@ -1884,14 +1884,14 @@ export default function ReporteOTPage() {
               }}
               style={{ flex: 2, padding: "10px 0", borderRadius: 8, border: "none", background: evidenciaPreview && evidenciaComentario.trim() ? "#16a34a" : "#94a3b8", fontWeight: 700, fontSize: 13, cursor: evidenciaPreview && evidenciaComentario.trim() ? "pointer" : "not-allowed", color: "white", opacity: evidenciaSaving ? 0.6 : 1 }}
             >
-              {evidenciaSaving ? "Guardando…" : "Guardar evidencia"}
+              {evidenciaSaving ? "Guardandoâ€¦" : "Guardar evidencia"}
             </button>
           </div>
         </div>
       </div>
     )}
 
-    {/* Modal confirmación eliminar */}
+    {/* Modal confirmaciÃ³n eliminar */}
     {deletingId && (
       <div
         style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
@@ -1903,7 +1903,7 @@ export default function ReporteOTPage() {
         >
           <div style={{ fontWeight: 800, fontSize: 16, color: "#0f2847", marginBottom: 8 }}>Eliminar OT</div>
           <p style={{ fontSize: 14, color: "#475569", marginBottom: 20, lineHeight: 1.5 }}>
-            Esta acción eliminará permanentemente la OT y todos sus datos (líneas, técnicos, historial). No se puede deshacer.
+            Esta acciÃ³n eliminarÃ¡ permanentemente la OT y todos sus datos (lÃ­neas, tÃ©cnicos, historial). No se puede deshacer.
           </p>
           <div style={{ display: "flex", gap: 10 }}>
             <button
@@ -1932,7 +1932,7 @@ export default function ReporteOTPage() {
         </div>
       </div>
     )}
-    {/* Modal confirmación eliminar avance diario */}
+    {/* Modal confirmaciÃ³n eliminar avance diario */}
     {deletingAvanceId && selected && (
       <div
         style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
@@ -1944,7 +1944,7 @@ export default function ReporteOTPage() {
         >
           <div style={{ fontWeight: 800, fontSize: 16, color: "#0f2847", marginBottom: 8 }}>Eliminar avance diario</div>
           <p style={{ fontSize: 14, color: "#475569", marginBottom: 20, lineHeight: 1.5 }}>
-            Se eliminará este registro de avance. Esta acción no se puede deshacer.
+            Se eliminarÃ¡ este registro de avance. Esta acciÃ³n no se puede deshacer.
           </p>
           <div style={{ display: "flex", gap: 10 }}>
             <button
