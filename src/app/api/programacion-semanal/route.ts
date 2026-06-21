@@ -1,11 +1,16 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
 
-function serializePrograma(p: Record<string, unknown> & {
-  otsProgramadas?: Record<string, unknown>[];
-  personal?: Record<string, unknown>[];
-  resumenDias?: Record<string, unknown>[];
-}) {
+type BitacoraEntry = { turno: string; supervisor: string; nota: string; hhAtendidas: number; fecha?: string };
+
+function serializePrograma(
+  p: Record<string, unknown> & {
+    otsProgramadas?: Record<string, unknown>[];
+    personal?: Record<string, unknown>[];
+    resumenDias?: Record<string, unknown>[];
+  },
+  bitacoraMap: Record<string, BitacoraEntry[]> = {}
+) {
   return {
     _id: p.id,
     semana: p.semana, anio: p.anio, disciplina: p.disciplina,
@@ -14,20 +19,28 @@ function serializePrograma(p: Record<string, unknown> & {
     hhDisponiblesSemana: p.hhDisponiblesSemana,
     hhProgramadasSemana: p.hhProgramadasSemana,
     hhReactivoSemana: p.hhReactivoSemana,
-    otsProgramadas: (p.otsProgramadas ?? []).map((o) => ({
-      numeroOT: o.numeroOT, tipoOT: o.tipoOT, tipoTrabajo: o.tipoTrabajo,
-      prioridad: o.prioridad, descripcion: o.descripcion, tag: o.tag,
-      descripcionEquipo: o.descripcionEquipo, personas: o.personas,
-      hrsTrabajo: o.hrsTrabajo, hhTotal: o.hhTotal,
-      personalAsignado: o.personalAsignado, personalAsignadoIds: o.personalAsignadoIds,
-      grupo: o.grupo, dia: o.dia,
-      estado: o.estado, observaciones: o.observaciones,
-      ordenTrabajoId: o.ordenTrabajoId, ordenTrabajoNum: o.ordenTrabajoNum,
-      pasarNoche: o.pasarNoche, pasarNocheMotivo: o.pasarNocheMotivo,
-      pasarNocheNota: o.pasarNocheNota, pasarNochePor: o.pasarNochePor,
-      pasarNocheAt: o.pasarNocheAt, esGuardia: o.esGuardia,
-      bitacora: Array.isArray(o.bitacora) ? o.bitacora : [],
-    })),
+    otsProgramadas: (p.otsProgramadas ?? []).map((o) => {
+      const isOpeplant = Boolean(o.esGuardia) || String(o.tag ?? "").includes("OPEPLANT");
+      const key = isOpeplant
+        ? `${String(o.numeroOT ?? "").toUpperCase()}|${String(o.grupo ?? "").toUpperCase()}`
+        : null;
+      return {
+        numeroOT: o.numeroOT, tipoOT: o.tipoOT, tipoTrabajo: o.tipoTrabajo,
+        prioridad: o.prioridad, descripcion: o.descripcion, tag: o.tag,
+        descripcionEquipo: o.descripcionEquipo, personas: o.personas,
+        hrsTrabajo: o.hrsTrabajo, hhTotal: o.hhTotal,
+        personalAsignado: o.personalAsignado, personalAsignadoIds: o.personalAsignadoIds,
+        grupo: o.grupo, dia: o.dia,
+        estado: o.estado, observaciones: o.observaciones,
+        ordenTrabajoId: o.ordenTrabajoId, ordenTrabajoNum: o.ordenTrabajoNum,
+        pasarNoche: o.pasarNoche, pasarNocheMotivo: o.pasarNocheMotivo,
+        pasarNocheNota: o.pasarNocheNota, pasarNochePor: o.pasarNochePor,
+        pasarNocheAt: o.pasarNocheAt, esGuardia: o.esGuardia,
+        bitacora: key && bitacoraMap[key]
+          ? bitacoraMap[key]
+          : (Array.isArray(o.bitacora) ? o.bitacora : []),
+      };
+    }),
     personal: (p.personal ?? []).map((per) => ({
       usuarioId: per.usuarioId, nombre: per.nombre, grupo: per.grupo,
       esContratista: per.esContratista, asistencia: per.asistencia,
@@ -65,7 +78,45 @@ export async function GET(req: NextRequest) {
     take: limit,
   });
 
-  return Response.json(programas.map(p => serializePrograma(p as Parameters<typeof serializePrograma>[0])));
+  // Construir mapa de bitácora desde ReporteTurno técnicos del período
+  const allFechas = programas
+    .filter(p => p.fechaInicio && p.fechaFin)
+    .map(p => ({ ini: p.fechaInicio as Date, fin: p.fechaFin as Date }));
+
+  const bitacoraMap: Record<string, BitacoraEntry[]> = {};
+
+  if (allFechas.length) {
+    const minFecha = new Date(Math.min(...allFechas.map(f => f.ini.getTime())));
+    const maxFecha = new Date(Math.max(...allFechas.map(f => f.fin.getTime())));
+
+    const reportesTecnicos = await prisma.reporteTurno.findMany({
+      where: { tipo: "tecnico", fecha: { gte: minFecha, lte: maxFecha } },
+      select: { id: true, turno: true, fecha: true, supervisorNombre: true, otsPlanData: true },
+    });
+
+    for (const rep of reportesTecnicos) {
+      const items = Array.isArray(rep.otsPlanData) ? rep.otsPlanData as Record<string, unknown>[] : [];
+      const turnoUp = String(rep.turno ?? "").toUpperCase();
+      for (const item of items) {
+        const numOT = String(item.numeroOT ?? "").toUpperCase();
+        if (!numOT) continue;
+        const key = `${numOT}|${turnoUp}`;
+        if (!bitacoraMap[key]) bitacoraMap[key] = [];
+        bitacoraMap[key].push({
+          turno: rep.turno,
+          supervisor: rep.supervisorNombre ?? "",
+          nota: "",
+          hhAtendidas: Number(item.hhTotal) || 0,
+          fecha: rep.fecha.toISOString().slice(0, 10),
+        });
+      }
+    }
+  }
+
+  return Response.json(programas.map(p => serializePrograma(
+    p as Parameters<typeof serializePrograma>[0],
+    bitacoraMap
+  )));
 }
 
 export async function POST(req: NextRequest) {

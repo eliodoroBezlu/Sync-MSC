@@ -239,9 +239,16 @@ function Dashboard({
   const atrasadas   = ots.filter((o) => o.estado === "atrasada").length;
   const bloqueadas  = ots.filter((o) => o.estado === "bloqueada").length;
   const hhProg      = programa.hhProgramadasSemana ?? 0;
-  // HH ejecutadas: solo días ya transcurridos
-  const hhEjec      = ots.filter((o) => ESTADOS_ACTIVOS.includes(o.estado) && diaPasado(o.dia as DiaSemana))
-                         .reduce((s, o) => s + (o.hhTotal ?? 0), 0);
+  // HH ejecutadas: OTs regulares por estado; OPEPLANT por bitácora de reportes de turno
+  const hhEjec      = ots
+    .filter(o => diaPasado(o.dia as DiaSemana))
+    .reduce((s, o) => {
+      const isOpeplant = (o as { esGuardia?: boolean }).esGuardia || o.tag?.includes("OPEPLANT");
+      if (isOpeplant) {
+        return s + ((o as { bitacora?: BitacoraEntry[] }).bitacora ?? []).reduce((bs, b) => bs + (b.hhAtendidas ?? 0), 0);
+      }
+      return ESTADOS_ACTIVOS.includes(o.estado) ? s + (o.hhTotal ?? 0) : s;
+    }, 0);
   const progreso    = pct(hhEjec, hhProg);
   const sinTecnico  = ots.filter((o) => !o.personalAsignado?.length).length;
   const barColor    = progreso >= 80 ? "#16a34a" : progreso >= 50 ? "#2563eb" : "#ea580c";
@@ -271,7 +278,13 @@ function Dashboard({
             const hhDia     = otsDia.reduce((s, o) => s + (o.hhTotal ?? 0), 0);
             const esPasado  = diaPasado(dia);
             const hhEjecDia = esPasado
-              ? otsDia.filter((o) => ESTADOS_ACTIVOS.includes(o.estado)).reduce((s, o) => s + (o.hhTotal ?? 0), 0)
+              ? otsDia.reduce((s, o) => {
+                  const isOpeplant = (o as { esGuardia?: boolean }).esGuardia || o.tag?.includes("OPEPLANT");
+                  if (isOpeplant) {
+                    return s + ((o as { bitacora?: BitacoraEntry[] }).bitacora ?? []).reduce((bs, b) => bs + (b.hhAtendidas ?? 0), 0);
+                  }
+                  return ESTADOS_ACTIVOS.includes(o.estado) ? s + (o.hhTotal ?? 0) : s;
+                }, 0)
               : 0;
             const concluidas = otsDia.filter((o) => o.estado === "completada").length;
             const tot        = otsDia.length;
