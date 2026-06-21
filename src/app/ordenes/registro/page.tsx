@@ -828,15 +828,9 @@ function LineaEditor({
             <textarea value={L.resolucionAplicada} onChange={e => patch({ resolucionAplicada: e.target.value })}
               placeholder="¿Quedó operativo? ¿Pendiente algún trabajo?" style={S.textarea} />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 13 }}>
-            <div>
-              <label style={S.label}>Tiempo estimado (hrs)</label>
-              <input type="number" min="0" step="0.5" value={L.tiempoEstimadoHrs} onChange={e => patch({ tiempoEstimadoHrs: e.target.value })} style={S.input} />
-            </div>
-            <div>
-              <label style={S.label}>HH Trabajadas * <span style={{ fontWeight: 400, textTransform: "none" as const }}>(personas × horas)</span></label>
-              <input type="number" min="0" step="0.5" value={L.tiempoRealHrs} onChange={e => patch({ tiempoRealHrs: e.target.value })} style={S.input} />
-            </div>
+          <div style={{ marginBottom: 13 }}>
+            <label style={S.label}>HH Trabajadas * <span style={{ fontWeight: 400, textTransform: "none" as const }}>(personas × horas)</span></label>
+            <input type="number" min="0" step="0.5" value={L.tiempoRealHrs} onChange={e => patch({ tiempoRealHrs: e.target.value })} style={S.input} />
           </div>
         </>
       )}
@@ -877,15 +871,9 @@ function LineaEditor({
             <label style={S.label}>Resolución aplicada</label>
             <textarea value={L.resolucionAplicada} onChange={e => patch({ resolucionAplicada: e.target.value })} placeholder="Describe lo que se hizo para resolver la falla" style={S.textarea} />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 13 }}>
-            <div>
-              <label style={S.label}>Tiempo estimado (hrs)</label>
-              <input type="number" min="0" step="0.5" value={L.tiempoEstimadoHrs} onChange={e => patch({ tiempoEstimadoHrs: e.target.value })} style={S.input} />
-            </div>
-            <div>
-              <label style={S.label}>HH Trabajadas * <span style={{ fontWeight: 400, textTransform: "none" as const }}>(personas × horas)</span></label>
-              <input type="number" min="0" step="0.5" value={L.tiempoRealHrs} onChange={e => patch({ tiempoRealHrs: e.target.value })} style={S.input} />
-            </div>
+          <div style={{ marginBottom: 13 }}>
+            <label style={S.label}>HH Trabajadas * <span style={{ fontWeight: 400, textTransform: "none" as const }}>(personas × horas)</span></label>
+            <input type="number" min="0" step="0.5" value={L.tiempoRealHrs} onChange={e => patch({ tiempoRealHrs: e.target.value })} style={S.input} />
           </div>
         </>
       )}
