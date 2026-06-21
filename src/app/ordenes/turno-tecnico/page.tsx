@@ -204,8 +204,8 @@ export default function ReporteTurnoTecnicoPage() {
     const diaOT = diaSemana(form.fecha);
     const grupoTurno = form.turno === "Nocturno" ? GRUPO_NOCTURNO : GRUPO_DIURNO;
 
-    // ── 1. OTs registradas — solo CMR y CMP del turno activo ───────────────
-    const paramsOrd = new URLSearchParams({ fecha: form.fecha, turno: form.turno, limit: "100" });
+    // ── 1. OTs registradas — CMR y CMP del turno activo (incluye OTs vinculadas a OPEPLANT)
+    const paramsOrd = new URLSearchParams({ fecha: form.fecha, turno: form.turno, limit: "100", incluirHijas: "true" });
     if (area) paramsOrd.set("area", area);
     const dataOrd: OTRegistrada[] = await fetch(`/api/ordenes?${paramsOrd}`).then(r => r.json()).catch(() => []);
     // Solo correctivos (CMR/CMP); los preventivos son de equipos de mantenimiento regular (G1-G4)
