@@ -4,7 +4,7 @@ import PrintClientTecnico from "./PrintClientTecnico";
 
 type Params = { params: Promise<{ id: string }> };
 
-type LineaDisplay = { tag: string; tipoOT: string; descripcion: string; resolucion: string; hh: number };
+type LineaDisplay = { tag: string; tipoOT: string; descripcion: string; resolucion: string; hh: number; observaciones?: string };
 
 type OTDisplay = {
   id: string; numeroOT: string; otJdeNumero?: string | null; tag: string; tipoOT: string;
@@ -65,6 +65,7 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
         descripcion: l.sintoma ?? l.descripcionEquipo ?? l.descripcionTrabajo ?? "",
         resolucion: (l as Record<string, unknown>).resolucionAplicada as string ?? "",
         hh: l.tiempoRealHrs ?? 0,
+        observaciones: l.observaciones ?? undefined,
       })),
     };
   });

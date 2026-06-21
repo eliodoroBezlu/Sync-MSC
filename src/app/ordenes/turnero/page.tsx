@@ -52,6 +52,7 @@ type Linea = {
   resolucionAplicada?: string;
   tiempoRealHrs?: number;
   descripcionEquipo?: string;
+  observaciones?: string;
 };
 
 type OTReactiva = {
@@ -102,7 +103,7 @@ const S = {
 
 type EditForm = {
   estado: string;
-  lineas: { tag: string; descripcionEquipo: string; tipoOT: string; sintoma: string; resolucionAplicada: string; tiempoRealHrs: string }[];
+  lineas: { tag: string; descripcionEquipo: string; tipoOT: string; sintoma: string; resolucionAplicada: string; tiempoRealHrs: string; observaciones: string }[];
 };
 
 export default function TurneroPage() {
@@ -190,6 +191,7 @@ export default function TurneroPage() {
         sintoma: l.sintoma ?? "",
         resolucionAplicada: l.resolucionAplicada ?? "",
         tiempoRealHrs: String(l.tiempoRealHrs ?? ""),
+        observaciones: l.observaciones ?? "",
       })),
     });
     setSaveErr("");
@@ -592,7 +594,7 @@ export default function TurneroPage() {
                 />
               </div>
 
-              <div>
+              <div style={{ marginBottom: 10 }}>
                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", marginBottom: 4 }}>Resolución aplicada</label>
                 <textarea
                   value={l.resolucionAplicada}
@@ -604,6 +606,22 @@ export default function TurneroPage() {
                   })}
                   rows={2}
                   style={{ width: "100%", border: "1px solid #cbd5e1", borderRadius: 8, padding: "7px 10px", fontSize: 13, resize: "vertical", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#7c3aed", textTransform: "uppercase", marginBottom: 4 }}>Observaciones generales</label>
+                <textarea
+                  value={l.observaciones}
+                  onChange={e => setEditForm(f => {
+                    if (!f) return f;
+                    const lineas = [...f.lineas];
+                    lineas[i] = { ...lineas[i], observaciones: e.target.value };
+                    return { ...f, lineas };
+                  })}
+                  rows={2}
+                  placeholder="Materiales usados, pendientes, notas adicionales…"
+                  style={{ width: "100%", border: "1px solid #ddd6fe", borderRadius: 8, padding: "7px 10px", fontSize: 13, resize: "vertical", boxSizing: "border-box" }}
                 />
               </div>
             </div>

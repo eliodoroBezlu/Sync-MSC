@@ -2,7 +2,7 @@
 import { useState } from "react";
 
 type BitacoraEntry = { turno: string; supervisor: string; nota: string; hhAtendidas: number; fecha?: string };
-type LineaDisplay  = { tag: string; tipoOT: string; descripcion: string; resolucion: string; hh: number };
+type LineaDisplay  = { tag: string; tipoOT: string; descripcion: string; resolucion: string; hh: number; observaciones?: string };
 
 type OTDisplay = {
   id: string; numeroOT: string; otJdeNumero?: string | null; tag: string; tipoOT: string;
@@ -172,7 +172,7 @@ export default function PrintClientTecnico({
               <th style={{ width: 28 }}>HRS</th>
               <th style={{ width: 60 }}>OT #</th>
               <th>DESCRIPCIÓN DEL TRABAJO</th>
-              <th style={{ width: 160 }}>NOTA DEL TÉCNICO</th>
+              <th style={{ width: 160 }}>OBS. GENERALES</th>
               <th style={{ width: 60, textAlign: "center" as const }}>ESTADO</th>
             </tr>
           </thead>
@@ -281,7 +281,9 @@ export default function PrintClientTecnico({
                         {l.descripcion && <div>{l.descripcion}</div>}
                         {l.resolucion  && <div style={{ color: "#16a34a", fontStyle: "italic" }}>✓ {l.resolucion}</div>}
                       </td>
-                      <td colSpan={2} style={{ fontSize: 7, color: "#64748b" }}></td>
+                      <td colSpan={2} style={{ fontSize: 7, color: "#475569" }}>
+                        {l.observaciones || ""}
+                      </td>
                     </tr>
                   )),
                 ];
@@ -299,8 +301,10 @@ export default function PrintClientTecnico({
                     {ot.descripcion}
                     {lineas?.[0]?.resolucion && <div style={{ color: "#16a34a", fontStyle: "italic", fontSize: 7 }}>✓ {lineas[0].resolucion}</div>}
                   </td>
-                  <td style={{ fontSize: 8, fontStyle: ot.nota ? "normal" : "italic", color: ot.nota ? "#1e293b" : "#94a3b8" }}>
-                    {ot.nota || "—"}
+                  <td style={{ fontSize: 8, color: "#1e293b" }}>
+                    {lineas?.[0]?.observaciones
+                      ? <span>{lineas[0].observaciones}</span>
+                      : <span style={{ fontStyle: "italic", color: "#94a3b8" }}>—</span>}
                     {ot.critica   && <div style={{ fontSize: 7, color: "#dc2626", fontWeight: "bold" }}>⚠ CRÍTICA</div>}
                     {ot.pendiente && <div style={{ fontSize: 7, color: "#d97706", fontWeight: "bold" }}>→ SGTE TURNO</div>}
                   </td>
