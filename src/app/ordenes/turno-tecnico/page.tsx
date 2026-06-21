@@ -331,7 +331,7 @@ export default function ReporteTurnoTecnicoPage() {
       notasOTs: Object.fromEntries(r.notasOTs.map(n => [n.otId, n.nota])),
       novedades: r.recomendaciones,
     });
-    setStep(1);
+    setStep(2);
     setView("nuevo");
   }
 
@@ -536,7 +536,7 @@ export default function ReporteTurnoTecnicoPage() {
         {/* ══ VISTA NUEVO ══════════════════════════════════════════════════════ */}
         {view === "nuevo" && (
           <>
-            <button onClick={() => setView("lista")} style={{ ...S.btnGhost, marginBottom: 12, fontSize: 13 }}>← Volver a lista</button>
+            <button onClick={() => { setEditandoId(null); setView("lista"); }} style={{ ...S.btnGhost, marginBottom: 12, fontSize: 13 }}>← Volver a lista</button>
             <Steps step={step} />
 
             {/* ── Step 1: Encabezado ── */}
