@@ -1219,7 +1219,7 @@ export default function RegistroOTPage() {
     if (!ref.ot.ordenTrabajoId) return;
     setSavingRevision(true);
     try {
-      await fetch(`/api/ordenes/${ref.ot.ordenTrabajoId}`, {
+      const res = await fetch(`/api/ordenes/${ref.ot.ordenTrabajoId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1229,7 +1229,11 @@ export default function RegistroOTPage() {
           nombreUsuario: user?.nombre,
         }),
       });
-      // Refrescar plan para reflejar nuevo estado
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? "Error al enviar a revisión");
+      }
+      // Actualizar estado local solo si la API confirmó el cambio
       setPlanRefs(prev => prev.map(r =>
         r.ot.ordenTrabajoId === ref.ot.ordenTrabajoId
           ? { ...r, ot: { ...r.ot, estado: "en_revision" } as OTPlan }

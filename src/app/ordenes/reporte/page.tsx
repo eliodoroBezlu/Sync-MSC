@@ -807,6 +807,22 @@ export default function ReporteOTPage() {
                             >
                               Ver detalle →
                             </button>
+                            {ot.estado === "en_proceso" && esSup && (
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const res = await fetch(`/api/ordenes/${ot._id}`, {
+                                    method: "PATCH", headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ estado: "pendiente_revision", cambio: "Enviada a revisión por " + (user?.nombre ?? "supervisor"), usuarioId: user?.id ?? "sistema", nombreUsuario: user?.nombre ?? "Supervisor" }),
+                                  });
+                                  const data = await res.json();
+                                  if (res.ok) setOrdenes((prev) => prev.map((o) => o._id === data.ot._id ? data.ot : o));
+                                }}
+                                style={{ width: "100%", background: "#fef3c7", color: "#92400e", border: "none", borderRadius: 6, padding: "5px 0", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                              >
+                                📋 Enviar a revisión
+                              </button>
+                            )}
                             {ot.estado === "pendiente_revision" && (
                               <>
                                 <button
@@ -1426,7 +1442,7 @@ export default function ReporteOTPage() {
           </div>
         )}
 
-        {(isConcluido || (esSup && ot.estado === "revisado")) && (
+        {(isConcluido || ot.estado === "revisado" || (esSup && ot.estado === "pendiente_revision")) && (
           <div style={{ ...S.card, background: "#f0fdf4", border: "1px solid #bbf7d0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <p style={{ fontSize: 13, color: "#15803d", fontWeight: 600, margin: 0 }}>
               {isConcluido ? "OT concluida — solo lectura." : "OT revisada — lista para concluir."}
