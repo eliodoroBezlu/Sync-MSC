@@ -485,7 +485,7 @@ export default function ReporteTurnoTecnicoPage() {
                       <button onClick={() => setDetalle(r)} style={S.btnGhost}>Ver</button>
                       <button onClick={() => window.open(`/ordenes/turno-tecnico/${r._id}/imprimir`, "_blank")}
                         style={{ ...S.btnGreen, padding: "8px 14px", fontSize: 13 }}>🖨 PDF</button>
-                      {user && user.rol === 1 && (
+                      {user && user.rol <= 4 && (
                         <button onClick={() => cargarParaEditar(r)}
                           style={{ padding: "8px 12px", background: "#fefce8", color: "#d97706", border: "1px solid #fde68a", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
                           ✏ Editar
