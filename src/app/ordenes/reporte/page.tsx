@@ -1442,7 +1442,7 @@ export default function ReporteOTPage() {
           </div>
         )}
 
-        {(isConcluido || ot.estado === "revisado" || (esSup && ot.estado === "pendiente_revision")) && (
+        {(isConcluido || ot.estado === "revisado" || ot.estado === "en_proceso" || (esSup && ot.estado === "pendiente_revision")) && (
           <div style={{ ...S.card, background: "#f0fdf4", border: "1px solid #bbf7d0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <p style={{ fontSize: 13, color: "#15803d", fontWeight: 600, margin: 0 }}>
               {isConcluido ? "OT concluida — solo lectura." : "OT revisada — lista para concluir."}
