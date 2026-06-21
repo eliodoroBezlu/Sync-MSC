@@ -3,6 +3,9 @@ import { NextRequest } from "next/server";
 
 type BitacoraEntry = { turno: string; supervisor: string; nota: string; hhAtendidas: number; fecha?: string };
 
+// Offset por día de la semana (lunes = 0)
+const DIA_OFFSET: Record<string, number> = { Lu: 0, Ma: 1, Mi: 2, Ju: 3, Vi: 4, Sa: 5, Do: 6 };
+
 function serializePrograma(
   p: Record<string, unknown> & {
     otsProgramadas?: Record<string, unknown>[];
@@ -11,6 +14,8 @@ function serializePrograma(
   },
   bitacoraMap: Record<string, BitacoraEntry[]> = {}
 ) {
+  const fechaIni = p.fechaInicio instanceof Date ? p.fechaInicio : p.fechaInicio ? new Date(p.fechaInicio as string) : null;
+
   return {
     _id: p.id,
     semana: p.semana, anio: p.anio, disciplina: p.disciplina,
@@ -21,9 +26,15 @@ function serializePrograma(
     hhReactivoSemana: p.hhReactivoSemana,
     otsProgramadas: (p.otsProgramadas ?? []).map((o) => {
       const isOpeplant = Boolean(o.esGuardia) || String(o.tag ?? "").includes("OPEPLANT");
-      const key = isOpeplant
-        ? `${String(o.numeroOT ?? "").toUpperCase()}|${String(o.grupo ?? "").toUpperCase()}`
-        : null;
+      // Clave exacta por OT + turno + fecha del día específico de esta fila
+      let key: string | null = null;
+      if (isOpeplant && fechaIni) {
+        const offset = DIA_OFFSET[String(o.dia ?? "")] ?? -1;
+        if (offset >= 0) {
+          const fechaOT = new Date(fechaIni.getTime() + offset * 86400000).toISOString().slice(0, 10);
+          key = `${String(o.numeroOT ?? "").toUpperCase()}|${String(o.grupo ?? "").toUpperCase()}|${fechaOT}`;
+        }
+      }
       return {
         numeroOT: o.numeroOT, tipoOT: o.tipoOT, tipoTrabajo: o.tipoTrabajo,
         prioridad: o.prioridad, descripcion: o.descripcion, tag: o.tag,
@@ -97,17 +108,20 @@ export async function GET(req: NextRequest) {
     for (const rep of reportesTecnicos) {
       const items = Array.isArray(rep.otsPlanData) ? rep.otsPlanData as Record<string, unknown>[] : [];
       const turnoUp = String(rep.turno ?? "").toUpperCase();
+      const fechaStr = rep.fecha.toISOString().slice(0, 10);
       for (const item of items) {
         const numOT = String(item.numeroOT ?? "").toUpperCase();
         if (!numOT) continue;
-        const key = `${numOT}|${turnoUp}`;
+        // Clave exacta: OT + turno (DIURNO/NOCTURNO) + fecha del día
+        // Así cada fila OtProgramada solo recibe el reporte de SU día y turno
+        const key = `${numOT}|${turnoUp}|${fechaStr}`;
         if (!bitacoraMap[key]) bitacoraMap[key] = [];
         bitacoraMap[key].push({
           turno: rep.turno,
           supervisor: rep.supervisorNombre ?? "",
           nota: "",
           hhAtendidas: Number(item.hhTotal) || 0,
-          fecha: rep.fecha.toISOString().slice(0, 10),
+          fecha: fechaStr,
         });
       }
     }
