@@ -1490,10 +1490,12 @@ export default function ReporteOTPage() {
                         ...otBase.tecnicos,
                         ...mismos.flatMap(h => h.tecnicos).filter(t => !nombresYa.has(t.nombreCompleto)),
                       ];
-                      // Fusionar registrosDiarios ordenados por fecha
+                      // Fusionar registrosDiarios de TODOS los hermanos (no solo misma semana)
+                      // para capturar avances agregados en semanas distintas al padre
+                      const todosHermanos = hermanos.filter(h => h._id !== otBase._id);
                       const diariosMerged = [
                         ...(otBase.registrosDiarios ?? []),
-                        ...mismos.flatMap(h => h.registrosDiarios ?? []),
+                        ...todosHermanos.flatMap(h => h.registrosDiarios ?? []),
                       ].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
                       // Fusionar lineas: misma tag+tipoOT → combinar adjuntos, tareas y observaciones
                       const lineasMap = new Map(otBase.lineas.map(l => [`${l.tag}::${l.tipoOT}`, { ...l, adjuntos: [...(l.adjuntos ?? [])] }]));
