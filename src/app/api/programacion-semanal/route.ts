@@ -90,6 +90,7 @@ export async function GET(req: NextRequest) {
   });
 
   // Construir mapa de bitácora desde ReporteTurno técnicos del período
+  // usando HH reales (tiempoRealHrs de sub-OTs registrados), NO el hhTotal planificado
   const allFechas = programas
     .filter(p => p.fechaInicio && p.fechaFin)
     .map(p => ({ ini: p.fechaInicio as Date, fin: p.fechaFin as Date }));
@@ -102,25 +103,45 @@ export async function GET(req: NextRequest) {
 
     const reportesTecnicos = await prisma.reporteTurno.findMany({
       where: { tipo: "tecnico", fecha: { gte: minFecha, lte: maxFecha } },
-      select: { id: true, turno: true, fecha: true, supervisorNombre: true, otsPlanData: true },
+      select: { id: true, turno: true, fecha: true, supervisorNombre: true, otsPlanData: true, otIds: true },
     });
 
+    // Batch fetch HH reales de todos los sub-OTs registrados en estos reportes
+    const allRealIds = [...new Set(
+      reportesTecnicos.flatMap(r => (r.otIds as string[]).filter(id => !String(id).startsWith("plan-")))
+    )];
+
+    const hhPorOtId: Record<string, number> = {};
+    if (allRealIds.length) {
+      const ordenes = await prisma.ordenTrabajo.findMany({
+        where: { id: { in: allRealIds } },
+        include: { lineas: { select: { tiempoRealHrs: true } } },
+      });
+      for (const ot of ordenes) {
+        hhPorOtId[ot.id] = ot.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0);
+      }
+    }
+
     for (const rep of reportesTecnicos) {
-      const items = Array.isArray(rep.otsPlanData) ? rep.otsPlanData as Record<string, unknown>[] : [];
       const turnoUp = String(rep.turno ?? "").toUpperCase();
       const fechaStr = rep.fecha.toISOString().slice(0, 10);
+
+      // HH reales = suma de tiempoRealHrs de los sub-OTs (CMR/CMP) registrados en este turno
+      const hhReales = (rep.otIds as string[])
+        .filter(id => !String(id).startsWith("plan-"))
+        .reduce((s, id) => s + (hhPorOtId[id] ?? 0), 0);
+
+      const items = Array.isArray(rep.otsPlanData) ? rep.otsPlanData as Record<string, unknown>[] : [];
       for (const item of items) {
         const numOT = String(item.numeroOT ?? "").toUpperCase();
         if (!numOT) continue;
-        // Clave exacta: OT + turno (DIURNO/NOCTURNO) + fecha del día
-        // Así cada fila OtProgramada solo recibe el reporte de SU día y turno
         const key = `${numOT}|${turnoUp}|${fechaStr}`;
         if (!bitacoraMap[key]) bitacoraMap[key] = [];
         bitacoraMap[key].push({
           turno: rep.turno,
           supervisor: rep.supervisorNombre ?? "",
           nota: "",
-          hhAtendidas: Number(item.hhTotal) || 0,
+          hhAtendidas: Math.round(hhReales * 10) / 10,
           fecha: fechaStr,
         });
       }
