@@ -19,6 +19,7 @@ const migraciones = [
   "ALTER TABLE \"Usuario\" ADD COLUMN IF NOT EXISTS \"esContratista\" BOOLEAN NOT NULL DEFAULT false",
   "ALTER TABLE \"Usuario\" ADD COLUMN IF NOT EXISTS \"fechaExpiracion\" TIMESTAMP(3)",
   "ALTER TABLE \"OtProgramada\" ADD COLUMN IF NOT EXISTS \"personalAsignadoIds\" TEXT[] NOT NULL DEFAULT '{}'",
+  "ALTER TABLE \"OtProgramada\" ADD COLUMN IF NOT EXISTS bitacora JSONB NOT NULL DEFAULT '[]'",
 
   // ── Competencias y Desempeño (2026-06) ──────────────────────────────────────
   `CREATE TABLE IF NOT EXISTS "TecnicoCompetencia" (
@@ -155,6 +156,17 @@ const migraciones = [
       console.log('[migrate] Skip:', e.message.slice(0, 100));
     }
   }
+  // OT 892901 cerrada por técnico sin permiso → revertir a pendiente_revision
+  try {
+    const res = await pool.query(`
+      UPDATE "OrdenTrabajo" SET estado = 'pendiente_revision'
+      WHERE "numeroOT" = '892901' AND estado IN ('revisado','concluido')
+    `);
+    if (res.rowCount > 0) console.log('[migrate] OT 892901 revertida a pendiente_revision');
+  } catch(e) {
+    console.log('[migrate] OT 892901 skip:', e.message.slice(0, 80));
+  }
+
   // Resetear OtProgramada huérfanas (apuntan a OrdenTrabajo eliminadas) — cualquier estado
   try {
     const res = await pool.query(`
