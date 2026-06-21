@@ -103,7 +103,8 @@ export async function GET(req: NextRequest) {
 
     const reportesTecnicos = await prisma.reporteTurno.findMany({
       where: { tipo: "tecnico", fecha: { gte: minFecha, lte: maxFecha } },
-      select: { id: true, turno: true, fecha: true, supervisorNombre: true, otsPlanData: true, otIds: true },
+      select: { id: true, turno: true, fecha: true, supervisorNombre: true, otsPlanData: true, otIds: true, createdAt: true },
+      orderBy: { createdAt: "asc" }, // asc para que el más reciente sobreescriba
     });
 
     // Batch fetch HH reales de todos los sub-OTs registrados en estos reportes
@@ -136,14 +137,14 @@ export async function GET(req: NextRequest) {
         const numOT = String(item.numeroOT ?? "").toUpperCase();
         if (!numOT) continue;
         const key = `${numOT}|${turnoUp}|${fechaStr}`;
-        if (!bitacoraMap[key]) bitacoraMap[key] = [];
-        bitacoraMap[key].push({
+        // Un solo entry por (OT, turno, fecha): el más reciente sobreescribe (orden asc → último gana)
+        bitacoraMap[key] = [{
           turno: rep.turno,
           supervisor: rep.supervisorNombre ?? "",
           nota: "",
           hhAtendidas: Math.round(hhReales * 10) / 10,
           fecha: fechaStr,
-        });
+        }];
       }
     }
   }
