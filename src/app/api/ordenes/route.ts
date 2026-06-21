@@ -241,6 +241,15 @@ export async function POST(req: NextRequest) {
       });
 
       if (existente) {
+        // Bloquear avances si la OT ya fue enviada a revisión o está cerrada
+        const estadosBloqueados = ["pendiente_revision", "revisado", "concluido"];
+        if (estadosBloqueados.includes(existente.estado)) {
+          return NextResponse.json(
+            { ok: false, error: `No se puede agregar un avance — la OT está en estado "${existente.estado}". Contacta al supervisor.` },
+            { status: 409 }
+          );
+        }
+
         const registroData = {
           fecha: new Date(body.fecha),
           tecnico: body.tecnicos?.[0]?.nombreCompleto || "Técnico",

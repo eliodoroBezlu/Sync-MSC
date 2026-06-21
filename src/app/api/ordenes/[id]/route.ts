@@ -157,6 +157,14 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 
     // Agregar avance diario — upsert por fecha+usuario para evitar duplicados
     if (registroDiario) {
+      const otActual = await prisma.ordenTrabajo.findUnique({ where: { id }, select: { estado: true } });
+      const estadosBloqueados = ["pendiente_revision", "revisado", "concluido"];
+      if (otActual && estadosBloqueados.includes(otActual.estado)) {
+        return Response.json(
+          { ok: false, error: `No se puede agregar un avance — la OT está en estado "${otActual.estado}". Contacta al supervisor.` },
+          { status: 409 }
+        );
+      }
       const rdUsuarioId = registroDiario.usuarioId ?? usuarioId ?? null;
       const rdFecha = new Date(registroDiario.fecha);
       // Buscar si ya existe un registro del mismo día y técnico

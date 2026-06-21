@@ -1191,7 +1191,7 @@ export default function RegistroOTPage() {
     if (!avanceRef?.ot.ordenTrabajoId) return;
     setSavingAvance(true);
     try {
-      await fetch(`/api/ordenes/${avanceRef.ot.ordenTrabajoId}`, {
+      const res = await fetch(`/api/ordenes/${avanceRef.ot.ordenTrabajoId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1208,8 +1208,14 @@ export default function RegistroOTPage() {
           nombreUsuario: user?.nombre,
         }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? "Error al guardar avance");
+      }
       setAvanceRef(null);
       setAvanceForm({ hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "" });
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Error al guardar avance");
     } finally {
       setSavingAvance(false);
     }
