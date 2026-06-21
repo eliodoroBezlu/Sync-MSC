@@ -115,28 +115,34 @@ export async function GET(req: NextRequest) {
     });
 
     // Batch fetch HH reales de todos los sub-OTs registrados en estos reportes
+    // También necesitamos otJdeNumero para saber a qué OPEPLANT pertenece cada sub-OT
     const allRealIds = [...new Set(
       reportesTecnicos.flatMap(r => (r.otIds as string[]).filter(id => !String(id).startsWith("plan-")))
     )];
 
     const hhPorOtId: Record<string, number> = {};
+    const jdeNumPorOtId: Record<string, string> = {}; // subOtId -> otJdeNumero (uppercase)
     if (allRealIds.length) {
       const ordenes = await prisma.ordenTrabajo.findMany({
         where: { id: { in: allRealIds } },
-        include: { lineas: { select: { tiempoRealHrs: true } } },
+        select: { id: true, otJdeNumero: true, lineas: { select: { tiempoRealHrs: true } } },
       });
       for (const ot of ordenes) {
         hhPorOtId[ot.id] = ot.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0);
+        if (ot.otJdeNumero) jdeNumPorOtId[ot.id] = ot.otJdeNumero.toUpperCase();
       }
     }
 
     for (const rep of reportesTecnicos) {
       const fechaStr = rep.fecha.toISOString().slice(0, 10);
 
-      // HH reales = suma de tiempoRealHrs de los sub-OTs (CMR/CMP) registrados en este turno
-      const hhReales = (rep.otIds as string[])
-        .filter(id => !String(id).startsWith("plan-"))
-        .reduce((s, id) => s + (hhPorOtId[id] ?? 0), 0);
+      // Agrupar HH por OPEPLANT padre (otJdeNumero), no sumar todo en bruto
+      // Cada sub-OT (CMR/CMP) tiene otJdeNumero = numeroOT del OPEPLANT padre
+      const hhByJdeNum: Record<string, number> = {};
+      for (const id of (rep.otIds as string[]).filter(id => !String(id).startsWith("plan-"))) {
+        const jde = jdeNumPorOtId[id];
+        if (jde) hhByJdeNum[jde] = (hhByJdeNum[jde] ?? 0) + (hhPorOtId[id] ?? 0);
+      }
 
       const items = Array.isArray(rep.otsPlanData) ? rep.otsPlanData as Record<string, unknown>[] : [];
       for (const item of items) {
@@ -148,7 +154,7 @@ export async function GET(req: NextRequest) {
           turno: rep.turno,
           supervisor: rep.supervisorNombre ?? "",
           nota: "",
-          hhAtendidas: Math.round(hhReales * 10) / 10,
+          hhAtendidas: Math.round((hhByJdeNum[numOT] ?? 0) * 10) / 10,
           fecha: fechaStr,
         });
       }
