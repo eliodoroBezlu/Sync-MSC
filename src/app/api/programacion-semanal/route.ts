@@ -12,7 +12,8 @@ function serializePrograma(
     personal?: Record<string, unknown>[];
     resumenDias?: Record<string, unknown>[];
   },
-  bitacoraMap: Record<string, BitacoraEntry[]> = {}
+  bitacoraMap: Record<string, BitacoraEntry[]> = {},
+  hhRealesPorOrdenId: Record<string, number> = {}
 ) {
   const fechaIni = p.fechaInicio instanceof Date ? p.fechaInicio : p.fechaInicio ? new Date(p.fechaInicio as string) : null;
 
@@ -50,6 +51,12 @@ function serializePrograma(
         bitacora: key && bitacoraMap[key]
           ? bitacoraMap[key]
           : (Array.isArray(o.bitacora) ? o.bitacora : []),
+        // HH reales: desde bitácora (OPEPLANT) o desde OrdenTrabajo.lineas (OT regular)
+        hhReales: key && bitacoraMap[key]
+          ? bitacoraMap[key].reduce((s, b) => s + (b.hhAtendidas ?? 0), 0)
+          : (o.ordenTrabajoId && hhRealesPorOrdenId[o.ordenTrabajoId as string] !== undefined)
+            ? hhRealesPorOrdenId[o.ordenTrabajoId as string]
+            : null,
       };
     }),
     personal: (p.personal ?? []).map((per) => ({
@@ -149,9 +156,32 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Batch fetch HH reales de OTs regulares via ordenTrabajoId
+  const allOrdenIds = [...new Set(
+    programas.flatMap(p =>
+      ((p.otsProgramadas ?? []) as Record<string, unknown>[])
+        .map(o => o.ordenTrabajoId as string | null)
+        .filter((id): id is string => !!id)
+    )
+  )];
+
+  const hhRealesPorOrdenId: Record<string, number> = {};
+  if (allOrdenIds.length) {
+    const ordenes = await prisma.ordenTrabajo.findMany({
+      where: { id: { in: allOrdenIds } },
+      include: { lineas: { select: { tiempoRealHrs: true } } },
+    });
+    for (const ot of ordenes) {
+      hhRealesPorOrdenId[ot.id] = Math.round(
+        ot.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0) * 10
+      ) / 10;
+    }
+  }
+
   return Response.json(programas.map(p => serializePrograma(
     p as Parameters<typeof serializePrograma>[0],
-    bitacoraMap
+    bitacoraMap,
+    hhRealesPorOrdenId
   )));
 }
 

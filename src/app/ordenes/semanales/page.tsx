@@ -66,6 +66,33 @@ type BitacoraEntry = { turno: string; supervisor: string; nota: string; hhAtendi
 
 type Vista = "tabla" | "kanban" | "tecnico";
 
+// ─── HH Estimadas vs Reales ───────────────────────────────────────────────────
+function HHBar({ estimadas, reales }: { estimadas: number; reales: number | null | undefined }) {
+  if (reales === null || reales === undefined) {
+    return <span style={{ fontSize: 11, color: "#94a3b8" }}>{estimadas}HH est.</span>;
+  }
+  const ratio = estimadas > 0 ? reales / estimadas : 0;
+  const pct   = Math.min(ratio * 100, 100);
+  const color = ratio <= 1 ? "#16a34a" : ratio <= 1.2 ? "#ea580c" : "#dc2626";
+  const desvPct = Math.round((ratio - 1) * 100);
+  return (
+    <div style={{ minWidth: 88 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 10, marginBottom: 2, fontWeight: 700 }}>
+        <span style={{ color }}>{reales}HH</span>
+        <span style={{ color: "#94a3b8", fontWeight: 400 }}>/ {estimadas}HH</span>
+      </div>
+      <div style={{ height: 5, background: "#e2e8f0", borderRadius: 3, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 3, transition: "width 0.4s" }} />
+      </div>
+      {reales > 0 && (
+        <div style={{ fontSize: 9, color: desvPct > 0 ? color : "#16a34a", marginTop: 1, textAlign: "right" }}>
+          {desvPct > 0 ? `+${desvPct}% sobre` : desvPct < 0 ? `${desvPct}%` : "100%"}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function isoWeekNumber(date: Date): number {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -718,8 +745,8 @@ function VistaTabla({
                             )
                           )}
                         </td>
-                        <td style={{ padding: "10px 14px", whiteSpace: "nowrap", fontSize: 12, color: "#475569" }}>
-                          {ot.personas}p × {ot.hrsTrabajo}h = <b style={{ color: "#0f2847" }}>{ot.hhTotal}HH</b>
+                        <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
+                          <HHBar estimadas={ot.hhTotal} reales={ot.hhReales} />
                         </td>
                       </tr>
                     );
@@ -898,8 +925,8 @@ function VistaTecnico({
                           👤 <b>{ot.personalAsignado.join(" / ")}</b>
                         </div>
                       )}
-                      <div style={{ marginTop: 4, fontSize: 11, color: "#94a3b8" }}>
-                        {ot.personas}p × {ot.hrsTrabajo}h = <b style={{ color: "#475569" }}>{ot.hhTotal}HH</b>
+                      <div style={{ marginTop: 6 }}>
+                        <HHBar estimadas={ot.hhTotal} reales={ot.hhReales} />
                       </div>
                     </div>
                     <div style={{ flexShrink: 0 }}>

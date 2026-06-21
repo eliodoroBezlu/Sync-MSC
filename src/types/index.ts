@@ -317,6 +317,10 @@ export interface IOTProgramada {
   // Referencia a la OT interna cuando ya fue registrada por el técnico
   ordenTrabajoId?:  string; // ref a OrdenTrabajo._id
   ordenTrabajoNum?: string; // número interno "#1", "#2"…
+  // HH reales ejecutadas (de lineas.tiempoRealHrs o bitácora OPEPLANT)
+  hhReales?: number | null;
+  esGuardia?: boolean;
+  bitacora?: unknown[];
 }
 
 export interface IResumenDia {
