@@ -256,11 +256,11 @@ export default function PrintClientTecnico({
               if (lineas && lineas.length > 1) {
                 // Encabezado de OT + una sub-fila por línea
                 return [
-                  // Fila encabezado de OT
+                  // Fila encabezado de OT (solo número y total HH — técnicos están en el encabezado del documento)
                   <tr key={`${ot.id}-hdr`} style={{ background: "#e8f0fe" }}>
                     <td style={{ textAlign: "center", fontSize: 8, fontWeight: "bold" }}>{baseIdx}</td>
                     <td colSpan={4} style={{ fontSize: 8, fontWeight: "bold", color: "#1e40af" }}>
-                      OT {otNum(ot)} · {ot.tecnicos.join(", ")} · {ot.hhTotal}HH
+                      OT {otNum(ot)} · Total: {ot.hhTotal}HH
                     </td>
                     <td colSpan={2} style={{ fontSize: 8, fontStyle: ot.nota ? "normal" : "italic", color: ot.nota ? "#1e293b" : "#94a3b8" }}>
                       {ot.nota || "—"}

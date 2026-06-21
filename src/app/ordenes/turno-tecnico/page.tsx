@@ -677,9 +677,12 @@ export default function ReporteTurnoTecnicoPage() {
                                     </div>
                                   )}
                                   {sel && (
-                                    <div style={{ marginTop: 6 }} onClick={e => e.stopPropagation()}>
+                                    <div style={{ marginTop: 8 }} onClick={e => e.stopPropagation()}>
+                                      <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#2563eb", letterSpacing: "0.05em", textTransform: "uppercase" as const, marginBottom: 3 }}>
+                                        📝 Nota del técnico (columna PDF)
+                                      </label>
                                       <input value={form.notasOTs[selId] ?? ""} onChange={e => patchForm({ notasOTs: { ...form.notasOTs, [selId]: e.target.value } })}
-                                        placeholder="Nota sobre esta OT (opcional)…" style={{ ...S.input, fontSize: 12 }} />
+                                        placeholder="Ej: válvula operativa al 80%, pendiente ajuste fino…" style={{ ...S.input, fontSize: 12, borderColor: "#93c5fd" }} />
                                     </div>
                                   )}
                                 </div>
@@ -762,9 +765,12 @@ export default function ReporteTurnoTecnicoPage() {
                                     </div>
                                   )}
                                   {sel && (
-                                    <div style={{ marginTop: 6 }} onClick={e => e.stopPropagation()}>
+                                    <div style={{ marginTop: 8 }} onClick={e => e.stopPropagation()}>
+                                      <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#2563eb", letterSpacing: "0.05em", textTransform: "uppercase" as const, marginBottom: 3 }}>
+                                        📝 Nota del técnico (columna PDF)
+                                      </label>
                                       <input value={form.notasOTs[o._id] ?? ""} onChange={e => patchForm({ notasOTs: { ...form.notasOTs, [o._id]: e.target.value } })}
-                                        placeholder="Nota sobre esta OT (opcional)…" style={{ ...S.input, fontSize: 12 }} />
+                                        placeholder="Ej: válvula operativa al 80%, pendiente ajuste fino…" style={{ ...S.input, fontSize: 12, borderColor: "#93c5fd" }} />
                                     </div>
                                   )}
                                 </div>
@@ -818,9 +824,12 @@ export default function ReporteTurnoTecnicoPage() {
                                     </div>
                                   )}
                                   {sel && (
-                                    <div style={{ marginTop: 6 }} onClick={e => e.stopPropagation()}>
+                                    <div style={{ marginTop: 8 }} onClick={e => e.stopPropagation()}>
+                                      <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#2563eb", letterSpacing: "0.05em", textTransform: "uppercase" as const, marginBottom: 3 }}>
+                                        📝 Nota del técnico (columna PDF)
+                                      </label>
                                       <input value={form.notasOTs[o._id] ?? ""} onChange={e => patchForm({ notasOTs: { ...form.notasOTs, [o._id]: e.target.value } })}
-                                        placeholder="Nota sobre esta OT (opcional)…" style={{ ...S.input, fontSize: 12 }} />
+                                        placeholder="Ej: válvula operativa al 80%, pendiente ajuste fino…" style={{ ...S.input, fontSize: 12, borderColor: "#93c5fd" }} />
                                     </div>
                                   )}
                                 </div>
