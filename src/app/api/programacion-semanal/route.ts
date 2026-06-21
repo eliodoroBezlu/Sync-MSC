@@ -33,7 +33,7 @@ function serializePrograma(
         const offset = DIA_OFFSET[String(o.dia ?? "")] ?? -1;
         if (offset >= 0) {
           const fechaOT = new Date(fechaIni.getTime() + offset * 86400000).toISOString().slice(0, 10);
-          key = `${String(o.numeroOT ?? "").toUpperCase()}|${String(o.grupo ?? "").toUpperCase()}|${fechaOT}`;
+          key = `${String(o.numeroOT ?? "").toUpperCase()}|${fechaOT}`;
         }
       }
       return {
@@ -131,7 +131,6 @@ export async function GET(req: NextRequest) {
     }
 
     for (const rep of reportesTecnicos) {
-      const turnoUp = String(rep.turno ?? "").toUpperCase();
       const fechaStr = rep.fecha.toISOString().slice(0, 10);
 
       // HH reales = suma de tiempoRealHrs de los sub-OTs (CMR/CMP) registrados en este turno
@@ -143,15 +142,15 @@ export async function GET(req: NextRequest) {
       for (const item of items) {
         const numOT = String(item.numeroOT ?? "").toUpperCase();
         if (!numOT) continue;
-        const key = `${numOT}|${turnoUp}|${fechaStr}`;
-        // Un solo entry por (OT, turno, fecha): el más reciente sobreescribe (orden asc → último gana)
-        bitacoraMap[key] = [{
+        const key = `${numOT}|${fechaStr}`;
+        if (!bitacoraMap[key]) bitacoraMap[key] = [];
+        bitacoraMap[key].push({
           turno: rep.turno,
           supervisor: rep.supervisorNombre ?? "",
           nota: "",
           hhAtendidas: Math.round(hhReales * 10) / 10,
           fecha: fechaStr,
-        }];
+        });
       }
     }
   }
