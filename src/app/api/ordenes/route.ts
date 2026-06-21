@@ -117,9 +117,18 @@ export async function GET(req: NextRequest) {
   const incluirArchivados = searchParams.get("incluirArchivados") === "true";
   // incluirHijas=true: muestra OTs hijas de OPEPLANT (para Reporte de OT del supervisor)
   const incluirHijas = searchParams.get("incluirHijas") === "true";
-  // Usar hora Bolivia (UTC-4) para determinar si es domingo local
+  // Ventana de cierre semanal OPEPLANT (hora Bolivia UTC-4):
+  // - Domingo: turno diurno cierra OTs
+  // - Lunes hasta 6:00 AM: turno nocturno del domingo cierra OTs
+  // - Lunes y martes todo el día: supervisor revisa y cierra
   const boliviaTime = new Date(Date.now() - 4 * 60 * 60 * 1000);
-  const esDomingo = boliviaTime.getUTCDay() === 0;
+  const diaSemana = boliviaTime.getUTCDay(); // 0=Dom, 1=Lun, 2=Mar
+  const horaBolivia = boliviaTime.getUTCHours();
+  const enVentanaCierre =
+    diaSemana === 0 ||                          // Domingo completo
+    diaSemana === 1 ||                          // Lunes completo (supervisor revisa)
+    diaSemana === 2 ||                          // Martes completo (supervisor cierra)
+    (diaSemana === 3 && horaBolivia < 6);       // Miércoles antes de 6 AM (fin turno nocturno martes)
 
   // Capa 3: auto-archivo — ocultar OTs concluidas con más de 90 días si no se pide el historial completo.
   // Se omite cuando: el usuario pide explícitamente el historial, hay un filtro de fecha propio del cliente,
@@ -140,7 +149,7 @@ export async function GET(req: NextRequest) {
   // Ocultar OTs OPEPLANT de plan pendientes fuera del domingo.
   // Cuando se consulta por otJdeNumero explícito (ej: para PDF merge) se necesitan
   // TODOS los registros sin importar estado, así que se omite este filtro.
-  if (!esDomingo && !otJdeNumero) {
+  if (!enVentanaCierre && !otJdeNumero) {
     andConditions.push({ NOT: { estado: "pendiente_revision", origenPlan: true, otJdeNumero: { not: null } } });
   }
 
