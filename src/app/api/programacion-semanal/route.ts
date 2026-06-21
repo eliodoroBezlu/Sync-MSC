@@ -33,7 +33,9 @@ function serializePrograma(
         const offset = DIA_OFFSET[String(o.dia ?? "")] ?? -1;
         if (offset >= 0) {
           const fechaOT = new Date(fechaIni.getTime() + offset * 86400000).toISOString().slice(0, 10);
-          key = `${String(o.numeroOT ?? "").toUpperCase()}|${fechaOT}`;
+          // o.grupo es "Diurno"/"Nocturno" para OTs OPEPLANT — coincide con rep.turno en el mapa
+          const grupoUp = String(o.grupo ?? "").toUpperCase();
+          key = `${String(o.numeroOT ?? "").toUpperCase()}|${grupoUp}|${fechaOT}`;
         }
       }
       return {
@@ -134,9 +136,10 @@ export async function GET(req: NextRequest) {
     }
 
     for (const rep of reportesTecnicos) {
+      const turnoUp = String(rep.turno ?? "").toUpperCase();
       const fechaStr = rep.fecha.toISOString().slice(0, 10);
 
-      // Agrupar HH por OPEPLANT padre (otJdeNumero), no sumar todo en bruto
+      // Agrupar HH por OPEPLANT padre (otJdeNumero), no sumar el total bruto del reporte
       // Cada sub-OT (CMR/CMP) tiene otJdeNumero = numeroOT del OPEPLANT padre
       const hhByJdeNum: Record<string, number> = {};
       for (const id of (rep.otIds as string[]).filter(id => !String(id).startsWith("plan-"))) {
@@ -148,15 +151,15 @@ export async function GET(req: NextRequest) {
       for (const item of items) {
         const numOT = String(item.numeroOT ?? "").toUpperCase();
         if (!numOT) continue;
-        const key = `${numOT}|${fechaStr}`;
-        if (!bitacoraMap[key]) bitacoraMap[key] = [];
-        bitacoraMap[key].push({
+        // Clave idéntica al lookup en serializePrograma: numOT|TURNO|fecha
+        const key = `${numOT}|${turnoUp}|${fechaStr}`;
+        bitacoraMap[key] = [{
           turno: rep.turno,
           supervisor: rep.supervisorNombre ?? "",
           nota: "",
           hhAtendidas: Math.round((hhByJdeNum[numOT] ?? 0) * 10) / 10,
           fecha: fechaStr,
-        });
+        }];
       }
     }
   }
