@@ -130,7 +130,7 @@ export async function GET(req: NextRequest) {
   const andConditions: object[] = [];
 
   // Búsqueda directa por número de OT o número JDE — bypassa filtros de visibilidad.
-  // Sirve para encontrar cualquier OT (incluidas OPEPLANT) sin importar parentOtId ni estado.
+  // Para OPEPLANT retorna solo la más reciente (dedup por otJdeNumero), igual que la lista principal.
   if (buscarNumero) {
     const num = buscarNumero.trim();
     const ots = await prisma.ordenTrabajo.findMany({
@@ -142,9 +142,18 @@ export async function GET(req: NextRequest) {
       },
       include,
       orderBy: { fecha: "desc" },
-      take: 20,
+      take: 50,
     });
-    return NextResponse.json(ots.map(o => serializeOT(o as Parameters<typeof serializeOT>[0])));
+    // Dedup: una por otJdeNumero (la más reciente ya viene primero por orderBy fecha desc)
+    const seen = new Set<string>();
+    const deduped = ots.filter(o => {
+      if (o.origenPlan && o.otJdeNumero) {
+        if (seen.has(o.otJdeNumero)) return false;
+        seen.add(o.otJdeNumero);
+      }
+      return true;
+    });
+    return NextResponse.json(deduped.map(o => serializeOT(o as Parameters<typeof serializeOT>[0])));
   }
 
   // Ocultar OTs hijas de OPEPLANT del Reporte principal, EXCEPTO las de turno especial
@@ -185,16 +194,16 @@ export async function GET(req: NextRequest) {
     take: limit,
   });
 
-  // Deduplicar OTs de plan con mismo otJdeNumero+programacionSemanalId.
-  // Se omite cuando se consulta por otJdeNumero explícito — en ese caso se necesitan
-  // TODOS los registros (ej: para fusionar datos al generar el PDF).
+  // Deduplicar OTs OPEPLANT: mostrar solo la más reciente por otJdeNumero.
+  // El supervisor ve UNA sola OT por número de planta; el PDF ya consolida todos los avances de todas las semanas.
+  // Se omite cuando se consulta por otJdeNumero explícito (PDF merge necesita todos los registros).
   let resultado = ordenes;
   if (!otJdeNumero) {
     const seen = new Set<string>();
     resultado = ordenes.filter(o => {
       const rec = o as Record<string, unknown>;
-      if (rec.origenPlan && rec.otJdeNumero && rec.programacionSemanalId) {
-        const key = `${rec.programacionSemanalId}::${rec.otJdeNumero}`;
+      if (rec.origenPlan && rec.otJdeNumero) {
+        const key = String(rec.otJdeNumero);
         if (seen.has(key)) return false;
         seen.add(key);
       }
