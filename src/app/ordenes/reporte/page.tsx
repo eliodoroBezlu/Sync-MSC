@@ -729,6 +729,14 @@ export default function ReporteOTPage() {
             ) : (
               ordenesFiltradas.map((ot) => {
                 const color = ESTADO_COLOR[ot.estado] ?? "#64748b";
+                // Indicador de semana anterior: OTs cuya fecha cae antes del lunes de la semana actual (hora Bolivia UTC-4)
+                const lunesEstaSemanaBol = (() => {
+                  const d = new Date();
+                  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+                  d.setUTCHours(4, 0, 0, 0); // medianoche Bolivia = 4 AM UTC
+                  return d;
+                })();
+                const esSemanaAnterior = new Date(ot.fecha) < lunesEstaSemanaBol;
                 return (
                   <div
                     key={ot._id}
@@ -742,6 +750,11 @@ export default function ReporteOTPage() {
                         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 4 }}>
                           <span style={{ fontWeight: 800, fontSize: 15, color: "#0f2847" }}>{ot.otJdeNumero ? `OT ${ot.otJdeNumero}` : `#${ot.numeroOT}`}</span>
                           <span style={S.badge(color)}>{ESTADO_LABEL[ot.estado]}</span>
+                          {esSemanaAnterior && (
+                            <span style={{ ...S.badge("#92400e"), background: "#fef3c7", color: "#92400e", fontSize: 10, fontWeight: 700, letterSpacing: "0.03em" }}>
+                              ⏳ Sem. ant.
+                            </span>
+                          )}
                           {ot.lineas.map((l, i) => <span key={i} style={S.badge(TIPO_COLOR[l.tipoOT] ?? "#64748b")}>{l.tipoOT}</span>)}
                         </div>
                         <p style={{ fontSize: 12, color: "#64748b", marginBottom: 2 }}>
@@ -979,6 +992,14 @@ export default function ReporteOTPage() {
               ) : (
                 <span style={{ ...S.badge("#dc2626"), fontSize: 11 }}>⚡ Reactiva</span>
               )}
+              {(() => {
+                const lunes = new Date();
+                lunes.setUTCDate(lunes.getUTCDate() - ((lunes.getUTCDay() + 6) % 7));
+                lunes.setUTCHours(4, 0, 0, 0);
+                return new Date(ot.fecha) < lunes ? (
+                  <span style={{ ...S.badge("#92400e"), background: "#fef3c7", color: "#92400e", fontSize: 11, fontWeight: 700 }}>⏳ Semana anterior</span>
+                ) : null;
+              })()}
               {editMode && <span style={{ ...S.badge("#f59e0b"), fontSize: 11 }}>✏ Modo edición</span>}
             </div>
             <p style={{ fontSize: 12, color: "#94a3b8" }}>{new Date(ot.fecha).toLocaleDateString("es-BO", { timeZone: "UTC" })} · {ot.turno}</p>

@@ -118,19 +118,6 @@ export async function GET(req: NextRequest) {
   const incluirArchivados = searchParams.get("incluirArchivados") === "true";
   // incluirHijas=true: muestra OTs hijas de OPEPLANT (para Reporte de OT del supervisor)
   const incluirHijas = searchParams.get("incluirHijas") === "true";
-  // Ventana de cierre semanal OPEPLANT (hora Bolivia UTC-4):
-  // - Domingo: turno diurno cierra OTs
-  // - Lunes hasta 6:00 AM: turno nocturno del domingo cierra OTs
-  // - Lunes y martes todo el día: supervisor revisa y cierra
-  const boliviaTime = new Date(Date.now() - 4 * 60 * 60 * 1000);
-  const diaSemana = boliviaTime.getUTCDay(); // 0=Dom, 1=Lun, 2=Mar
-  const horaBolivia = boliviaTime.getUTCHours();
-  const enVentanaCierre =
-    diaSemana === 0 ||                          // Domingo completo
-    diaSemana === 1 ||                          // Lunes completo (supervisor revisa)
-    diaSemana === 2 ||                          // Martes completo (supervisor cierra)
-    (diaSemana === 3 && horaBolivia < 6);       // Miércoles antes de 6 AM (fin turno nocturno martes)
-
   // Capa 3: auto-archivo — ocultar OTs concluidas con más de 90 días si no se pide el historial completo.
   // Se omite cuando: el usuario pide explícitamente el historial, hay un filtro de fecha propio del cliente,
   // o se consulta por otJdeNumero/parentOtId (contexto de merge o detalle).
@@ -142,14 +129,22 @@ export async function GET(req: NextRequest) {
   // Condiciones AND para combinar múltiples filtros NOT sin sobreescribirse
   const andConditions: object[] = [];
 
-  // Si se busca por número exacto de OT, retornar esa OT sin importar parentOtId ni visibilidad
+  // Búsqueda directa por número de OT o número JDE — bypassa filtros de visibilidad.
+  // Sirve para encontrar cualquier OT (incluidas OPEPLANT) sin importar parentOtId ni estado.
   if (buscarNumero) {
-    const ot = await prisma.ordenTrabajo.findFirst({
-      where: { numeroOT: buscarNumero.trim() },
+    const num = buscarNumero.trim();
+    const ots = await prisma.ordenTrabajo.findMany({
+      where: {
+        OR: [
+          { numeroOT: num },
+          { otJdeNumero: num },
+        ],
+      },
       include,
+      orderBy: { fecha: "desc" },
+      take: 20,
     });
-    if (!ot) return NextResponse.json([]);
-    return NextResponse.json([serializeOT(ot as Parameters<typeof serializeOT>[0])]);
+    return NextResponse.json(ots.map(o => serializeOT(o as Parameters<typeof serializeOT>[0])));
   }
 
   // Ocultar OTs hijas de OPEPLANT del Reporte principal, EXCEPTO las de turno especial
@@ -165,13 +160,6 @@ export async function GET(req: NextRequest) {
     });
     andConditions.push({ NOT: { origenPlan: false, otJdeNumero: { not: null }, turno: { notIn: TURNOS_SIEMPRE_VISIBLES } } });
   }
-  // Ocultar OTs OPEPLANT de plan pendientes fuera del domingo.
-  // Cuando se consulta por otJdeNumero explícito (ej: para PDF merge) se necesitan
-  // TODOS los registros sin importar estado, así que se omite este filtro.
-  if (!enVentanaCierre && !otJdeNumero) {
-    andConditions.push({ NOT: { estado: "pendiente_revision", origenPlan: true, otJdeNumero: { not: null } } });
-  }
-
   // Capa 3: excluir OTs concluidas archivadas (>90 días) salvo que se pida historial completo
   if (aplicarFiltroArchivo) {
     andConditions.push({ NOT: { estado: "concluido", fecha: { lt: fechaArchivoCorte } } });
