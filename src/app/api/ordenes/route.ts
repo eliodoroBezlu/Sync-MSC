@@ -144,9 +144,11 @@ export async function GET(req: NextRequest) {
       orderBy: { fecha: "desc" },
       take: 50,
     });
-    // Dedup: una por otJdeNumero (la más reciente ya viene primero por orderBy fecha desc)
+    // Dedup: ocultar hijas con parentOtId (visibles a través de su madre consolidada)
+    // y mantener solo una OT por otJdeNumero cuando origenPlan=true.
     const seen = new Set<string>();
     const deduped = ots.filter(o => {
+      if (o.parentOtId) return false; // hija de una OT consolidada — no mostrar suelta
       if (o.origenPlan && o.otJdeNumero) {
         if (seen.has(o.otJdeNumero)) return false;
         seen.add(o.otJdeNumero);
