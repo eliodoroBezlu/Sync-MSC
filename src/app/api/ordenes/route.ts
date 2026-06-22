@@ -239,18 +239,18 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (esDePlan && body.programacionSemanalId) {
-      // Buscar OT existente para este plan+OT sin restricción de fecha (la semana ya está en el plan)
-      const whereExistente: Record<string, unknown> = {
-        origenPlan: true,
-        programacionSemanalId: body.programacionSemanalId,
-      };
-      if (otJdeNumero) whereExistente.otJdeNumero = otJdeNumero;
+    if (esDePlan) {
+      // OPEPLANT: una sola OT acumula todos los avances del ciclo (sin importar la semana).
+      // Solo se crea OT nueva cuando el supervisor cierra el ciclo anterior (estado "concluido").
+      // Para OTs de plan sin número JDE, se mantiene consolidación por semana (CMP/CMR planificados).
+      const whereExistente: Record<string, unknown> = otJdeNumero
+        ? { otJdeNumero, origenPlan: true, NOT: { estado: "concluido" } }
+        : { origenPlan: true, programacionSemanalId: body.programacionSemanalId };
 
       const existente = await prisma.ordenTrabajo.findFirst({
         where: whereExistente,
         include,
-        orderBy: { fecha: "asc" },
+        orderBy: { fecha: "desc" },
       });
 
       if (existente) {
