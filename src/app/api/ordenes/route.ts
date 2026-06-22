@@ -96,6 +96,7 @@ export async function GET(req: NextRequest) {
   const fechaHasta = searchParams.get("fechaHasta");
   const otJdeNumero = searchParams.get("otJdeNumero");
   const origenPlan = searchParams.get("origenPlan");
+  const buscarNumero = searchParams.get("buscarNumero"); // búsqueda directa por número de OT (bypassa filtros de visibilidad)
   const limit = Math.min(Number(searchParams.get("limit") || "50"), 200);
 
   let fechaFilter: Record<string, Date> = {};
@@ -140,6 +141,16 @@ export async function GET(req: NextRequest) {
 
   // Condiciones AND para combinar múltiples filtros NOT sin sobreescribirse
   const andConditions: object[] = [];
+
+  // Si se busca por número exacto de OT, retornar esa OT sin importar parentOtId ni visibilidad
+  if (buscarNumero) {
+    const ot = await prisma.ordenTrabajo.findFirst({
+      where: { numeroOT: buscarNumero.trim() },
+      include,
+    });
+    if (!ot) return NextResponse.json([]);
+    return NextResponse.json([serializeOT(ot as Parameters<typeof serializeOT>[0])]);
+  }
 
   // Ocultar OTs vinculadas a OPEPLANT del Reporte principal. Dos casos:
   // 1. Hijas con parentOtId seteado (creadas desde Bitácora Turnero)

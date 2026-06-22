@@ -311,23 +311,48 @@ export default function ReporteOTPage() {
     fecha: string; hhTrabajadas: number; tareasEjecutadas: string[]; observaciones: string;
   }>({ fecha: new Date().toISOString().split("T")[0], hhTrabajadas: 0, tareasEjecutadas: [], observaciones: "" });
 
-  const loadOrdenes = useCallback(async () => {
+  const loadOrdenes = useCallback(async (buscarDirecto?: string) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ limit: "200" });
-      if (filtroEstado) params.set("estado", filtroEstado);
-      if (filtroArea) params.set("area", filtroArea);
-      if (filtroFechaDesde) params.set("fechaDesde", filtroFechaDesde);
-      if (filtroFechaHasta) params.set("fechaHasta", filtroFechaHasta);
-      if (periodo === "todo") params.set("incluirArchivados", "true");
+      if (buscarDirecto) {
+        // Búsqueda directa por número de OT — bypassa filtros de visibilidad
+        params.set("buscarNumero", buscarDirecto);
+      } else {
+        if (filtroEstado) params.set("estado", filtroEstado);
+        if (filtroArea) params.set("area", filtroArea);
+        if (filtroFechaDesde) params.set("fechaDesde", filtroFechaDesde);
+        if (filtroFechaHasta) params.set("fechaHasta", filtroFechaHasta);
+        if (periodo === "todo") params.set("incluirArchivados", "true");
+      }
       const data = await fetch(`/api/ordenes?${params}`).then((r) => r.json());
-      setOrdenes(Array.isArray(data) ? data : []);
-    } catch { setOrdenes([]); }
+      if (buscarDirecto) {
+        // Fusionar resultado de búsqueda directa sin reemplazar toda la lista
+        if (Array.isArray(data) && data.length > 0) {
+          setOrdenes(prev => {
+            const ids = new Set(prev.map(o => o._id));
+            const nuevas = data.filter((o: OTDoc) => !ids.has(o._id));
+            return [...prev, ...nuevas];
+          });
+        }
+      } else {
+        setOrdenes(Array.isArray(data) ? data : []);
+      }
+    } catch { if (!buscarDirecto) setOrdenes([]); }
     finally { setLoading(false); }
   }, [filtroEstado, filtroArea, filtroFechaDesde, filtroFechaHasta, periodo]);
 
   useEffect(() => { fetch("/api/areas").then((r) => r.json()).then(setAreas).catch(() => {}); }, []);
   useEffect(() => { loadOrdenes(); }, [loadOrdenes]);
+
+  // Búsqueda directa cuando el usuario escribe un número exacto de OT (6 dígitos)
+  useEffect(() => {
+    const num = filtroBuscar.trim();
+    if (/^\d{4,6}$/.test(num)) {
+      loadOrdenes(num);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtroBuscar]);
 
   // Auto-seleccionar OT si viene el parámetro ?ot=<id> desde programa semanal
   useEffect(() => {
@@ -690,7 +715,7 @@ export default function ReporteOTPage() {
                 </span>
               )}
             </p>
-            <button onClick={loadOrdenes} style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12 }}>↻ Actualizar</button>
+            <button onClick={() => loadOrdenes()} style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12 }}>↻ Actualizar</button>
           </div>
 
           {loading ? (
