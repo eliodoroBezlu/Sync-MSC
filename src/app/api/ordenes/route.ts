@@ -152,13 +152,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json([serializeOT(ot as Parameters<typeof serializeOT>[0])]);
   }
 
-  // Ocultar OTs vinculadas a OPEPLANT del Reporte principal. Dos casos:
-  // 1. Hijas con parentOtId seteado (creadas desde Bitácora Turnero)
-  // 2. No-plan con otJdeNumero seteado (creadas en Registro vinculando un número JDE)
-  // Las CMR/CMP autónomas (origenPlan=false, otJdeNumero=null) SÍ aparecen.
+  // Ocultar OTs hijas de OPEPLANT del Reporte principal, EXCEPTO las de turno especial
+  // que deben ser siempre visibles para el ciclo de revisión del supervisor.
+  // OTs con turno "Parada de Planta", "Planta" o "Otro" aparecen siempre aunque tengan parentOtId.
+  const TURNOS_SIEMPRE_VISIBLES = ["Parada de Planta", "Planta", "Otro"];
   if (!otJdeNumero && !parentOtId && !incluirHijas) {
-    andConditions.push({ parentOtId: null });
-    andConditions.push({ NOT: { origenPlan: false, otJdeNumero: { not: null } } });
+    andConditions.push({
+      OR: [
+        { parentOtId: null },
+        { turno: { in: TURNOS_SIEMPRE_VISIBLES } },
+      ],
+    });
+    andConditions.push({ NOT: { origenPlan: false, otJdeNumero: { not: null }, turno: { notIn: TURNOS_SIEMPRE_VISIBLES } } });
   }
   // Ocultar OTs OPEPLANT de plan pendientes fuera del domingo.
   // Cuando se consulta por otJdeNumero explícito (ej: para PDF merge) se necesitan
