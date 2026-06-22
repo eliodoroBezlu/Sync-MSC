@@ -162,6 +162,8 @@ export default function ReporteTurnoTecnicoPage() {
   const [filtroTexto, setFiltroTexto] = useState("");
   const [submitting, setSubmitting]   = useState(false);
   const [submitErr, setSubmitErr]     = useState("");
+  const [cerrandoOpeplant, setCerrandoOpeplant] = useState<Set<string>>(new Set());
+  const [opeplantCerrada, setOpeplantCerrada]   = useState<Set<string>>(new Set());
 
   // Área efectiva para cargar OTs
   const areaEfectiva = form.areaCodigo || (user?.areas?.[0] ?? "");
@@ -417,6 +419,34 @@ export default function ReporteTurnoTecnicoPage() {
       setSubmitErr(e instanceof Error ? e.message : "Error desconocido");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  // ─── Cerrar OT OPEPLANT consolidada ─────────────────────────────────────────
+
+  async function cerrarOpeplant(ordenTrabajoId: string) {
+    setCerrandoOpeplant(prev => new Set([...prev, ordenTrabajoId]));
+    try {
+      const res = await fetch(`/api/ordenes/${ordenTrabajoId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          estado: "pendiente_revision",
+          cambio: "OT OPEPLANT enviada a revisión — cierre semanal",
+          usuarioId: user?.id,
+          nombreUsuario: user?.nombre,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert((err as { error?: string }).error ?? "Error al cerrar OT OPEPLANT");
+        return;
+      }
+      setOpeplantCerrada(prev => new Set([...prev, ordenTrabajoId]));
+    } catch {
+      alert("Error de conexión al cerrar OT OPEPLANT");
+    } finally {
+      setCerrandoOpeplant(prev => { const s = new Set(prev); s.delete(ordenTrabajoId); return s; });
     }
   }
 
@@ -724,6 +754,22 @@ export default function ReporteTurnoTecnicoPage() {
                                     {o.ordenTrabajoNum && <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>OT #{o.ordenTrabajoNum}</span>}
                                   </div>
                                   <p style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>{o.descripcion || "Guardia de turno"}</p>
+                                  {o.ordenTrabajoId && (
+                                    <div style={{ marginTop: 6 }} onClick={e => e.stopPropagation()}>
+                                      {opeplantCerrada.has(o.ordenTrabajoId) ? (
+                                        <span style={{ fontSize: 11, fontWeight: 700, color: "#065f46", background: "#d1fae5", border: "1px solid #6ee7b7", borderRadius: 5, padding: "3px 10px" }}>
+                                          ✓ Enviada a revisión
+                                        </span>
+                                      ) : (
+                                        <button
+                                          disabled={cerrandoOpeplant.has(o.ordenTrabajoId)}
+                                          onClick={() => cerrarOpeplant(o.ordenTrabajoId!)}
+                                          style={{ fontSize: 11, fontWeight: 700, padding: "4px 12px", background: cerrandoOpeplant.has(o.ordenTrabajoId) ? "#e5e7eb" : "#d97706", color: cerrandoOpeplant.has(o.ordenTrabajoId) ? "#6b7280" : "white", border: "none", borderRadius: 5, cursor: cerrandoOpeplant.has(o.ordenTrabajoId) ? "default" : "pointer" }}>
+                                          {cerrandoOpeplant.has(o.ordenTrabajoId) ? "Cerrando…" : "📋 Cerrar OPEPLANT"}
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                                 {o.hhTotal > 0 && <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 700, flexShrink: 0 }}>{o.hhTotal}h</span>}
                               </div>

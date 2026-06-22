@@ -214,6 +214,14 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(resultado.map(o => serializeOT(o as Parameters<typeof serializeOT>[0])));
 }
 
+function isoWeekInfo(date: Date): { semana: number; anio: number } {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const semana = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return { semana, anio: d.getUTCFullYear() };
+}
+
 async function siguienteNumeroOT(): Promise<string> {
   const counter = await prisma.contador.upsert({
     where: { nombre: "ordenTrabajo" },
@@ -322,17 +330,87 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Detectar si otJdeNumero corresponde a una OT OPEPLANT madre existente
+    // Detectar si otJdeNumero corresponde a la OT OPEPLANT del plan de la semana.
+    // Si coincide: buscar-o-crear la OT consolidada madre y registrar esta reactiva como hija oculta.
+    // Si no coincide: fallback al comportamiento anterior (buscar madre por JDE).
     let parentOtId: string | null = null;
     let parentOtNum: string | null = null;
     if (otJdeNumero && !esDePlan) {
-      const otMadre = await prisma.ordenTrabajo.findFirst({
-        where: { otJdeNumero, origenPlan: true, parentOtId: null },
-        select: { id: true, numeroOT: true },
+      const fechaOT = new Date(body.fecha);
+      const { semana: semanaNum, anio: anioNum } = isoWeekInfo(fechaOT);
+
+      const planSemana = await prisma.programacionSemanal.findFirst({
+        where: {
+          semana: semanaNum,
+          anio: anioNum,
+          ...(areaCodigo ? { areaCodigo } : {}),
+          estado: { in: ["publicado", "cerrado"] },
+        },
+        include: { otsProgramadas: { where: { esGuardia: true } } },
       });
-      if (otMadre) {
-        parentOtId = otMadre.id;
-        parentOtNum = otMadre.numeroOT;
+
+      const esOpeplantPlan = planSemana?.otsProgramadas.some(
+        o => String(o.numeroOT).toUpperCase() === String(otJdeNumero).toUpperCase()
+      );
+
+      if (esOpeplantPlan && planSemana) {
+        // Buscar la OT consolidada madre de esta semana
+        const estadosBloqueados = ["pendiente_revision", "revisado", "concluido"];
+        let madre = await prisma.ordenTrabajo.findFirst({
+          where: {
+            otJdeNumero,
+            origenPlan: true,
+            programacionSemanalId: planSemana.id,
+            NOT: { estado: "concluido" },
+          },
+          select: { id: true, numeroOT: true, estado: true },
+        });
+
+        if (madre && estadosBloqueados.includes(madre.estado)) {
+          return NextResponse.json(
+            { ok: false, error: `La OT OPEPLANT ${otJdeNumero} ya fue cerrada (${madre.estado}). Contacta al supervisor.` },
+            { status: 409 }
+          );
+        }
+
+        if (!madre) {
+          const numMadre = await siguienteNumeroOT();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          madre = await (prisma.ordenTrabajo.create as any)({
+            data: {
+              numeroOT: numMadre,
+              fecha: new Date(body.fecha),
+              turno: "Guardia",
+              areaCodigo,
+              estado: "en_proceso",
+              origenPlan: true,
+              programacionSemanalId: planSemana.id,
+              otJdeNumero,
+              historial: {
+                create: [{
+                  fechaHora: new Date(),
+                  usuarioId: body.tecnicos?.[0]?.usuarioId || "system",
+                  nombreUsuario: body.tecnicos?.[0]?.nombreCompleto || "Sistema",
+                  cambio: `OT consolidada OPEPLANT ${otJdeNumero} creada — sem. ${planSemana.semana}/${planSemana.anio}`,
+                }],
+              },
+            },
+            select: { id: true, numeroOT: true, estado: true },
+          });
+        }
+
+        parentOtId = madre!.id;
+        parentOtNum = madre!.numeroOT;
+      } else {
+        // Sin match en plan — buscar madre existente por JDE (comportamiento anterior)
+        const otMadre = await prisma.ordenTrabajo.findFirst({
+          where: { otJdeNumero, origenPlan: true, parentOtId: null },
+          select: { id: true, numeroOT: true },
+        });
+        if (otMadre) {
+          parentOtId = otMadre.id;
+          parentOtNum = otMadre.numeroOT;
+        }
       }
     }
 
