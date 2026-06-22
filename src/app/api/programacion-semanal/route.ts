@@ -72,6 +72,22 @@ function serializePrograma(
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
+
+  // Fetch por id directo (usado por generarInformeOT para obtener HH del plan)
+  const idParam = searchParams.get("id");
+  if (idParam) {
+    const programa = await prisma.programacionSemanal.findUnique({
+      where: { id: idParam },
+      include: { otsProgramadas: true, personal: true, resumenDias: true },
+    });
+    if (!programa) {
+      const { NextResponse } = await import("next/server");
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    const { NextResponse } = await import("next/server");
+    return NextResponse.json(serializePrograma(programa as Parameters<typeof serializePrograma>[0], {}, {}));
+  }
+
   const semana     = searchParams.get("semana");
   const anio       = searchParams.get("anio");
   const disciplina = searchParams.get("disciplina");

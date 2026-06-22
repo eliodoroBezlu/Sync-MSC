@@ -94,6 +94,7 @@ type OTDoc = {
   otJdeNumero?: string;
   otJdeDia?: string;
   createdAt?: string;
+  hhEstimadasPlan?: number; // HH del plan semanal para OPEPLANT (override en PDF)
 };
 
 type AreaOpt = { codigo: string; nombre: string };
@@ -1570,20 +1571,17 @@ export default function ReporteOTPage() {
                     }
                   } catch { /* usa otBase sin fusión si falla el fetch */ }
 
-                  // Sobrescribir tiempoEstimadoHrs con el total del plan semanal
-                  // (suma de hhTotal de todas las OtProgramadas con el mismo numeroOT en la semana)
+                  // HH Estimadas = suma de hhTotal del plan semanal para el número OPEPLANT
+                  // Se pasa como hhEstimadasPlan (campo separado) para no contaminar las lineas.
                   if (otBase.programacionSemanalId && otBase.otJdeNumero) {
                     try {
-                      const plan = await fetch(`/api/programacion-semanal/${otBase.programacionSemanalId}`).then(r => r.json());
+                      const plan = await fetch(`/api/programacion-semanal?id=${otBase.programacionSemanalId}`).then(r => r.json());
                       const otsDelPlan: { numeroOT: string; hhTotal: number }[] = plan?.otsProgramadas ?? [];
                       const hhEstPlan = otsDelPlan
-                        .filter(o => o.numeroOT === otBase.otJdeNumero)
+                        .filter(o => String(o.numeroOT).toUpperCase() === String(otBase.otJdeNumero).toUpperCase())
                         .reduce((s, o) => s + (o.hhTotal ?? 0), 0);
                       if (hhEstPlan > 0) {
-                        otParaPDF = {
-                          ...otParaPDF,
-                          lineas: otParaPDF.lineas.map(l => ({ ...l, tiempoEstimadoHrs: hhEstPlan })),
-                        };
+                        otParaPDF = { ...otParaPDF, hhEstimadasPlan: hhEstPlan };
                       }
                     } catch { /* mantiene estimado original si falla */ }
                   }

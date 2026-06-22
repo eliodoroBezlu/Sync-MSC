@@ -62,6 +62,7 @@ interface OTData {
   registrosDiarios?: RegistroDiario[];
   datosSupervision?: DatosSupervision;
   historialCambios?: CambioHistorial[];
+  hhEstimadasPlan?: number; // HH del plan semanal (overrides suma de lineas para OPEPLANT)
 }
 
 // ── Paleta ────────────────────────────────────────────────────────────────────
@@ -168,7 +169,7 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
   let y = 15;
 
   const numOT = ot.otJdeNumero ?? ot.numeroOT ?? "—";
-  const tecnicos = ot.tecnicos.map(t => t.nombreCompleto).join(", ") || "—";
+  const tecnicos = [...new Set(ot.tecnicos.map(t => t.nombreCompleto))].join(", ") || "—";
   const correctivos = ot.lineas.filter(l => ["CMP", "CMR"].includes(l.tipoOT));
   const preventivos = ot.lineas.filter(l => !["CMP", "CMR"].includes(l.tipoOT));
   const tieneCorrectivos = correctivos.length > 0;
@@ -434,7 +435,7 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
   seccion(doc, `${secNum}. Resumen de Horas-Hombre`, y, PW);
   y += 14;
 
-  const totalEst  = ot.lineas.reduce((s, l) => s + (l.tiempoEstimadoHrs ?? 0), 0);
+  const totalEst  = ot.hhEstimadasPlan ?? ot.lineas.reduce((s, l) => s + (l.tiempoEstimadoHrs ?? 0), 0);
   const hhLineas  = ot.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0);
   const hhDiarios = (ot.registrosDiarios ?? []).reduce((s, r) => s + (r.hhTrabajadas ?? 0), 0);
   // Día 1 → horas en lineas[].tiempoRealHrs. Días 2+ → en registrosDiarios (nunca duplican el día 1).
