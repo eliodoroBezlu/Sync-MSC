@@ -78,7 +78,30 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const ot = await prisma.ordenTrabajo.findUnique({ where: { id }, include });
   if (!ot) return Response.json({ error: "No encontrado" }, { status: 404 });
-  return Response.json(serializeOT(ot as Parameters<typeof serializeOT>[0]));
+
+  const serialized = serializeOT(ot as Parameters<typeof serializeOT>[0]);
+
+  // OTs OPEPLANT: construir avances diarios desde sub-OTs hermanas (mismo otJdeNumero)
+  if (ot.otJdeNumero && serialized.registrosDiarios.length === 0) {
+    const hermanas = await prisma.ordenTrabajo.findMany({
+      where: { otJdeNumero: ot.otJdeNumero, otJdeDia: { not: null } },
+      include: { tecnicos: true, lineas: true },
+      orderBy: { fecha: "asc" },
+    });
+    const avances = hermanas
+      .filter(h => h.tecnicos.length > 0 || h.lineas.some(l => (l.tiempoRealHrs ?? 0) > 0))
+      .map(h => ({
+        _id: h.id,
+        fecha: h.fecha,
+        tecnico: h.tecnicos.map(t => t.nombreCompleto).join(", ") || "—",
+        hhTrabajadas: h.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0),
+        tareasEjecutadas: [] as string[],
+        observaciones: h.turno ?? null,
+      }));
+    if (avances.length > 0) serialized.registrosDiarios = avances;
+  }
+
+  return Response.json(serialized);
 }
 
 export async function PATCH(req: NextRequest, { params }: Ctx) {
