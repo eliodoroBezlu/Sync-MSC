@@ -198,9 +198,13 @@ export default function OrdenesPage() {
   const esAdmin   = user?.rol === 1;
   const esInst    = user?.disciplina === "INST";
   const puedeConf = user ? user.rol <= 3 : false;
+  const esTESA    = user?.rol === 6 && user?.areas?.includes("3348");
+
+  const MODULOS_TESA = ["/ordenes/registro", "/ordenes/reporte", "/ordenes/tag", "/ordenes/semanales"];
 
   const modulos = TODOS_MODULOS.filter((m) => {
     if (esAdmin) return true;
+    if (esTESA) return MODULOS_TESA.includes(m.href);
     if (m.soloAdmin && !esAdmin) return false;
     if (m.soloInst && !esInst) return false;
     if (m.soloSup  && !puedeConf) return false;
