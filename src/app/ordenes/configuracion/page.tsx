@@ -2023,7 +2023,8 @@ export default function ConfiguracionPage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && (!user || user.rol !== 1)) {
+    const puedeAcceder = user?.rol === 1 || (user?.rol <= 3 && user?.disciplina === "INST");
+    if (!loading && (!user || !puedeAcceder)) {
       router.replace("/ordenes");
     }
   }, [user, loading, router]);
@@ -2036,7 +2037,8 @@ export default function ConfiguracionPage() {
     );
   }
 
-  if (!user || user.rol !== 1) {
+  const puedeAcceder = user?.rol === 1 || (user && user.rol <= 3 && user.disciplina === "INST");
+  if (!user || !puedeAcceder) {
     return null;
   }
 
