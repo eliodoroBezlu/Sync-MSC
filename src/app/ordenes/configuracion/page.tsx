@@ -2023,7 +2023,7 @@ export default function ConfiguracionPage() {
   const router = useRouter();
 
   useEffect(() => {
-    const puedeAcceder = user?.rol === 1 || (user?.rol <= 3 && user?.disciplina === "INST");
+    const puedeAcceder = user?.rol === 1 || (user != null && user.rol <= 3 && user.disciplina === "INST");
     if (!loading && (!user || !puedeAcceder)) {
       router.replace("/ordenes");
     }
