@@ -205,7 +205,7 @@ export default function OrdenesPage() {
   const modulos = TODOS_MODULOS.filter((m) => {
     if (esAdmin) return true;
     if (esTESA) return MODULOS_TESA.includes(m.href);
-    if (m.soloAdmin && !esAdmin) return false;
+    if (m.soloAdmin && !esAdmin && !(esInst && puedeConf)) return false;
     if (m.soloInst && !esInst) return false;
     if (m.soloSup  && !puedeConf) return false;
     return true;
