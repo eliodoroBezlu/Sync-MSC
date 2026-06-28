@@ -94,6 +94,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
         _id: h.id,
         fecha: h.fecha,
         tecnico: h.tecnicos.map(t => t.nombreCompleto).join(", ") || "—",
+        usuarioId: null,
         hhTrabajadas: h.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0),
         tareasEjecutadas: [] as string[],
         observaciones: h.turno ?? null,
