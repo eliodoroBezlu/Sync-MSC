@@ -1328,8 +1328,8 @@ export default function RegistroOTPage() {
   }, []);
 
   // ── Load plan del día ──
-  useEffect(() => {
-    if (authLoading || !user) return;
+  const recargarPlan = React.useCallback(() => {
+    if (!user) return;
     setLoadingPlan(true);
     const p = new URLSearchParams({ semana: String(currentSemana), anio: String(currentAnio), limit: "50" });
     fetch(`/api/programacion-semanal?${p}`)
@@ -1362,6 +1362,12 @@ export default function RegistroOTPage() {
       })
       .catch(() => {})
       .finally(() => setLoadingPlan(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, currentSemana, currentAnio]);
+
+  useEffect(() => {
+    if (authLoading || !user) return;
+    recargarPlan();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user]);
 
@@ -1550,7 +1556,7 @@ export default function RegistroOTPage() {
                 : doneOT.estado === "pendiente_revision" ? "OT enviada al supervisor para revisión." : "OT guardada como borrador."}
           </p>
           <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-            <button onClick={() => { setDone(false); setDoneOT(null); setView("inicio"); }} style={S.btnPrimary()}>Volver al plan</button>
+            <button onClick={() => { setDone(false); setDoneOT(null); setView("inicio"); recargarPlan(); }} style={S.btnPrimary()}>Volver al plan</button>
             <button onClick={() => router.push("/ordenes/reporte")} style={S.btnGhost}>Ver tablero</button>
           </div>
         </div>
