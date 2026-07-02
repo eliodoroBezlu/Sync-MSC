@@ -300,6 +300,11 @@ export default function ReporteOTPage() {
   const [editAvanceForm, setEditAvanceForm] = useState<{ hhTrabajadas: number; tareasEjecutadas: string[]; observaciones: string; tareaInput: string; adjuntos: { tipo: "foto" | "documento"; nombre: string; dataUrl: string; comentario: string; comentariosExtra: string[] }[] }>({ hhTrabajadas: 0, tareasEjecutadas: [], observaciones: "", tareaInput: "", adjuntos: [] });
   const [cargandoAdjAvance, setCargandoAdjAvance] = useState(false);
 
+  // Reabrir OT (solo admin)
+  const [showReabrir, setShowReabrir] = useState(false);
+  const [reabrirRazon, setReabrirRazon] = useState("");
+  const [savingReabrir, setSavingReabrir] = useState(false);
+
   // Modal agregar evidencia (foto/documento) desde panel supervisor
   const [evidenciaModal, setEvidenciaModal] = useState<{ lineaTag: string; lineaTipoOT: string } | null>(null);
   const [evidenciaComentario, setEvidenciaComentario] = useState("");
@@ -1502,6 +1507,74 @@ export default function ReporteOTPage() {
                 </button>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Reabrir OT — solo admin, en estados que bloquean al técnico */}
+        {esAdmin && ["revisado", "pendiente_revision", "concluido"].includes(ot.estado) && (
+          <div style={{ ...S.card, background: "#fff7ed", border: "1px solid #fed7aa" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: showReabrir ? 12 : 0 }}>
+              <div>
+                <span style={{ fontWeight: 700, fontSize: 13, color: "#9a3412" }}>🔓 Reabrir OT</span>
+                <span style={{ fontSize: 12, color: "#c2410c", marginLeft: 8 }}>Solo administrador</span>
+              </div>
+              {!showReabrir && (
+                <button onClick={() => { setShowReabrir(true); setReabrirRazon(""); }}
+                  style={{ background: "#ea580c", color: "white", border: "none", borderRadius: 7, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                  Reabrir OT
+                </button>
+              )}
+            </div>
+            {showReabrir && (
+              <div>
+                <p style={{ fontSize: 12, color: "#7c2d12", marginBottom: 10 }}>
+                  Esto devolverá la OT a estado <strong>En proceso</strong> para que el técnico pueda continuar registrando avances. Quedará registrado en el historial.
+                </p>
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ ...S.label, color: "#9a3412" }}>Razón (obligatorio)</label>
+                  <input
+                    value={reabrirRazon}
+                    onChange={e => setReabrirRazon(e.target.value)}
+                    placeholder="Ej: OT recurrente cerrada antes de completar la semana"
+                    style={{ ...S.input, borderColor: "#fed7aa" }}
+                    autoFocus
+                  />
+                </div>
+                {saveErr && <p style={{ color: "#dc2626", fontSize: 12, marginBottom: 8 }}>⚠ {saveErr}</p>}
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button onClick={() => { setShowReabrir(false); setReabrirRazon(""); setSaveErr(""); }}
+                    style={{ ...S.btnGhost, padding: "6px 14px", fontSize: 12 }}>Cancelar</button>
+                  <button
+                    disabled={!reabrirRazon.trim() || savingReabrir}
+                    onClick={async () => {
+                      if (!selected || !reabrirRazon.trim()) return;
+                      setSavingReabrir(true); setSaveErr("");
+                      try {
+                        const res = await fetch(`/api/ordenes/${selected._id}`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            estado: "en_proceso",
+                            cambio: `OT reabierta por admin ${user?.nombre ?? ""} — ${reabrirRazon.trim()}`,
+                            usuarioId: user?.id ?? "sistema",
+                            nombreUsuario: user?.nombre ?? "Admin",
+                          }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error ?? "Error al reabrir");
+                        setSelected(data.ot);
+                        setOrdenes(prev => prev.map(o => o._id === data.ot._id ? data.ot : o));
+                        setShowReabrir(false);
+                        setReabrirRazon("");
+                      } catch (e: unknown) { setSaveErr(e instanceof Error ? e.message : "Error"); }
+                      finally { setSavingReabrir(false); }
+                    }}
+                    style={{ background: !reabrirRazon.trim() || savingReabrir ? "#d1d5db" : "#ea580c", color: "white", border: "none", borderRadius: 7, padding: "6px 16px", fontSize: 12, fontWeight: 700, cursor: !reabrirRazon.trim() || savingReabrir ? "not-allowed" : "pointer" }}>
+                    {savingReabrir ? "Reabriendo…" : "Confirmar reapertura"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
