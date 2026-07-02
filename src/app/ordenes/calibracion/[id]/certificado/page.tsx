@@ -76,7 +76,7 @@ type EquipoDoc = {
 
 function fmtDate(d?: string | null) {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("es-BO", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return new Date(d).toLocaleDateString("es-BO", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" });
 }
 function fmt(n: number, dec = 4) { return (n >= 0 ? "+" : "") + n.toFixed(dec); }
 

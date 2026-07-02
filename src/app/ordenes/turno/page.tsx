@@ -1235,7 +1235,7 @@ export default function ReporteTurnoPage() {
             <div style={{ flex: 1 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <h1 style={{ fontSize: 20, fontWeight: 800, color: "#0f2847" }}>
-                  Reporte {new Date(r.fecha).toLocaleDateString("es-BO", { day: "2-digit", month: "short", year: "numeric" })}
+                  Reporte {new Date(r.fecha).toLocaleDateString("es-BO", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" })}
                 </h1>
                 <span style={S.badge(enviado ? "#16a34a" : "#64748b")}>{enviado ? "Enviado" : "Borrador"}</span>
                 <span style={S.badge(r.turno === "Nocturno" ? "#7c3aed" : "#0891b2")}>{r.turno}</span>

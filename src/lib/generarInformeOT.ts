@@ -99,7 +99,10 @@ const ESTADO_COLOR: Record<string, [number, number, number]> = {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmt(d?: string | Date) {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("es-BO", { day: "2-digit", month: "2-digit", year: "numeric" });
+  // Añadir T12:00:00 para evitar que la fecha ISO se interprete como UTC medianoche
+  // y aparezca un día antes en zonas horarias negativas (Bolivia = UTC-4)
+  const normalized = typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d + "T12:00:00" : d;
+  return new Date(normalized).toLocaleDateString("es-BO", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 function fmtHrs(n?: number) {
   if (n == null || n === 0) return "—";

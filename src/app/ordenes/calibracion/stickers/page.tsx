@@ -23,7 +23,7 @@ const COLORS = {
 };
 
 function fmtDate(d: string) {
-  return new Date(d).toLocaleDateString("es-BO", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return new Date(d).toLocaleDateString("es-BO", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" });
 }
 
 function Sticker({ r, copies }: { r: CalibRecord; copies: number }) {
