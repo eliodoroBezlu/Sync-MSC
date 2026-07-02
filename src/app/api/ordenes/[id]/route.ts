@@ -203,63 +203,55 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       const rdFecha = new Date(registroDiario.fecha);
       // Buscar si ya existe un registro del mismo día y técnico
       // Fallback: si adjuntos no existe en DB aún, reintenta con select explícito sin esa columna
-      let existing: { id: string } | null = null;
-      try {
-        existing = await prisma.otRegistroDiario.findFirst({
-          where: {
-            ordenTrabajoId: id,
-            fecha: rdFecha,
-            ...(rdUsuarioId ? { usuarioId: rdUsuarioId } : { tecnico: registroDiario.tecnico }),
-          },
-          select: { id: true },
-        });
-      } catch {
-        existing = await (prisma.otRegistroDiario.findFirst as Function)({
-          where: {
-            ordenTrabajoId: id,
-            fecha: rdFecha,
-            ...(rdUsuarioId ? { usuarioId: rdUsuarioId } : { tecnico: registroDiario.tecnico }),
-          },
-          select: { id: true },
-        });
-      }
-      const dataBase = {
-        hhTrabajadas: registroDiario.hhTrabajadas,
-        tareas: registroDiario.tareasEjecutadas ?? [],
-        observaciones: registroDiario.observaciones ?? null,
-      };
-      if (existing) {
+      // Buscar registro existente con SQL crudo para evitar validación de columna adjuntos
+      const existingRows = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "OtRegistroDiario"
+        WHERE "ordenTrabajoId" = ${id}
+          AND fecha = ${rdFecha}
+          AND (${rdUsuarioId}::text IS NOT NULL AND "usuarioId" = ${rdUsuarioId}
+               OR ${rdUsuarioId}::text IS NULL AND tecnico = ${registroDiario.tecnico})
+        LIMIT 1
+      `;
+      const existingId = existingRows[0]?.id ?? null;
+      const tareas = registroDiario.tareasEjecutadas ?? [];
+      const observaciones = registroDiario.observaciones ?? null;
+      const hhTrabajadas: number = registroDiario.hhTrabajadas;
+      if (existingId) {
+        // Intentar update con adjuntos; si falla (columna no existe) actualizar sin ella
         try {
-          await (prisma.otRegistroDiario.update as Function)({
-            where: { id: existing.id },
-            data: { ...dataBase, adjuntos: registroDiario.adjuntos ?? [] },
-            select: { id: true },
-          });
+          await prisma.$executeRaw`
+            UPDATE "OtRegistroDiario"
+            SET "hhTrabajadas" = ${hhTrabajadas},
+                tareas = ${tareas}::text[],
+                observaciones = ${observaciones},
+                adjuntos = ${JSON.stringify(registroDiario.adjuntos ?? [])}::jsonb
+            WHERE id = ${existingId}
+          `;
         } catch {
-          await (prisma.otRegistroDiario.update as Function)({
-            where: { id: existing.id },
-            data: dataBase,
-            select: { id: true },
-          });
+          await prisma.$executeRaw`
+            UPDATE "OtRegistroDiario"
+            SET "hhTrabajadas" = ${hhTrabajadas},
+                tareas = ${tareas}::text[],
+                observaciones = ${observaciones}
+            WHERE id = ${existingId}
+          `;
         }
       } else {
-        const createBase = {
-          ordenTrabajoId: id,
-          fecha: rdFecha,
-          tecnico: registroDiario.tecnico,
-          usuarioId: rdUsuarioId,
-          ...dataBase,
-        };
+        const newId = crypto.randomUUID();
+        // Intentar insert con adjuntos; si falla (columna no existe) insertar sin ella
         try {
-          await (prisma.otRegistroDiario.create as Function)({
-            data: { ...createBase, adjuntos: registroDiario.adjuntos ?? [] },
-            select: { id: true },
-          });
+          await prisma.$executeRaw`
+            INSERT INTO "OtRegistroDiario" (id, "ordenTrabajoId", fecha, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones, adjuntos)
+            VALUES (${newId}, ${id}, ${rdFecha}, ${registroDiario.tecnico}, ${rdUsuarioId},
+                    ${hhTrabajadas}, ${tareas}::text[], ${observaciones},
+                    ${JSON.stringify(registroDiario.adjuntos ?? [])}::jsonb)
+          `;
         } catch {
-          await (prisma.otRegistroDiario.create as Function)({
-            data: createBase,
-            select: { id: true },
-          });
+          await prisma.$executeRaw`
+            INSERT INTO "OtRegistroDiario" (id, "ordenTrabajoId", fecha, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones)
+            VALUES (${newId}, ${id}, ${rdFecha}, ${registroDiario.tecnico}, ${rdUsuarioId},
+                    ${hhTrabajadas}, ${tareas}::text[], ${observaciones})
+          `;
         }
       }
       // Marcar solo el día trabajado como completada en el plan
