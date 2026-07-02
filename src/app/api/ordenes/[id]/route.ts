@@ -228,10 +228,20 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
         tareas: registroDiario.tareasEjecutadas ?? [],
         observaciones: registroDiario.observaciones ?? null,
       };
-      const dataConAdj = { ...dataBase, adjuntos: registroDiario.adjuntos ?? [] };
       if (existing) {
-        await (prisma.otRegistroDiario.update as Function)({ where: { id: existing.id }, data: dataConAdj })
-          .catch(() => (prisma.otRegistroDiario.update as Function)({ where: { id: existing!.id }, data: dataBase }));
+        try {
+          await (prisma.otRegistroDiario.update as Function)({
+            where: { id: existing.id },
+            data: { ...dataBase, adjuntos: registroDiario.adjuntos ?? [] },
+            select: { id: true },
+          });
+        } catch {
+          await (prisma.otRegistroDiario.update as Function)({
+            where: { id: existing.id },
+            data: dataBase,
+            select: { id: true },
+          });
+        }
       } else {
         const createBase = {
           ordenTrabajoId: id,
@@ -240,8 +250,17 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
           usuarioId: rdUsuarioId,
           ...dataBase,
         };
-        await (prisma.otRegistroDiario.create as Function)({ data: { ...createBase, adjuntos: registroDiario.adjuntos ?? [] } })
-          .catch(() => (prisma.otRegistroDiario.create as Function)({ data: createBase }));
+        try {
+          await (prisma.otRegistroDiario.create as Function)({
+            data: { ...createBase, adjuntos: registroDiario.adjuntos ?? [] },
+            select: { id: true },
+          });
+        } catch {
+          await (prisma.otRegistroDiario.create as Function)({
+            data: createBase,
+            select: { id: true },
+          });
+        }
       }
       // Marcar solo el día trabajado como completada en el plan
       const diaAvance = fechaToDiaAbrev(registroDiario.fecha);
