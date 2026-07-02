@@ -193,6 +193,7 @@ model OtRegistroDiario {
   hhTrabajadas   Float
   tareas         String[]
   observaciones  String?
+  adjuntos       Json     @default("[]")
   ordenTrabajo   OrdenTrabajo @relation(fields: [ordenTrabajoId], references: [id], onDelete: Cascade)
 
   @@index([ordenTrabajoId])

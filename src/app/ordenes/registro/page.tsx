@@ -131,6 +131,7 @@ type AvanceDiarioForm = {
   tareas: string[];
   tareaInput: string;
   observaciones: string;
+  adjuntos: AdjuntoItem[];
 };
 
 // ─── Date/Helpers ─────────────────────────────────────────────────────────────
@@ -1183,9 +1184,10 @@ export default function RegistroOTPage() {
 
   // ── Avance diario para OTs recurrentes ya iniciadas ──
   const [avanceRef, setAvanceRef] = useState<PlanRef | null>(null);
-  const [avanceForm, setAvanceForm] = useState<AvanceDiarioForm>({ hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "" });
+  const [avanceForm, setAvanceForm] = useState<AvanceDiarioForm>({ hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] });
   const [savingAvance, setSavingAvance] = useState(false);
   const [savingRevision, setSavingRevision] = useState(false);
+  const [cargandoAdjAvance, setCargandoAdjAvance] = useState(false);
 
   async function confirmarAvanceDiario() {
     if (!avanceRef?.ot.ordenTrabajoId) return;
@@ -1202,6 +1204,7 @@ export default function RegistroOTPage() {
             hhTrabajadas: parseFloat(avanceForm.hhTrabajadas) || 0,
             tareasEjecutadas: avanceForm.tareas,
             observaciones: avanceForm.observaciones || null,
+            adjuntos: avanceForm.adjuntos.map(a => ({ tipo: a.tipo, nombre: a.nombre, dataUrl: a.dataUrl, comentario: a.comentario, comentariosExtra: a.comentariosExtra })),
           },
           cambio: `Avance del día ${avanceRef.ot.dia} registrado`,
           usuarioId: user?.id,
@@ -1213,7 +1216,7 @@ export default function RegistroOTPage() {
         throw new Error((err as { error?: string }).error ?? "Error al guardar avance");
       }
       setAvanceRef(null);
-      setAvanceForm({ hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "" });
+      setAvanceForm({ hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] });
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Error al guardar avance");
     } finally {
@@ -1688,7 +1691,7 @@ export default function RegistroOTPage() {
                               </span>
                               {ot.estado !== "completada" && ot.estado !== "en_revision" && (
                                 <button
-                                  onClick={() => { setAvanceRef(ref); setAvanceForm({ hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "" }); }}
+                                  onClick={() => { setAvanceRef(ref); setAvanceForm({ hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] }); }}
                                   style={{ ...S.btnPrimary(), padding: "6px 12px", fontSize: 12 }}>
                                   + Avance del día
                                 </button>
@@ -1833,6 +1836,68 @@ export default function RegistroOTPage() {
                           <button type="button"
                             onClick={() => { const t = avanceForm.tareaInput.trim(); if (t) setAvanceForm(f => ({ ...f, tareas: [...f.tareas, t], tareaInput: "" })); }}
                             style={{ ...S.btnOutline, padding: "7px 10px", fontSize: 12 }}>+ Agregar</button>
+                        </div>
+                        {/* Evidencias del avance */}
+                        <div style={{ marginBottom: 10 }}>
+                          <label style={{ ...S.label, fontSize: 10, marginBottom: 6 }}>Evidencias (fotos / documentos)</label>
+                          {avanceForm.adjuntos.map((adj, i) => (
+                            <AdjuntoCard key={adj.id}
+                              adj={adj}
+                              onChange={updated => {
+                                const upd = [...avanceForm.adjuntos];
+                                upd[i] = updated;
+                                setAvanceForm(f => ({ ...f, adjuntos: upd }));
+                              }}
+                              onRemove={() => setAvanceForm(f => ({ ...f, adjuntos: f.adjuntos.filter((_, j) => j !== i) }))}
+                            />
+                          ))}
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const, marginTop: 4 }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1.5px dashed #94a3b8", borderRadius: 8, cursor: cargandoAdjAvance ? "not-allowed" : "pointer", background: "white", fontSize: 12, color: "#475569", fontWeight: 600 }}>
+                              <span style={{ fontSize: 16 }}>📷</span>
+                              {cargandoAdjAvance ? "Procesando…" : "Tomar foto / imagen"}
+                              <input type="file" accept="image/*" capture="environment" style={{ display: "none" }}
+                                disabled={cargandoAdjAvance}
+                                onChange={async e => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  setCargandoAdjAvance(true);
+                                  try {
+                                    const dataUrl = await comprimirImagen(file);
+                                    setAvanceForm(f => ({ ...f, adjuntos: [...f.adjuntos, { id: Math.random().toString(36).slice(2), tipo: "foto", nombre: file.name, dataUrl, comentario: "", comentariosExtra: [] }] }));
+                                  } finally { setCargandoAdjAvance(false); e.target.value = ""; }
+                                }} />
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1.5px dashed #94a3b8", borderRadius: 8, cursor: cargandoAdjAvance ? "not-allowed" : "pointer", background: "white", fontSize: 12, color: "#475569", fontWeight: 600 }}>
+                              <span style={{ fontSize: 16 }}>🖼️</span>
+                              Galería (JPG/PNG)
+                              <input type="file" accept="image/jpeg,image/png,image/heic,image/webp" style={{ display: "none" }}
+                                disabled={cargandoAdjAvance}
+                                onChange={async e => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  setCargandoAdjAvance(true);
+                                  try {
+                                    const dataUrl = await comprimirImagen(file);
+                                    setAvanceForm(f => ({ ...f, adjuntos: [...f.adjuntos, { id: Math.random().toString(36).slice(2), tipo: "foto", nombre: file.name, dataUrl, comentario: "", comentariosExtra: [] }] }));
+                                  } finally { setCargandoAdjAvance(false); e.target.value = ""; }
+                                }} />
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1.5px dashed #94a3b8", borderRadius: 8, cursor: cargandoAdjAvance ? "not-allowed" : "pointer", background: "white", fontSize: 12, color: "#475569", fontWeight: 600 }}>
+                              <span style={{ fontSize: 16 }}>📄</span>
+                              Documento (PDF/Word)
+                              <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }}
+                                disabled={cargandoAdjAvance}
+                                onChange={async e => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  setCargandoAdjAvance(true);
+                                  try {
+                                    const dataUrl = await leerDocumento(file);
+                                    setAvanceForm(f => ({ ...f, adjuntos: [...f.adjuntos, { id: Math.random().toString(36).slice(2), tipo: "documento", nombre: file.name, dataUrl, comentario: "", comentariosExtra: [] }] }));
+                                  } finally { setCargandoAdjAvance(false); e.target.value = ""; }
+                                }} />
+                            </label>
+                          </div>
                         </div>
                         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                           <button onClick={() => setAvanceRef(null)}

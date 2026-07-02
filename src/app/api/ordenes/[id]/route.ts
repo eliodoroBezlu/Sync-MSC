@@ -200,16 +200,17 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
         },
       });
       if (existing) {
-        await prisma.otRegistroDiario.update({
+        await (prisma.otRegistroDiario.update as Function)({
           where: { id: existing.id },
           data: {
             hhTrabajadas: registroDiario.hhTrabajadas,
             tareas: registroDiario.tareasEjecutadas ?? [],
             observaciones: registroDiario.observaciones ?? null,
+            adjuntos: registroDiario.adjuntos ?? [],
           },
         });
       } else {
-        await prisma.otRegistroDiario.create({
+        await (prisma.otRegistroDiario.create as Function)({
           data: {
             ordenTrabajoId: id,
             fecha: rdFecha,
@@ -218,6 +219,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
             hhTrabajadas: registroDiario.hhTrabajadas,
             tareas: registroDiario.tareasEjecutadas ?? [],
             observaciones: registroDiario.observaciones ?? null,
+            adjuntos: registroDiario.adjuntos ?? [],
           },
         });
       }
