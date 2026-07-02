@@ -281,17 +281,20 @@ export async function POST(req: NextRequest) {
           observaciones: body.lineas?.[0]?.observaciones as string || null,
         };
 
-        await prisma.otRegistroDiario.create({
-          data: {
-            ordenTrabajoId: existente.id,
-            fecha: registroData.fecha,
-            tecnico: registroData.tecnico,
-            usuarioId: registroData.usuarioId,
-            hhTrabajadas: registroData.hhTrabajadas,
-            tareas: registroData.tareasEjecutadas,
-            observaciones: registroData.observaciones,
-          },
-        });
+        const newRdId2 = crypto.randomUUID();
+        try {
+          await prisma.$executeRaw`
+            INSERT INTO "OtRegistroDiario" (id, "ordenTrabajoId", fecha, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones, adjuntos)
+            VALUES (${newRdId2}, ${existente.id}, ${registroData.fecha}, ${registroData.tecnico}, ${registroData.usuarioId},
+                    ${registroData.hhTrabajadas}, ${registroData.tareasEjecutadas}::text[], ${registroData.observaciones}, '[]'::jsonb)
+          `;
+        } catch {
+          await prisma.$executeRaw`
+            INSERT INTO "OtRegistroDiario" (id, "ordenTrabajoId", fecha, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones)
+            VALUES (${newRdId2}, ${existente.id}, ${registroData.fecha}, ${registroData.tecnico}, ${registroData.usuarioId},
+                    ${registroData.hhTrabajadas}, ${registroData.tareasEjecutadas}::text[], ${registroData.observaciones})
+          `;
+        }
 
         await prisma.otHistorial.create({
           data: {
@@ -479,6 +482,40 @@ export async function POST(req: NextRequest) {
           ordenTrabajoNum: ot.numeroOT,
         },
       });
+    }
+
+    // Para OTs recurrentes: registrar el primer día como avance y marcarlo "completada"
+    if (body.esRecurrente && esDePlan) {
+      const rdFecha = new Date(body.fecha);
+      const hhPrimerDia = (body.lineas ?? []).reduce((s: number, l: Record<string, unknown>) => s + (Number(l.tiempoRealHrs) || 0), 0);
+      const tareasPrimerDia: string[] = body.lineas?.[0]?.tareasEjecutadas ?? [];
+      const obsPrimerDia: string | null = body.lineas?.[0]?.observaciones ?? null;
+      const tecnicoPrimerDia: string = body.tecnicos?.[0]?.nombreCompleto ?? "Técnico";
+      const usuarioPrimerDia: string | null = body.tecnicos?.[0]?.usuarioId ?? null;
+      const newRdId = crypto.randomUUID();
+      // Guardar con SQL crudo para evitar error si columna adjuntos aún no existe en DB
+      try {
+        await prisma.$executeRaw`
+          INSERT INTO "OtRegistroDiario" (id, "ordenTrabajoId", fecha, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones, adjuntos)
+          VALUES (${newRdId}, ${ot.id}, ${rdFecha}, ${tecnicoPrimerDia}, ${usuarioPrimerDia},
+                  ${hhPrimerDia}, ${tareasPrimerDia}::text[], ${obsPrimerDia}, '[]'::jsonb)
+        `;
+      } catch {
+        await prisma.$executeRaw`
+          INSERT INTO "OtRegistroDiario" (id, "ordenTrabajoId", fecha, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones)
+          VALUES (${newRdId}, ${ot.id}, ${rdFecha}, ${tecnicoPrimerDia}, ${usuarioPrimerDia},
+                  ${hhPrimerDia}, ${tareasPrimerDia}::text[], ${obsPrimerDia})
+        `;
+      }
+      // Marcar el día de inicio como completada
+      const DIA_ABREV: Record<number, string> = { 1: "Lu", 2: "Ma", 3: "Mi", 4: "Ju", 5: "Vi", 6: "Sa", 0: "Do" };
+      const diaInicio = DIA_ABREV[new Date(body.fecha + "T12:00:00").getDay()];
+      if (diaInicio && body.programacionSemanalId && otJdeNumero) {
+        await prisma.otProgramada.updateMany({
+          where: { programacionSemanalId: body.programacionSemanalId, numeroOT: otJdeNumero, dia: diaInicio },
+          data: { estado: "completada" },
+        });
+      }
     }
 
     return NextResponse.json(
