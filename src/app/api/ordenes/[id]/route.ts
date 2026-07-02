@@ -202,36 +202,46 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       const rdUsuarioId = registroDiario.usuarioId ?? usuarioId ?? null;
       const rdFecha = new Date(registroDiario.fecha);
       // Buscar si ya existe un registro del mismo día y técnico
-      const existing = await prisma.otRegistroDiario.findFirst({
-        where: {
-          ordenTrabajoId: id,
-          fecha: rdFecha,
-          ...(rdUsuarioId ? { usuarioId: rdUsuarioId } : { tecnico: registroDiario.tecnico }),
-        },
-      });
-      if (existing) {
-        await (prisma.otRegistroDiario.update as Function)({
-          where: { id: existing.id },
-          data: {
-            hhTrabajadas: registroDiario.hhTrabajadas,
-            tareas: registroDiario.tareasEjecutadas ?? [],
-            observaciones: registroDiario.observaciones ?? null,
-            adjuntos: registroDiario.adjuntos ?? [],
-          },
-        });
-      } else {
-        await (prisma.otRegistroDiario.create as Function)({
-          data: {
+      // Fallback: si adjuntos no existe en DB aún, reintenta con select explícito sin esa columna
+      let existing: { id: string } | null = null;
+      try {
+        existing = await prisma.otRegistroDiario.findFirst({
+          where: {
             ordenTrabajoId: id,
             fecha: rdFecha,
-            tecnico: registroDiario.tecnico,
-            usuarioId: rdUsuarioId,
-            hhTrabajadas: registroDiario.hhTrabajadas,
-            tareas: registroDiario.tareasEjecutadas ?? [],
-            observaciones: registroDiario.observaciones ?? null,
-            adjuntos: registroDiario.adjuntos ?? [],
+            ...(rdUsuarioId ? { usuarioId: rdUsuarioId } : { tecnico: registroDiario.tecnico }),
           },
+          select: { id: true },
         });
+      } catch {
+        existing = await (prisma.otRegistroDiario.findFirst as Function)({
+          where: {
+            ordenTrabajoId: id,
+            fecha: rdFecha,
+            ...(rdUsuarioId ? { usuarioId: rdUsuarioId } : { tecnico: registroDiario.tecnico }),
+          },
+          select: { id: true },
+        });
+      }
+      const dataBase = {
+        hhTrabajadas: registroDiario.hhTrabajadas,
+        tareas: registroDiario.tareasEjecutadas ?? [],
+        observaciones: registroDiario.observaciones ?? null,
+      };
+      const dataConAdj = { ...dataBase, adjuntos: registroDiario.adjuntos ?? [] };
+      if (existing) {
+        await (prisma.otRegistroDiario.update as Function)({ where: { id: existing.id }, data: dataConAdj })
+          .catch(() => (prisma.otRegistroDiario.update as Function)({ where: { id: existing!.id }, data: dataBase }));
+      } else {
+        const createBase = {
+          ordenTrabajoId: id,
+          fecha: rdFecha,
+          tecnico: registroDiario.tecnico,
+          usuarioId: rdUsuarioId,
+          ...dataBase,
+        };
+        await (prisma.otRegistroDiario.create as Function)({ data: { ...createBase, adjuntos: registroDiario.adjuntos ?? [] } })
+          .catch(() => (prisma.otRegistroDiario.create as Function)({ data: createBase }));
       }
       // Marcar solo el día trabajado como completada en el plan
       const diaAvance = fechaToDiaAbrev(registroDiario.fecha);
