@@ -257,11 +257,16 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       });
     }
 
-    const ot = await prisma.ordenTrabajo.update({
-      where: { id },
-      data: updateData,
-      include,
-    });
+    const includeSinDiarios = { tecnicos: true, lineas: true, historial: { orderBy: { fechaHora: "asc" as const } } };
+    type OTUpdateResult = Awaited<ReturnType<typeof prisma.ordenTrabajo.update<{ where: { id: string }; data: Record<string, unknown>; include: typeof include }>>>;
+    let ot: OTUpdateResult = await prisma.ordenTrabajo.update({
+      where: { id }, data: updateData, include,
+    }).catch(() => null as unknown as OTUpdateResult);
+    if (!ot) {
+      ot = await prisma.ordenTrabajo.update({
+        where: { id }, data: updateData, include: includeSinDiarios,
+      }) as unknown as OTUpdateResult;
+    }
 
     // Propagar al plan semanal
     if (estado) {
