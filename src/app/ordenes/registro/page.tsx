@@ -1183,6 +1183,21 @@ export default function RegistroOTPage() {
     return new Set(Object.entries(counts).filter(([, c]) => c >= 2).map(([n]) => n));
   }, [planRefs]);
 
+  // ── Para recurrentes: mapa numeroOT → ref del día que YA tiene ordenTrabajoId ──
+  // Permite que días sin vínculo directo usen el mismo OrdenTrabajo del hermano registrado.
+  const refRegistradaMap = React.useMemo(() => {
+    const map: Record<string, PlanRef> = {};
+    for (const r of planRefs) {
+      if (r.ot.ordenTrabajoId && recurrentesNums.has(r.ot.numeroOT)) {
+        // Preferir el que está en_proceso sobre cualquier otro
+        if (!map[r.ot.numeroOT] || r.ot.estado === "en_proceso") {
+          map[r.ot.numeroOT] = r;
+        }
+      }
+    }
+    return map;
+  }, [planRefs, recurrentesNums]);
+
   // ── Avance diario para OTs recurrentes ya iniciadas ──
   const [avanceRef, setAvanceRef] = useState<PlanRef | null>(null);
   const [avanceForm, setAvanceForm] = useState<AvanceDiarioForm>({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] });
@@ -1618,8 +1633,12 @@ export default function RegistroOTPage() {
 
               {planRefs.filter(r => r.ot.dia === diaSeleccionado).map((ref, i) => {
                 const ot = ref.ot;
-                const yaRegistrada = !!ot.ordenTrabajoId;
                 const esRecurrente = recurrentesNums.has(ot.numeroOT);
+                // Para recurrentes sin vínculo propio, usar el ref del hermano ya registrado
+                const refEfectivo = (!ot.ordenTrabajoId && esRecurrente && refRegistradaMap[ot.numeroOT])
+                  ? refRegistradaMap[ot.numeroOT]
+                  : ref;
+                const yaRegistrada = !!ot.ordenTrabajoId || (esRecurrente && !!refRegistradaMap[ot.numeroOT]);
                 // Auto-detectar guardia: tag contiene OPEPLANT o esGuardia marcado
                 const esGuardia = ot.esGuardia || ot.tag?.includes("OPEPLANT");
                 const tipoColor = TIPO_COLOR[ot.tipoOT as TipoOT] ?? "#64748b";
@@ -1690,16 +1709,16 @@ export default function RegistroOTPage() {
                               <span style={{ fontSize: 10, fontWeight: 700, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 6, padding: "2px 8px" }}>
                                 🔁 RECURRENTE
                               </span>
-                              {ot.estado !== "completada" && ot.estado !== "en_revision" && (
+                              {refEfectivo.ot.estado !== "completada" && refEfectivo.ot.estado !== "en_revision" && (
                                 <button
-                                  onClick={() => { setAvanceRef(ref); setAvanceForm({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] }); }}
+                                  onClick={() => { setAvanceRef(refEfectivo); setAvanceForm({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] }); }}
                                   style={{ ...S.btnPrimary(), padding: "6px 12px", fontSize: 12 }}>
                                   + Avance del día
                                 </button>
                               )}
-                              {ot.estado !== "completada" && ot.estado !== "en_revision" ? (
+                              {refEfectivo.ot.estado !== "completada" && refEfectivo.ot.estado !== "en_revision" ? (
                                 <button
-                                  onClick={() => enviarRevisionRecurrente(ref)}
+                                  onClick={() => enviarRevisionRecurrente(refEfectivo)}
                                   disabled={savingRevision}
                                   style={{ ...S.btnGreen(savingRevision), padding: "5px 10px", fontSize: 11 }}>
                                   {savingRevision ? "Enviando…" : "Enviar a revisión ✓"}
