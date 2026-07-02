@@ -297,7 +297,8 @@ export default function ReporteOTPage() {
   const [deletingAvanceId, setDeletingAvanceId] = useState<string | null>(null);
   // Editar avance diario (supervisor/admin)
   const [editingAvanceId, setEditingAvanceId] = useState<string | null>(null);
-  const [editAvanceForm, setEditAvanceForm] = useState<{ hhTrabajadas: number; tareasEjecutadas: string[]; observaciones: string; tareaInput: string }>({ hhTrabajadas: 0, tareasEjecutadas: [], observaciones: "", tareaInput: "" });
+  const [editAvanceForm, setEditAvanceForm] = useState<{ hhTrabajadas: number; tareasEjecutadas: string[]; observaciones: string; tareaInput: string; adjuntos: { tipo: "foto" | "documento"; nombre: string; dataUrl: string; comentario: string; comentariosExtra: string[] }[] }>({ hhTrabajadas: 0, tareasEjecutadas: [], observaciones: "", tareaInput: "", adjuntos: [] });
+  const [cargandoAdjAvance, setCargandoAdjAvance] = useState(false);
 
   // Modal agregar evidencia (foto/documento) desde panel supervisor
   const [evidenciaModal, setEvidenciaModal] = useState<{ lineaTag: string; lineaTipoOT: string } | null>(null);
@@ -311,7 +312,8 @@ export default function ReporteOTPage() {
   const [avanceTareaInput, setAvanceTareaInput] = useState("");
   const [avanceForm, setAvanceForm]   = useState<{
     fecha: string; hhTrabajadas: number; tareasEjecutadas: string[]; observaciones: string;
-  }>({ fecha: new Date().toISOString().split("T")[0], hhTrabajadas: 0, tareasEjecutadas: [], observaciones: "" });
+    adjuntos: { tipo: "foto" | "documento"; nombre: string; dataUrl: string; comentario: string; comentariosExtra: string[] }[];
+  }>({ fecha: new Date().toISOString().split("T")[0], hhTrabajadas: 0, tareasEjecutadas: [], observaciones: "", adjuntos: [] });
 
   const loadOrdenes = useCallback(async (buscarDirecto?: string) => {
     setLoading(true);
@@ -492,6 +494,7 @@ export default function ReporteOTPage() {
             hhTrabajadas:     avanceForm.hhTrabajadas,
             tareasEjecutadas: avanceForm.tareasEjecutadas,
             observaciones:    avanceForm.observaciones,
+            adjuntos:         avanceForm.adjuntos,
           },
           cambio: `Avance del día ${avanceForm.fecha} registrado por ${user?.nombre ?? "Técnico"} — ${avanceForm.hhTrabajadas}HH`,
           usuarioId: user?.id ?? "system",
@@ -503,7 +506,7 @@ export default function ReporteOTPage() {
       setSelected(data.ot);
       setOrdenes(prev => prev.map(o => o._id === data.ot._id ? data.ot : o));
       setShowAvance(false);
-      setAvanceForm({ fecha: new Date().toISOString().split("T")[0], hhTrabajadas: 0, tareasEjecutadas: [], observaciones: "" });
+      setAvanceForm({ fecha: new Date().toISOString().split("T")[0], hhTrabajadas: 0, tareasEjecutadas: [], observaciones: "", adjuntos: [] });
       setAvanceTareaInput("");
     } catch (e: unknown) { setSaveErr(e instanceof Error ? e.message : "Error"); }
     finally { setSaving(false); }
@@ -527,6 +530,7 @@ export default function ReporteOTPage() {
             hhTrabajadas:     editAvanceForm.hhTrabajadas,
             tareasEjecutadas: editAvanceForm.tareasEjecutadas,
             observaciones:    editAvanceForm.observaciones,
+            adjuntos:         editAvanceForm.adjuntos,
           },
           cambio: `Avance del día ${avance.fecha} editado por ${user?.nombre ?? "Supervisor"}`,
           usuarioId: user?.id ?? "system",
@@ -1684,6 +1688,41 @@ export default function ReporteOTPage() {
                     style={{ ...S.textarea, minHeight: 52 }} />
                 </div>
 
+                {/* Evidencias del avance */}
+                <div style={{ marginBottom: 12 }}>
+                  <label style={S.label}>Evidencias (fotos / documentos)</label>
+                  {avanceForm.adjuntos.map((adj, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, background: "#f8fafc", borderRadius: 7, padding: "6px 10px", border: "1px solid #e2e8f0" }}>
+                      <span style={{ fontSize: 16 }}>{adj.tipo === "foto" ? "📷" : "📄"}</span>
+                      <span style={{ flex: 1, fontSize: 12, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{adj.nombre}</span>
+                      <input value={adj.comentario} placeholder="Observación…"
+                        onChange={e => { const upd = [...avanceForm.adjuntos]; upd[i] = { ...upd[i], comentario: e.target.value }; setAvanceForm(f => ({ ...f, adjuntos: upd })); }}
+                        style={{ ...S.input, width: 160, fontSize: 12 }} />
+                      <button type="button" onClick={() => setAvanceForm(f => ({ ...f, adjuntos: f.adjuntos.filter((_, j) => j !== i) }))}
+                        style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 14 }}>✕</button>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const, marginTop: 4 }}>
+                    {(["📷 Tomar foto", "🖼️ Galería (JPG/PNG)", "📄 Documento"] as const).map((label, idx) => (
+                      <label key={idx} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", border: "1.5px dashed #94a3b8", borderRadius: 7, cursor: cargandoAdjAvance ? "not-allowed" : "pointer", background: "white", fontSize: 12, color: "#475569", fontWeight: 600 }}>
+                        {cargandoAdjAvance && idx === 0 ? "Procesando…" : label}
+                        <input type="file" style={{ display: "none" }} disabled={cargandoAdjAvance}
+                          accept={idx === 2 ? ".pdf,.doc,.docx,.xls,.xlsx" : idx === 0 ? "image/*" : "image/jpeg,image/png,image/heic,image/webp"}
+                          {...(idx === 0 ? { capture: "environment" as const } : {})}
+                          onChange={async e => {
+                            const file = e.target.files?.[0]; if (!file) return;
+                            setCargandoAdjAvance(true);
+                            try {
+                              const esImg = file.type.startsWith("image/");
+                              const dataUrl = esImg ? await comprimirImagen(file) : await new Promise<string>(res => { const r = new FileReader(); r.onload = ev => res(ev.target!.result as string); r.readAsDataURL(file); });
+                              setAvanceForm(f => ({ ...f, adjuntos: [...f.adjuntos, { tipo: esImg ? "foto" : "documento", nombre: file.name, dataUrl, comentario: "", comentariosExtra: [] }] }));
+                            } finally { setCargandoAdjAvance(false); e.target.value = ""; }
+                          }} />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
                 {saveErr && <p style={{ color: "#dc2626", fontSize: 12, marginBottom: 8 }}>⚠ {saveErr}</p>}
                 <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                   <button onClick={() => { setShowAvance(false); setSaveErr(""); }} style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 13 }}>Cancelar</button>
@@ -1716,7 +1755,7 @@ export default function ReporteOTPage() {
                           <button
                             onClick={() => {
                               setEditingAvanceId(r._id!);
-                              setEditAvanceForm({ hhTrabajadas: r.hhTrabajadas, tareasEjecutadas: [...r.tareasEjecutadas], observaciones: r.observaciones ?? "", tareaInput: "" });
+                              setEditAvanceForm({ hhTrabajadas: r.hhTrabajadas, tareasEjecutadas: [...r.tareasEjecutadas], observaciones: r.observaciones ?? "", tareaInput: "", adjuntos: [...(r.adjuntos ?? [])] });
                             }}
                             style={{ background: "#fffbeb", color: "#d97706", border: "1px solid #fde68a", borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
                             title="Editar este avance">
@@ -1775,6 +1814,40 @@ export default function ReporteOTPage() {
                               style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12, whiteSpace: "nowrap" as const }}>+ Tarea</button>
                           </div>
                         </div>
+                        {/* Evidencias al editar */}
+                        <div style={{ marginTop: 8, marginBottom: 8 }}>
+                          <label style={S.label}>Evidencias (fotos / documentos)</label>
+                          {editAvanceForm.adjuntos.map((adj, i) => (
+                            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5, background: "#fffbeb", borderRadius: 6, padding: "5px 9px", border: "1px solid #fde68a" }}>
+                              <span style={{ fontSize: 15 }}>{adj.tipo === "foto" ? "📷" : "📄"}</span>
+                              <span style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{adj.nombre}</span>
+                              <input value={adj.comentario} placeholder="Observación…"
+                                onChange={e => { const upd = [...editAvanceForm.adjuntos]; upd[i] = { ...upd[i], comentario: e.target.value }; setEditAvanceForm(f => ({ ...f, adjuntos: upd })); }}
+                                style={{ ...S.input, width: 150, fontSize: 12 }} />
+                              <button type="button" onClick={() => setEditAvanceForm(f => ({ ...f, adjuntos: f.adjuntos.filter((_, j) => j !== i) }))}
+                                style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 13 }}>✕</button>
+                            </div>
+                          ))}
+                          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" as const, marginTop: 4 }}>
+                            {(["📷 Tomar foto", "🖼️ Galería", "📄 Documento"] as const).map((label, idx) => (
+                              <label key={idx} style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 9px", border: "1.5px dashed #94a3b8", borderRadius: 6, cursor: cargandoAdjAvance ? "not-allowed" : "pointer", background: "white", fontSize: 11, color: "#475569", fontWeight: 600 }}>
+                                {label}
+                                <input type="file" style={{ display: "none" }} disabled={cargandoAdjAvance}
+                                  accept={idx === 2 ? ".pdf,.doc,.docx,.xls,.xlsx" : idx === 0 ? "image/*" : "image/jpeg,image/png,image/heic,image/webp"}
+                                  {...(idx === 0 ? { capture: "environment" as const } : {})}
+                                  onChange={async e => {
+                                    const file = e.target.files?.[0]; if (!file) return;
+                                    setCargandoAdjAvance(true);
+                                    try {
+                                      const esImg = file.type.startsWith("image/");
+                                      const dataUrl = esImg ? await comprimirImagen(file) : await new Promise<string>(res => { const r = new FileReader(); r.onload = ev => res(ev.target!.result as string); r.readAsDataURL(file); });
+                                      setEditAvanceForm(f => ({ ...f, adjuntos: [...f.adjuntos, { tipo: esImg ? "foto" : "documento", nombre: file.name, dataUrl, comentario: "", comentariosExtra: [] }] }));
+                                    } finally { setCargandoAdjAvance(false); e.target.value = ""; }
+                                  }} />
+                              </label>
+                            ))}
+                          </div>
+                        </div>
                         {saveErr && <p style={{ color: "#dc2626", fontSize: 12 }}>⚠ {saveErr}</p>}
                         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                           <button onClick={() => { setEditingAvanceId(null); setSaveErr(""); }} style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12 }}>Cancelar</button>
@@ -1794,6 +1867,16 @@ export default function ReporteOTPage() {
                         )}
                         {r.observaciones && (
                           <p style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic" }}>{r.observaciones}</p>
+                        )}
+                        {(r.adjuntos ?? []).length > 0 && (
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const, marginTop: 6 }}>
+                            {(r.adjuntos ?? []).map((adj, ai) => (
+                              <span key={ai} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 5, padding: "2px 8px", color: "#0369a1" }}>
+                                {adj.tipo === "foto" ? "📷" : "📄"} {adj.nombre}
+                                {adj.comentario && <span style={{ color: "#64748b" }}> — {adj.comentario}</span>}
+                              </span>
+                            ))}
+                          </div>
                         )}
                       </>
                     )}

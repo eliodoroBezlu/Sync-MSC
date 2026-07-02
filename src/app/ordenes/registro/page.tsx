@@ -127,6 +127,7 @@ type FormData = {
 };
 
 type AvanceDiarioForm = {
+  fecha: string;
   hhTrabajadas: string;
   tareas: string[];
   tareaInput: string;
@@ -1184,7 +1185,7 @@ export default function RegistroOTPage() {
 
   // ── Avance diario para OTs recurrentes ya iniciadas ──
   const [avanceRef, setAvanceRef] = useState<PlanRef | null>(null);
-  const [avanceForm, setAvanceForm] = useState<AvanceDiarioForm>({ hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] });
+  const [avanceForm, setAvanceForm] = useState<AvanceDiarioForm>({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] });
   const [savingAvance, setSavingAvance] = useState(false);
   const [savingRevision, setSavingRevision] = useState(false);
   const [cargandoAdjAvance, setCargandoAdjAvance] = useState(false);
@@ -1198,7 +1199,7 @@ export default function RegistroOTPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           registroDiario: {
-            fecha: shiftFecha,
+            fecha: avanceForm.fecha,
             tecnico: user?.nombre ?? "Técnico",
             usuarioId: user?.id,
             hhTrabajadas: parseFloat(avanceForm.hhTrabajadas) || 0,
@@ -1216,7 +1217,7 @@ export default function RegistroOTPage() {
         throw new Error((err as { error?: string }).error ?? "Error al guardar avance");
       }
       setAvanceRef(null);
-      setAvanceForm({ hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] });
+      setAvanceForm({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] });
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Error al guardar avance");
     } finally {
@@ -1691,7 +1692,7 @@ export default function RegistroOTPage() {
                               </span>
                               {ot.estado !== "completada" && ot.estado !== "en_revision" && (
                                 <button
-                                  onClick={() => { setAvanceRef(ref); setAvanceForm({ hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] }); }}
+                                  onClick={() => { setAvanceRef(ref); setAvanceForm({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] }); }}
                                   style={{ ...S.btnPrimary(), padding: "6px 12px", fontSize: 12 }}>
                                   + Avance del día
                                 </button>
@@ -1791,7 +1792,14 @@ export default function RegistroOTPage() {
                     {avanceRef?.planId === ref.planId && avanceRef?.ot.numeroOT === ot.numeroOT && (
                       <div style={{ marginTop: 10, borderTop: "1px solid #bfdbfe", paddingTop: 10, background: "#f0f7ff", borderRadius: "0 0 10px 10px", padding: "10px 12px" }}>
                         <p style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", marginBottom: 8 }}>+ Avance del día {diaSeleccionado}</p>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 8, marginBottom: 8 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr", gap: 8, marginBottom: 8 }}>
+                          <div>
+                            <label style={{ ...S.label, fontSize: 10 }}>Fecha</label>
+                            <input type="date"
+                              value={avanceForm.fecha}
+                              onChange={e => setAvanceForm(f => ({ ...f, fecha: e.target.value }))}
+                              style={{ ...S.input, fontSize: 13 }} />
+                          </div>
                           <div>
                             <label style={{ ...S.label, fontSize: 10 }}>HH trabajadas</label>
                             <input type="number" min="0" step="0.5"
