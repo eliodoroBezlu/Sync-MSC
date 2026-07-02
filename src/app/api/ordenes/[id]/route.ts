@@ -76,7 +76,15 @@ function fechaToDiaAbrev(fecha: string): string {
 
 export async function GET(_req: NextRequest, { params }: Ctx) {
   const { id } = await params;
-  const ot = await prisma.ordenTrabajo.findUnique({ where: { id }, include });
+  // Fallback: si la columna adjuntos aún no existe en DB (migración pendiente),
+  // reintenta sin registrosDiarios para no bloquear el resto de la app.
+  type OTResult = Awaited<ReturnType<typeof prisma.ordenTrabajo.findUnique<{ where: { id: string }; include: typeof include }>>> ;
+  let ot: OTResult = await prisma.ordenTrabajo.findUnique({ where: { id }, include }).catch(() => null);
+  if (ot === null) {
+    const includeSinDiarios = { tecnicos: true, lineas: true, historial: { orderBy: { fechaHora: "asc" as const } } };
+    const otFallback = await prisma.ordenTrabajo.findUnique({ where: { id }, include: includeSinDiarios }).catch(() => null);
+    ot = otFallback as unknown as OTResult;
+  }
   if (!ot) return Response.json({ error: "No encontrado" }, { status: 404 });
 
   const serialized = serializeOT(ot as Parameters<typeof serializeOT>[0]);

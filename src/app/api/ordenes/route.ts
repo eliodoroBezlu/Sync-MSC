@@ -5,7 +5,6 @@ const include = {
   tecnicos: true,
   lineas: true,
   historial: { orderBy: { fechaHora: "asc" as const } },
-  registrosDiarios: { orderBy: { fecha: "asc" as const } },
 };
 
 function serializeOT(ot: Record<string, unknown> & {
