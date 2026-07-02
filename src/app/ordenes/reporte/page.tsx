@@ -74,6 +74,7 @@ type RegistroDiario = {
   hhTrabajadas: number;
   tareasEjecutadas: string[];
   observaciones?: string;
+  adjuntos?: { tipo: "foto" | "documento"; nombre: string; dataUrl: string; comentario: string; comentariosExtra: string[] }[];
 };
 
 type OTDoc = {

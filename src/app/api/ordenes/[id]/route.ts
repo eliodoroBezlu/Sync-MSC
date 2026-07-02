@@ -47,6 +47,7 @@ function serializeOT(ot: Record<string, unknown> & {
     registrosDiarios: (ot.registrosDiarios ?? []).map(r => ({
       _id: r.id, fecha: r.fecha, tecnico: r.tecnico, usuarioId: r.usuarioId,
       hhTrabajadas: r.hhTrabajadas, tareasEjecutadas: r.tareas, observaciones: r.observaciones,
+      adjuntos: (r.adjuntos as unknown[] | null) ?? [],
     })),
     datosSupervision: {
       codigoModoFallaISO: ot.supCodigoModoFallaISO,
@@ -106,6 +107,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
         hhTrabajadas: h.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0),
         tareasEjecutadas: [] as string[],
         observaciones: h.turno ?? null,
+        adjuntos: [] as unknown[],
       }));
     if (avances.length > 0) serialized.registrosDiarios = avances;
   }

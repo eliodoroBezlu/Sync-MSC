@@ -48,6 +48,7 @@ interface RegistroDiario {
   hhTrabajadas: number;
   tareasEjecutadas?: string[];
   observaciones?: string;
+  adjuntos?: AdjuntoItem[];
 }
 
 interface OTData {
@@ -190,8 +191,18 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
   const fotos      = todosAdjuntos.filter(a => a.tipo === "foto");
   const documentos = todosAdjuntos.filter(a => a.tipo === "documento");
 
+  // Adjuntos de avances diarios agrupados por día
+  const diarioConAdj = (ot.registrosDiarios ?? []).filter(r => (r.adjuntos ?? []).length > 0);
+  const fotosDiarios = diarioConAdj.flatMap(r =>
+    (r.adjuntos ?? []).filter(a => a.tipo === "foto").map(a => ({ ...a, tag: fmt(r.fecha), fecha: r.fecha }))
+  );
+  const docsDiarios = diarioConAdj.flatMap(r =>
+    (r.adjuntos ?? []).filter(a => a.tipo === "documento").map(a => ({ ...a, tag: fmt(r.fecha), fecha: r.fecha }))
+  );
+
   // Pre-cargar dimensiones reales de todas las fotos (async, antes de generar el PDF)
-  const fotoSizes = await Promise.all(fotos.map(f => getImgSize(f.dataUrl)));
+  const fotoSizes        = await Promise.all(fotos.map(f => getImgSize(f.dataUrl)));
+  const fotoSizesDiarios = await Promise.all(fotosDiarios.map(f => getImgSize(f.dataUrl)));
 
   // ── Encabezado ───────────────────────────────────────────────────────────────
   doc.setFillColor(...HDR_TOP);
@@ -392,6 +403,94 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
       },
     });
     y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+
+    // ── Fotos y documentos de los avances diarios ──────────────────────────
+    if (fotosDiarios.length > 0 || docsDiarios.length > 0) {
+      y = checkPage(doc, y, 20);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.5);
+      doc.setTextColor(...AZUL);
+      doc.text("Evidencias de Avances Diarios", 15, y);
+      y += 7;
+
+      if (fotosDiarios.length > 0) {
+        const COLS   = 2;
+        const MARGIN = 15;
+        const GAP    = 8;
+        const COL_W  = (PW - MARGIN * 2 - GAP * (COLS - 1)) / COLS;
+        const MAX_H  = 65;
+        const OBS_H  = 28;
+
+        for (let i = 0; i < fotosDiarios.length; i++) {
+          const col  = i % COLS;
+          const xImg = MARGIN + col * (COL_W + GAP);
+
+          if (col === 0 && i > 0) y += MAX_H + OBS_H + 8;
+          y = checkPage(doc, y, MAX_H + OBS_H + 10);
+
+          const adj  = fotosDiarios[i];
+          const size = fotoSizesDiarios[i] ?? { w: 4, h: 3 };
+
+          let imgW = COL_W;
+          let imgH = (imgW * size.h) / size.w;
+          if (imgH > MAX_H) { imgH = MAX_H; imgW = (imgH * size.w) / size.h; }
+          const xCentered = xImg + (COL_W - imgW) / 2;
+
+          doc.setDrawColor(...BORDE);
+          doc.setLineWidth(0.5);
+          doc.rect(xCentered - 1, y - 1, imgW + 2, imgH + 2, "S");
+          try {
+            const ext = adj.dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
+            doc.addImage(adj.dataUrl, ext, xCentered, y, imgW, imgH);
+          } catch {
+            doc.setFillColor(...GRIS_L);
+            doc.rect(xCentered, y, imgW, imgH, "F");
+            doc.setFontSize(7); doc.setTextColor(...GRIS);
+            doc.text("[imagen no disponible]", xCentered + imgW / 2, y + imgH / 2, { align: "center" });
+          }
+
+          const yObs = y + imgH + 3;
+          doc.setFillColor(248, 250, 252);
+          doc.rect(xImg, yObs, COL_W, OBS_H - 4, "F");
+          doc.setDrawColor(...BORDE); doc.setLineWidth(0.3);
+          doc.rect(xImg, yObs, COL_W, OBS_H - 4, "S");
+
+          doc.setFont("helvetica", "bold"); doc.setFontSize(6.5); doc.setTextColor(...NAVY);
+          doc.text(`Avance: ${adj.tag}`, xImg + 2, yObs + 4);
+
+          doc.setFont("helvetica", "bold"); doc.setFontSize(6); doc.setTextColor(...GRIS);
+          doc.text("Observaciones:", xImg + 2, yObs + 8.5);
+
+          const todosComentarios = [adj.comentario, ...(adj.comentariosExtra ?? [])].filter(Boolean);
+          const textoObs = todosComentarios.join(" · ") || "Sin observaciones";
+          doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(...NEGRO);
+          doc.text(doc.splitTextToSize(textoObs, COL_W - 4).slice(0, 3), xImg + 2, yObs + 13);
+        }
+        y += MAX_H + OBS_H + 6;
+      }
+
+      if (docsDiarios.length > 0) {
+        y = checkPage(doc, y, 20);
+        doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setTextColor(...AZUL);
+        doc.text(`Documentos adjuntos en avances — ${docsDiarios.length}`, 15, y);
+        y += 5;
+        autoTable(doc, {
+          startY: y,
+          margin: { left: 15, right: 15 },
+          head: [["Fecha", "Archivo", "Observaciones"]],
+          body: docsDiarios.map(d => [
+            d.tag,
+            d.nombre,
+            [d.comentario, ...(d.comentariosExtra ?? [])].filter(Boolean).join(" · ") || "—",
+          ]),
+          headStyles: { fillColor: NAVY, textColor: BLANCO, fontSize: 7, fontStyle: "bold", cellPadding: 2.5 },
+          bodyStyles: { fontSize: 7.5, cellPadding: 2.5, textColor: NEGRO },
+          alternateRowStyles: { fillColor: GRIS_L },
+          columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 60 } },
+        });
+        y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+      }
+    }
   }
 
   // ── SUPERVISIÓN ─────────────────────────────────────────────────────────────
@@ -400,6 +499,7 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
   const hayDatosSupervision = tieneCorrectivos && (ds.requierePlanificacion || comentarios.length > 0);
 
   const secSupervision = diarios.length > 0 ? 4 : 3;
+  void secSupervision;
   if (hayDatosSupervision) {
     y = checkPage(doc, y, 40);
     seccion(doc, `${secSupervision}. Supervisión`, y, PW);
