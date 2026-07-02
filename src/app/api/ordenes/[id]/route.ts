@@ -71,8 +71,9 @@ function mapEstadoAlPlan(estado: string): string {
 }
 
 const DIA_ABREV: Record<number, string> = { 1: "Lu", 2: "Ma", 3: "Mi", 4: "Ju", 5: "Vi", 6: "Sa", 0: "Do" };
-function fechaToDiaAbrev(fecha: string): string {
-  return DIA_ABREV[new Date(fecha + "T12:00:00").getDay()] ?? "";
+function fechaToDiaAbrev(fecha: string | Date): string {
+  const d = fecha instanceof Date ? fecha : new Date(String(fecha).length === 10 ? fecha + "T12:00:00" : fecha);
+  return DIA_ABREV[d.getDay()] ?? "";
 }
 
 export async function GET(_req: NextRequest, { params }: Ctx) {
@@ -81,14 +82,35 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   // reintenta sin registrosDiarios para no bloquear el resto de la app.
   type OTResult = Awaited<ReturnType<typeof prisma.ordenTrabajo.findUnique<{ where: { id: string }; include: typeof include }>>> ;
   let ot: OTResult = await prisma.ordenTrabajo.findUnique({ where: { id }, include }).catch(() => null);
+  let registrosDiariosRaw: { id: string; fecha: Date; tecnico: string; usuarioId: string | null; hhTrabajadas: number; tareas: string[]; observaciones: string | null }[] = [];
   if (ot === null) {
     const includeSinDiarios = { tecnicos: true, lineas: true, historial: { orderBy: { fechaHora: "asc" as const } } };
     const otFallback = await prisma.ordenTrabajo.findUnique({ where: { id }, include: includeSinDiarios }).catch(() => null);
     ot = otFallback as unknown as OTResult;
+    // Leer registros diarios con SQL crudo (columna adjuntos aún no existe en DB)
+    registrosDiariosRaw = await prisma.$queryRaw<typeof registrosDiariosRaw>`
+      SELECT id, fecha, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones
+      FROM "OtRegistroDiario"
+      WHERE "ordenTrabajoId" = ${id}
+      ORDER BY fecha ASC
+    `;
   }
   if (!ot) return Response.json({ error: "No encontrado" }, { status: 404 });
 
   const serialized = serializeOT(ot as Parameters<typeof serializeOT>[0]);
+  // Si usamos el fallback sin ORM, inyectar los registros diarios leídos con SQL
+  if (registrosDiariosRaw.length > 0) {
+    serialized.registrosDiarios = registrosDiariosRaw.map(r => ({
+      _id: r.id,
+      fecha: r.fecha,
+      tecnico: r.tecnico,
+      usuarioId: r.usuarioId,
+      hhTrabajadas: r.hhTrabajadas,
+      tareasEjecutadas: r.tareas,
+      observaciones: r.observaciones,
+      adjuntos: [],
+    }));
+  }
 
   // OTs OPEPLANT: construir avances diarios desde sub-OTs hermanas (mismo otJdeNumero)
   if (ot.otJdeNumero && serialized.registrosDiarios.length === 0) {
