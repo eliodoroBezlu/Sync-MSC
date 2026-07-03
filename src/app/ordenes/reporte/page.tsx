@@ -1754,7 +1754,7 @@ export default function ReporteOTPage() {
                 </div>
 
                 <div style={{ marginBottom: 12 }}>
-                  <label style={S.label}>Observaciones</label>
+                  <label style={S.label}>Detalle de trabajo</label>
                   <textarea value={avanceForm.observaciones}
                     onChange={e => setAvanceForm(f => ({ ...f, observaciones: e.target.value }))}
                     placeholder="Estado del trabajo, materiales usados, pendientes…"
@@ -1858,7 +1858,7 @@ export default function ReporteOTPage() {
                               style={S.input} />
                           </div>
                           <div>
-                            <label style={S.label}>Observaciones</label>
+                            <label style={S.label}>Detalle de trabajo</label>
                             <input type="text"
                               value={editAvanceForm.observaciones}
                               onChange={e => setEditAvanceForm(f => ({ ...f, observaciones: e.target.value }))}

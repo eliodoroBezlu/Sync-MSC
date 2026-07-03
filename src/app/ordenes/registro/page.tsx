@@ -1833,7 +1833,7 @@ export default function RegistroOTPage() {
                               style={{ ...S.input, fontSize: 13 }} />
                           </div>
                           <div>
-                            <label style={{ ...S.label, fontSize: 10 }}>Observaciones</label>
+                            <label style={{ ...S.label, fontSize: 10 }}>Detalle de trabajo</label>
                             <input
                               value={avanceForm.observaciones}
                               onChange={e => setAvanceForm(f => ({ ...f, observaciones: e.target.value }))}
