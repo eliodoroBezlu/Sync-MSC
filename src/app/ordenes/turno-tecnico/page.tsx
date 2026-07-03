@@ -357,6 +357,7 @@ export default function ReporteTurnoTecnicoPage() {
       const planSeleccionadas = otsPlan.filter(o => form.otsPlanIds.includes(o.id));
       const planData = planSeleccionadas.map(o => ({
         otId: o.id,
+        ordenTrabajoId: o.ordenTrabajoId ?? null,
         numeroOT: o.numeroOT,
         tag: o.tag,
         disciplina: o.disciplina,

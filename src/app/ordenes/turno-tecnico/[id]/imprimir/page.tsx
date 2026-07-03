@@ -17,7 +17,7 @@ type OTDisplay = {
 type BitacoraEntry = { turno: string; supervisor: string; nota: string; resolucion?: string; hhAtendidas: number; fecha?: string };
 
 type OTPlanRaw = {
-  otId?: string; numeroOT: string; tag?: string;
+  otId?: string; ordenTrabajoId?: string | null; numeroOT: string; tag?: string;
   tipoOT?: string; descripcion?: string; tecnicos?: string[];
   hhTotal?: number; estado?: string; esGuardia?: boolean;
   bitacora?: BitacoraEntry[];
@@ -89,19 +89,30 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
       })
     : [];
 
-  // Para OTs del plan normales (no OPEPLANT) que tienen otId, cargar sus líneas desde la DB
-  const planOtIds = otsPlanRaw
-    .filter(o => !o.esGuardia && o.otId)
-    .map(o => o.otId as string);
+  // Para OTs del plan normales (no OPEPLANT), cargar sus líneas desde la DB
+  // Preferir ordenTrabajoId (nuevo); fallback por numeroOT (reportes guardados antes del fix)
+  const planNormales = otsPlanRaw.filter(o => !o.esGuardia);
+  const planPorId = planNormales.filter(o => o.ordenTrabajoId).map(o => o.ordenTrabajoId as string);
+  const planPorNum = planNormales.filter(o => !o.ordenTrabajoId && o.numeroOT).map(o => o.numeroOT);
 
-  const planOTsDB = planOtIds.length > 0
+  const planOTsDB = (planPorId.length > 0 || planPorNum.length > 0)
     ? await prisma.ordenTrabajo.findMany({
-        where: { id: { in: planOtIds } },
+        where: { OR: [
+          ...(planPorId.length > 0 ? [{ id: { in: planPorId } }] : []),
+          ...(planPorNum.length > 0 ? [{ numeroOT: { in: planPorNum } }] : []),
+        ]},
         include: { lineas: true },
       })
     : [];
 
-  const planLineasMap = new Map(planOTsDB.map(o => [o.id, o.lineas]));
+  // Indexar por id y por numeroOT para lookup eficiente
+  const planLineasById  = new Map(planOTsDB.map(o => [o.id, o.lineas]));
+  const planLineasByNum = new Map(planOTsDB.map(o => [o.numeroOT, o.lineas]));
+  function getPlanLineas(o: OTPlanRaw) {
+    if (o.ordenTrabajoId && planLineasById.has(o.ordenTrabajoId)) return planLineasById.get(o.ordenTrabajoId)!;
+    if (planLineasByNum.has(o.numeroOT)) return planLineasByNum.get(o.numeroOT)!;
+    return null;
+  }
 
   // Agrupar hijas por otJdeNumero para armar la bitácora de cada OPEPLANT
   const childByParentNum = new Map<string, typeof childOTs>();
@@ -116,10 +127,9 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
     let planLineas: LineaDisplay[] | undefined = undefined;
 
     // OT plan normal: cargar lineas desde DB para mostrar resolución
-    if (!o.esGuardia && o.otId && planLineasMap.has(o.otId)) {
-      const dbLineas = planLineasMap.get(o.otId)!;
-      if (dbLineas.length > 0) {
-        planLineas = dbLineas.map(l => ({
+    const dbLineas = !o.esGuardia ? getPlanLineas(o) : null;
+    if (dbLineas && dbLineas.length > 0) {
+      planLineas = dbLineas.map(l => ({
           tag: l.tag,
           tipoOT: l.tipoOT,
           descripcion: l.sintoma ?? l.descripcionEquipo ?? l.descripcionTrabajo ?? "",
@@ -127,7 +137,6 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
           hh: l.tiempoRealHrs ?? 0,
           observaciones: l.observaciones ?? undefined,
         }));
-      }
     }
 
     // Si es OPEPLANT y hay hijas registradas, construir bitácora y lineas desde las hijas
