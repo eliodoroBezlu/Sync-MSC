@@ -216,6 +216,43 @@ export default function PrintClientTecnico({
                 ));
               }
               // OT de plan normal o OPEPLANT sin bitácora
+              const planLineas = ot.lineas && ot.lineas.length > 0 ? ot.lineas : null;
+              // Si tiene múltiples líneas con resolución, mostrar una sub-fila por línea
+              if (planLineas && planLineas.length > 1) {
+                const bgPlan = ot.critica ? "#fff1f2" : "#f8fafc";
+                return [
+                  <tr key={`${ot.id}-phdr`} style={{ background: "#dbeafe" }}>
+                    <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold" }}>{idx + 1}</td>
+                    <td colSpan={4} style={{ fontSize: 9, fontWeight: "bold", color: "#1e40af" }}>
+                      OT {otNum(ot)} · {ot.descripcion || "—"}
+                    </td>
+                    <td colSpan={2} style={{ fontSize: 9, fontStyle: ot.nota ? "normal" : "italic", color: ot.nota ? "#1e293b" : "#94a3b8" }}>
+                      {ot.nota || "—"}
+                    </td>
+                    <td style={{ textAlign: "center", fontSize: 8.5, fontWeight: "bold" }}>
+                      <span style={{ color: "#16a34a", background: "#dcfce7", padding: "2px 5px", borderRadius: 3 }}>PLAN</span>
+                    </td>
+                  </tr>,
+                  ...planLineas.map((l, li) => (
+                    <tr key={`${ot.id}-pl${li}`} style={{ background: bgPlan }}>
+                      <td style={{ textAlign: "center", fontSize: 8, color: "#94a3b8" }}>{idx + 1}.{li + 1}</td>
+                      <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold", color: TIPO_COLOR[l.tipoOT] ?? "#000" }}>
+                        {l.tipoOT || ot.tipoOT || "—"}
+                        <div style={{ fontSize: 7, marginTop: 1 }}><span className="plan-badge">PLAN</span></div>
+                      </td>
+                      <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 9 }}>{l.tag}</td>
+                      <td style={{ textAlign: "center", fontSize: 9 }}>{l.hh || "—"}</td>
+                      <td style={{ fontFamily: "monospace", fontSize: 8, color: "#64748b" }}>{otNum(ot)}</td>
+                      <td style={{ fontSize: 9 }}>
+                        {l.descripcion && <div>{l.descripcion}</div>}
+                        {l.resolucion  && <div style={{ color: "#16a34a", fontStyle: "italic" }}>✓ {l.resolucion}</div>}
+                      </td>
+                      <td colSpan={2} style={{ fontSize: 8, color: "#475569" }}>{l.observaciones || ""}</td>
+                    </tr>
+                  )),
+                ];
+              }
+              // Una sola línea o sin lineas
               return (
                 <tr key={ot.id} className="plan-row" style={{ background: ot.critica ? "#fff1f2" : ot.esGuardia ? "#fffbeb" : "#f8fafc" }}>
                   <td style={{ textAlign: "center", fontSize: 9 }}>{idx + 1}</td>
@@ -225,12 +262,15 @@ export default function PrintClientTecnico({
                       <span className={ot.esGuardia ? "opeplant-badge" : "plan-badge"}>{ot.esGuardia ? "OPEPLANT" : "PLAN"}</span>
                     </div>
                   </td>
-                  <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 9 }}>{ot.tag || "OPEPLANT"}</td>
-                  <td style={{ textAlign: "center", fontSize: 9 }}>{ot.hhTotal || "—"}</td>
+                  <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 9 }}>{planLineas?.[0]?.tag || ot.tag || "—"}</td>
+                  <td style={{ textAlign: "center", fontSize: 9 }}>{planLineas?.[0]?.hh || ot.hhTotal || "—"}</td>
                   <td style={{ fontFamily: "monospace", fontSize: 9 }}>{otNum(ot)}</td>
-                  <td style={{ fontSize: 9 }}>{ot.descripcion || "—"}</td>
+                  <td style={{ fontSize: 9 }}>
+                    {ot.descripcion || planLineas?.[0]?.descripcion || "—"}
+                    {planLineas?.[0]?.resolucion && <div style={{ color: "#16a34a", fontStyle: "italic", fontSize: 8 }}>✓ {planLineas[0].resolucion}</div>}
+                  </td>
                   <td style={{ fontSize: 9, fontStyle: ot.nota ? "normal" : "italic", color: ot.nota ? "#1e293b" : "#94a3b8" }}>
-                    {ot.nota || "—"}
+                    {ot.nota || planLineas?.[0]?.observaciones || "—"}
                     {ot.critica   && <div style={{ fontSize: 8, color: "#dc2626", fontWeight: "bold" }}>⚠ CRÍTICA</div>}
                     {ot.pendiente && <div style={{ fontSize: 8, color: "#d97706", fontWeight: "bold" }}>→ SGTE TURNO</div>}
                   </td>

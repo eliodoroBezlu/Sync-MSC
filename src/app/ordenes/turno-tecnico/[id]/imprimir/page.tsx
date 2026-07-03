@@ -74,7 +74,6 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
   const otsPlanRaw = (reporte.otsPlanData ?? []) as OTPlanRaw[];
 
   // Para OTs OPEPLANT (esGuardia=true), buscar OTs hijas registradas por los turneros
-  // Las hijas tienen otJdeNumero == numeroOT de la OT OPEPLANT y parentOtId != null
   const guardiaNumeros = otsPlanRaw
     .filter(o => o.esGuardia)
     .map(o => o.numeroOT)
@@ -90,6 +89,20 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
       })
     : [];
 
+  // Para OTs del plan normales (no OPEPLANT) que tienen otId, cargar sus líneas desde la DB
+  const planOtIds = otsPlanRaw
+    .filter(o => !o.esGuardia && o.otId)
+    .map(o => o.otId as string);
+
+  const planOTsDB = planOtIds.length > 0
+    ? await prisma.ordenTrabajo.findMany({
+        where: { id: { in: planOtIds } },
+        include: { lineas: true },
+      })
+    : [];
+
+  const planLineasMap = new Map(planOTsDB.map(o => [o.id, o.lineas]));
+
   // Agrupar hijas por otJdeNumero para armar la bitácora de cada OPEPLANT
   const childByParentNum = new Map<string, typeof childOTs>();
   for (const c of childOTs) {
@@ -100,9 +113,24 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
 
   const otsPlan: OTDisplay[] = otsPlanRaw.map(o => {
     let bitacora: BitacoraEntry[] = o.bitacora ?? [];
+    let planLineas: LineaDisplay[] | undefined = undefined;
+
+    // OT plan normal: cargar lineas desde DB para mostrar resolución
+    if (!o.esGuardia && o.otId && planLineasMap.has(o.otId)) {
+      const dbLineas = planLineasMap.get(o.otId)!;
+      if (dbLineas.length > 0) {
+        planLineas = dbLineas.map(l => ({
+          tag: l.tag,
+          tipoOT: l.tipoOT,
+          descripcion: l.sintoma ?? l.descripcionEquipo ?? l.descripcionTrabajo ?? "",
+          resolucion: (l as Record<string, unknown>).resolucionAplicada as string ?? "",
+          hh: l.tiempoRealHrs ?? 0,
+          observaciones: l.observaciones ?? undefined,
+        }));
+      }
+    }
 
     // Si es OPEPLANT y hay hijas registradas, construir bitácora y lineas desde las hijas
-    let planLineas: LineaDisplay[] | undefined = undefined;
     if (o.esGuardia && childByParentNum.has(o.numeroOT)) {
       const hijas = childByParentNum.get(o.numeroOT)!;
       bitacora = hijas.map(c => ({
