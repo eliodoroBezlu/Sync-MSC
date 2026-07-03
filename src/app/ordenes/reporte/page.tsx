@@ -1969,7 +1969,7 @@ export default function ReporteOTPage() {
                     </div>
                     <div style={{ flex: 1 }}>
                       <span style={{ fontSize: 11, fontWeight: 700, color: "#0369a1" }}>Técnicos</span>
-                      <p style={{ fontSize: 12, color: "#0369a1" }}>{[...new Set(ot.tecnicos.map(t => t.nombreCompleto).concat((ot.registrosDiarios ?? []).map(r => r.tecnico)))].join(", ")}</p>
+                      <p style={{ fontSize: 12, color: "#0369a1" }}>{[...new Set([...ot.tecnicos.map(t => t.nombreCompleto), ...(ot.registrosDiarios ?? []).flatMap(r => r.tecnico.split(",").map((n: string) => n.trim()))])].filter(Boolean).join(", ")}</p>
                     </div>
                   </div>
                 )}

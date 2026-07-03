@@ -305,10 +305,18 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     let ot: OTUpdateResult = await prisma.ordenTrabajo.update({
       where: { id }, data: updateData, include,
     }).catch(() => null as unknown as OTUpdateResult);
+    let patchRegistrosDiariosRaw: { id: string; fecha: Date; tecnico: string; usuarioId: string | null; hhTrabajadas: number; tareas: string[]; observaciones: string | null }[] = [];
     if (!ot) {
       ot = await prisma.ordenTrabajo.update({
         where: { id }, data: updateData, include: includeSinDiarios,
       }) as unknown as OTUpdateResult;
+      // Columna adjuntos aún no existe: recuperar registros diarios con SQL crudo
+      patchRegistrosDiariosRaw = await prisma.$queryRaw<typeof patchRegistrosDiariosRaw>`
+        SELECT id, fecha, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones
+        FROM "OtRegistroDiario"
+        WHERE "ordenTrabajoId" = ${id}
+        ORDER BY fecha ASC
+      `;
     }
 
     // Propagar al plan semanal
@@ -346,7 +354,15 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       }
     }
 
-    return Response.json({ ok: true, ot: serializeOT(ot as Parameters<typeof serializeOT>[0]) });
+    const serializedPatch = serializeOT(ot as Parameters<typeof serializeOT>[0]);
+    if (patchRegistrosDiariosRaw.length > 0) {
+      serializedPatch.registrosDiarios = patchRegistrosDiariosRaw.map(r => ({
+        _id: r.id, fecha: r.fecha, tecnico: r.tecnico, usuarioId: r.usuarioId,
+        hhTrabajadas: r.hhTrabajadas, tareasEjecutadas: r.tareas,
+        observaciones: r.observaciones, adjuntos: [],
+      }));
+    }
+    return Response.json({ ok: true, ot: serializedPatch });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error interno";
     return Response.json({ ok: false, error: message }, { status: 400 });
