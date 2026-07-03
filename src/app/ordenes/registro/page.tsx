@@ -902,7 +902,7 @@ function LineaEditor({
               placeholder="Describe el trabajo ejecutado" style={S.textarea} />
           </div>
           <div style={{ marginBottom: 13 }}>
-            <label style={S.label}>Resolución aplicada</label>
+            <label style={S.label}>Resolución / observación del resultado</label>
             <textarea value={L.resolucionAplicada} onChange={e => patch({ resolucionAplicada: e.target.value })} placeholder="Describe lo que se hizo para resolver la falla" style={S.textarea} />
           </div>
           {EstadoFinalSelector}
