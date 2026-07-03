@@ -47,8 +47,10 @@ export default function PrintClientTecnico({
   const pendientesSig = ots.filter(o => o.pendiente);
 
   // Separar OTs del plan y OTs registradas
-  const otsPlan       = ots.filter(o => o.esPlan);
+  // Si una OT del plan ya tiene un registro en sistema con el mismo número, no la mostramos en el plan
   const otsRegistradas = ots.filter(o => !o.esPlan);
+  const numerosRegistrados = new Set(otsRegistradas.map(o => o.otJdeNumero ?? o.numeroOT));
+  const otsPlan = ots.filter(o => o.esPlan && !numerosRegistrados.has(o.otJdeNumero ?? o.numeroOT));
 
   return (
     <>
