@@ -674,9 +674,7 @@ function LineaEditor({
 }) {
   const [L, setL] = useState(linea);
   const [tareaInput, setTareaInput] = useState("");
-  const [obsInput, setObsInput] = useState("");
   const [showInsp, setShowInsp] = useState(!!linea.inspeccion);
-  const obsItems = L.observaciones ? L.observaciones.split("\n").filter(Boolean) : [];
   const [modosList, setModosList] = useState<ModoEntry[]>([]);
   const [causas, setCausas] = useState<FaultEntry[]>([]);
   const [checklists, setChecklists] = useState<ChecklistItem[]>([]);
@@ -795,6 +793,34 @@ function LineaEditor({
     </div>
   );
 
+  const HHTrabajadasField = (
+    <div style={{ marginBottom: 13 }}>
+      <label style={S.label}>HH Trabajadas{isCorrectivo(L.tipoOT) ? " *" : ""}</label>
+      <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>(personas × horas)</div>
+      <input type="number" min="0" step="0.5" value={L.tiempoRealHrs} onChange={e => patch({ tiempoRealHrs: e.target.value })} style={S.input} />
+    </div>
+  );
+
+  const TareasEjecutadasField = (
+    <div style={{ marginBottom: 13 }}>
+      <label style={S.label}>Tareas ejecutadas</label>
+      {L.tareasEjecutadas.map((t, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+          <span style={{ flex: 1, fontSize: 13, color: "#1e293b", background: "#f1f5f9", borderRadius: 6, padding: "6px 10px" }}>{t}</span>
+          <button type="button" onClick={() => patch({ tareasEjecutadas: L.tareasEjecutadas.filter((_, j) => j !== i) })}
+            style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 15 }}>✕</button>
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: 8 }}>
+        <input value={tareaInput} onChange={e => setTareaInput(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); if (tareaInput.trim()) { patch({ tareasEjecutadas: [...L.tareasEjecutadas, tareaInput.trim()] }); setTareaInput(""); } } }}
+          placeholder="Tarea ejecutada — Enter para agregar" style={{ ...S.input, flex: 1 }} />
+        <button type="button" onClick={() => { if (tareaInput.trim()) { patch({ tareasEjecutadas: [...L.tareasEjecutadas, tareaInput.trim()] }); setTareaInput(""); } }}
+          style={{ ...S.btnOutline, padding: "9px 13px", fontSize: 13 }}>+ Agregar</button>
+      </div>
+    </div>
+  );
+
   return (
     <div style={{ ...S.card, border: "2px solid #2563eb", background: "#f8fbff", marginBottom: 14 }}>
       <div style={{ fontWeight: 700, fontSize: 14, color: "#0f2847", marginBottom: 16 }}>
@@ -856,11 +882,9 @@ function LineaEditor({
             <textarea value={L.resolucionAplicada} onChange={e => patch({ resolucionAplicada: e.target.value })}
               placeholder="¿Pendiente algún trabajo? Detalles adicionales del resultado" style={S.textarea} />
           </div>
+          {TareasEjecutadasField}
           {EstadoFinalSelector}
-          <div style={{ marginBottom: 13 }}>
-            <label style={S.label}>HH Trabajadas * <span style={{ fontWeight: 400, textTransform: "none" as const }}>(personas × horas)</span></label>
-            <input type="number" min="0" step="0.5" value={L.tiempoRealHrs} onChange={e => patch({ tiempoRealHrs: e.target.value })} style={S.input} />
-          </div>
+          {HHTrabajadasField}
         </>
       )}
 
@@ -905,11 +929,9 @@ function LineaEditor({
             <label style={S.label}>Resolución / observación del resultado</label>
             <textarea value={L.resolucionAplicada} onChange={e => patch({ resolucionAplicada: e.target.value })} placeholder="Describe lo que se hizo para resolver la falla" style={S.textarea} />
           </div>
+          {TareasEjecutadasField}
           {EstadoFinalSelector}
-          <div style={{ marginBottom: 13 }}>
-            <label style={S.label}>HH Trabajadas * <span style={{ fontWeight: 400, textTransform: "none" as const }}>(personas × horas)</span></label>
-            <input type="number" min="0" step="0.5" value={L.tiempoRealHrs} onChange={e => patch({ tiempoRealHrs: e.target.value })} style={S.input} />
-          </div>
+          {HHTrabajadasField}
         </>
       )}
 
@@ -920,34 +942,15 @@ function LineaEditor({
             <label style={S.label}>Detalle del trabajo realizado *</label>
             <textarea value={L.descripcionTrabajo} onChange={e => patch({ descripcionTrabajo: e.target.value })} placeholder="Detalle del trabajo preventivo ejecutado" style={S.textarea} />
           </div>
-          <div style={{ marginBottom: 13 }}>
-            <label style={S.label}>Tareas ejecutadas</label>
-            {L.tareasEjecutadas.map((t, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-                <span style={{ flex: 1, fontSize: 13, color: "#1e293b", background: "#f1f5f9", borderRadius: 6, padding: "6px 10px" }}>{t}</span>
-                <button type="button" onClick={() => patch({ tareasEjecutadas: L.tareasEjecutadas.filter((_, j) => j !== i) })}
-                  style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 15 }}>✕</button>
-              </div>
-            ))}
-            <div style={{ display: "flex", gap: 8 }}>
-              <input value={tareaInput} onChange={e => setTareaInput(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); if (tareaInput.trim()) { patch({ tareasEjecutadas: [...L.tareasEjecutadas, tareaInput.trim()] }); setTareaInput(""); } } }}
-                placeholder="Tarea ejecutada — Enter para agregar" style={{ ...S.input, flex: 1 }} />
-              <button type="button" onClick={() => { if (tareaInput.trim()) { patch({ tareasEjecutadas: [...L.tareasEjecutadas, tareaInput.trim()] }); setTareaInput(""); } }}
-                style={{ ...S.btnOutline, padding: "9px 13px", fontSize: 13 }}>+ Agregar</button>
-            </div>
-          </div>
+          {TareasEjecutadasField}
           <div style={{ marginBottom: 13 }}>
             <label style={S.label}>Resolución / observación del resultado</label>
             <textarea value={L.resolucionAplicada} onChange={e => patch({ resolucionAplicada: e.target.value })}
               placeholder="Observaciones adicionales sobre el resultado (opcional)" style={S.textarea} />
           </div>
           {EstadoFinalSelector}
-          <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginBottom: 13 }}>
-            <div style={{ flex: "0 0 155px" }}>
-              <label style={S.label}>HH Trabajadas <span style={{ fontWeight: 400, textTransform: "none" as const }}>(personas × horas)</span></label>
-              <input type="number" min="0" step="0.5" value={L.tiempoRealHrs} onChange={e => patch({ tiempoRealHrs: e.target.value })} style={S.input} />
-            </div>
+          {HHTrabajadasField}
+          <div style={{ marginBottom: 13 }}>
             {aplicaChecklist(L.nivel, L.disciplina, L.tipoOT) && (() => {
               const DISC_ICON: Record<string, { emoji: string; color: string; bg: string }> = {
                 Mecanico:       { emoji: "⚙️",  color: "#0891b2", bg: "#ecfeff" },
@@ -1030,36 +1033,6 @@ function LineaEditor({
             </div>
           )}
         </>
-      )}
-
-      {L.tipoOT && (
-        <div style={{ marginBottom: 16 }}>
-          <label style={S.label}>Observaciones generales</label>
-          {obsItems.map((obs, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
-              <span style={{ flex: 1, fontSize: 13, color: "#1e293b", background: "#f8fafc", borderRadius: 6, padding: "6px 10px", border: "1px solid #e2e8f0", lineHeight: 1.5 }}>
-                {obs}
-              </span>
-              <button type="button"
-                onClick={() => patch({ observaciones: obsItems.filter((_, j) => j !== i).join("\n") })}
-                style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 15, paddingTop: 4 }}>✕</button>
-            </div>
-          ))}
-          <div style={{ display: "flex", gap: 8 }}>
-            <input value={obsInput} onChange={e => setObsInput(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  if (obsInput.trim()) { patch({ observaciones: [...obsItems, obsInput.trim()].join("\n") }); setObsInput(""); }
-                }
-              }}
-              placeholder="Agregar observación — Enter para confirmar"
-              style={{ ...S.input, fontSize: 13, flex: 1 }} />
-            <button type="button"
-              onClick={() => { if (obsInput.trim()) { patch({ observaciones: [...obsItems, obsInput.trim()].join("\n") }); setObsInput(""); } }}
-              style={{ ...S.btnOutline, padding: "9px 13px", fontSize: 13, whiteSpace: "nowrap" as const }}>+ Agregar</button>
-          </div>
-        </div>
       )}
 
       {/* ── Evidencias: Fotos y Documentos ── */}
