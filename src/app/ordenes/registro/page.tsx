@@ -41,12 +41,21 @@ type LineaForm = {
   nivel: number; disciplina: string; areaProceso: string;
   tipoOT: TipoOT | "";
   sintoma: string; causaProbable: string; resolucionAplicada: string;
+  estadoFinal: EstadoFinal | "";
   tiempoEstimadoHrs: string; tiempoRealHrs: string;
   descripcionTrabajo: string; tareasEjecutadas: string[];
   inspeccion: InspeccionEntry | null;
   observaciones: string;
   adjuntos: AdjuntoItem[];
 };
+
+type EstadoFinal = "operativo" | "operativo_obs" | "pendiente" | "fuera_servicio";
+const ESTADO_FINAL_OPTIONS: { value: EstadoFinal; label: string; color: string }[] = [
+  { value: "operativo",      label: "Operativo",              color: "#16a34a" },
+  { value: "operativo_obs",  label: "Operativo c/ observación", color: "#d97706" },
+  { value: "pendiente",      label: "Pendiente",              color: "#2563eb" },
+  { value: "fuera_servicio", label: "Fuera de servicio",      color: "#dc2626" },
+];
 
 // Detecta la disciplina usando todas las fuentes disponibles
 const CATS_ELECTRICAS = ["MOTORES", "TABLEROS", "GENERADORES", "TRANSFORMADORES", "VARIADORES DE FREC"];
@@ -96,7 +105,7 @@ type BitacoraEntry = { turno: string; supervisor: string; nota: string; hhAtendi
 type OTDetalle = {
   _id: string; numeroOT: string; estado: string; turno: string;
   tecnicos: { nombreCompleto: string }[];
-  lineas: { tag: string; tipoOT: string; descripcionEquipo?: string; sintoma?: string; resolucionAplicada?: string; descripcionTrabajo?: string; tiempoRealHrs?: number }[];
+  lineas: { tag: string; tipoOT: string; descripcionEquipo?: string; sintoma?: string; resolucionAplicada?: string; estadoFinal?: string; descripcionTrabajo?: string; tiempoRealHrs?: number }[];
 };
 
 type OTPlan = {
@@ -262,7 +271,7 @@ function newLinea(): LineaForm {
     id: Math.random().toString(36).slice(2),
     tag: "", descripcionEquipo: "", tipoEquipo: "", categoriaISO: "", criticidad: "",
     nivel: 0, disciplina: "", areaProceso: "", tipoOT: "",
-    sintoma: "", causaProbable: "", resolucionAplicada: "", tiempoEstimadoHrs: "", tiempoRealHrs: "",
+    sintoma: "", causaProbable: "", resolucionAplicada: "", estadoFinal: "", tiempoEstimadoHrs: "", tiempoRealHrs: "",
     descripcionTrabajo: "", tareasEjecutadas: [], inspeccion: null, observaciones: "", adjuntos: [],
   };
 }
@@ -767,7 +776,24 @@ function LineaEditor({
   }, [L.sintoma, L.categoriaISO, L.tipoOT, modosList]);
 
   const adjSinComentario = L.adjuntos.some(a => !a.comentario.trim());
-  const canConfirm = !!L.tag && !!L.tipoOT && !adjSinComentario;
+  const canConfirm = !!L.tag && !!L.tipoOT && !adjSinComentario && !!L.descripcionTrabajo.trim() && !!L.estadoFinal;
+
+  const EstadoFinalSelector = (
+    <div style={{ marginBottom: 13 }}>
+      <label style={S.label}>Estado final del equipo *</label>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const }}>
+        {ESTADO_FINAL_OPTIONS.map(o => {
+          const active = L.estadoFinal === o.value;
+          return (
+            <button key={o.value} type="button" onClick={() => patch({ estadoFinal: o.value })}
+              style={{ padding: "7px 12px", borderRadius: 7, fontSize: 12, cursor: "pointer", border: active ? `2px solid ${o.color}` : "1px solid #e2e8f0", background: active ? o.color + "15" : "white", color: active ? o.color : "#64748b", fontWeight: active ? 800 : 400 }}>
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ ...S.card, border: "2px solid #2563eb", background: "#f8fbff", marginBottom: 14 }}>
@@ -807,7 +833,7 @@ function LineaEditor({
             const active = L.tipoOT === t.value;
             return (
               <button key={t.value} type="button" title={t.desc}
-                onClick={() => patch({ tipoOT: t.value, sintoma: "", causaProbable: "", resolucionAplicada: "", tiempoEstimadoHrs: isCorrectivo(t.value) ? L.tiempoEstimadoHrs : "", descripcionTrabajo: L.descripcionTrabajo, tareasEjecutadas: [] })}
+                onClick={() => patch({ tipoOT: t.value, sintoma: "", causaProbable: "", resolucionAplicada: "", estadoFinal: L.estadoFinal, tiempoEstimadoHrs: isCorrectivo(t.value) ? L.tiempoEstimadoHrs : "", descripcionTrabajo: L.descripcionTrabajo, tareasEjecutadas: [] })}
                 style={{ padding: "7px 13px", borderRadius: 7, fontSize: 12, cursor: "pointer", border: active ? `2px solid ${t.color}` : "1px solid #e2e8f0", background: active ? t.color + "15" : "white", color: active ? t.color : "#64748b", fontWeight: active ? 800 : 400 }}>
                 {t.label}
               </button>
@@ -821,15 +847,16 @@ function LineaEditor({
       {L.tipoOT === "CMP" && (
         <>
           <div style={{ marginBottom: 13 }}>
-            <label style={S.label}>Detalle del trabajo realizado</label>
+            <label style={S.label}>Detalle del trabajo realizado *</label>
             <textarea value={L.descripcionTrabajo} onChange={e => patch({ descripcionTrabajo: e.target.value })}
               placeholder="Describe el trabajo ejecutado (pre-cargado del plan)" style={S.textarea} />
           </div>
           <div style={{ marginBottom: 13 }}>
-            <label style={S.label}>Resolución / resultado final</label>
+            <label style={S.label}>Resolución / observación del resultado</label>
             <textarea value={L.resolucionAplicada} onChange={e => patch({ resolucionAplicada: e.target.value })}
-              placeholder="¿Quedó operativo? ¿Pendiente algún trabajo?" style={S.textarea} />
+              placeholder="¿Pendiente algún trabajo? Detalles adicionales del resultado" style={S.textarea} />
           </div>
+          {EstadoFinalSelector}
           <div style={{ marginBottom: 13 }}>
             <label style={S.label}>HH Trabajadas * <span style={{ fontWeight: 400, textTransform: "none" as const }}>(personas × horas)</span></label>
             <input type="number" min="0" step="0.5" value={L.tiempoRealHrs} onChange={e => patch({ tiempoRealHrs: e.target.value })} style={S.input} />
@@ -870,9 +897,15 @@ function LineaEditor({
             </div>
           )}
           <div style={{ marginBottom: 13 }}>
+            <label style={S.label}>Detalle del trabajo realizado *</label>
+            <textarea value={L.descripcionTrabajo} onChange={e => patch({ descripcionTrabajo: e.target.value })}
+              placeholder="Describe el trabajo ejecutado" style={S.textarea} />
+          </div>
+          <div style={{ marginBottom: 13 }}>
             <label style={S.label}>Resolución aplicada</label>
             <textarea value={L.resolucionAplicada} onChange={e => patch({ resolucionAplicada: e.target.value })} placeholder="Describe lo que se hizo para resolver la falla" style={S.textarea} />
           </div>
+          {EstadoFinalSelector}
           <div style={{ marginBottom: 13 }}>
             <label style={S.label}>HH Trabajadas * <span style={{ fontWeight: 400, textTransform: "none" as const }}>(personas × horas)</span></label>
             <input type="number" min="0" step="0.5" value={L.tiempoRealHrs} onChange={e => patch({ tiempoRealHrs: e.target.value })} style={S.input} />
@@ -884,7 +917,7 @@ function LineaEditor({
       {isPreventivo(L.tipoOT) && (
         <>
           <div style={{ marginBottom: 13 }}>
-            <label style={S.label}>Descripción del trabajo realizado</label>
+            <label style={S.label}>Detalle del trabajo realizado *</label>
             <textarea value={L.descripcionTrabajo} onChange={e => patch({ descripcionTrabajo: e.target.value })} placeholder="Detalle del trabajo preventivo ejecutado" style={S.textarea} />
           </div>
           <div style={{ marginBottom: 13 }}>
@@ -904,6 +937,12 @@ function LineaEditor({
                 style={{ ...S.btnOutline, padding: "9px 13px", fontSize: 13 }}>+ Agregar</button>
             </div>
           </div>
+          <div style={{ marginBottom: 13 }}>
+            <label style={S.label}>Resolución / observación del resultado</label>
+            <textarea value={L.resolucionAplicada} onChange={e => patch({ resolucionAplicada: e.target.value })}
+              placeholder="Observaciones adicionales sobre el resultado (opcional)" style={S.textarea} />
+          </div>
+          {EstadoFinalSelector}
           <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginBottom: 13 }}>
             <div style={{ flex: "0 0 155px" }}>
               <label style={S.label}>HH Trabajadas <span style={{ fontWeight: 400, textTransform: "none" as const }}>(personas × horas)</span></label>
@@ -1501,13 +1540,14 @@ export default function RegistroOTPage() {
         lineas: form.lineas.map(l => ({
           tag: l.tag, descripcionEquipo: l.descripcionEquipo, tipoOT: l.tipoOT,
           adjuntos: l.adjuntos.map(a => ({ tipo: a.tipo, nombre: a.nombre, dataUrl: a.dataUrl, comentario: a.comentario, comentariosExtra: a.comentariosExtra })),
+          descripcionTrabajo: l.descripcionTrabajo || undefined,
+          resolucionAplicada: l.resolucionAplicada || undefined,
+          estadoFinal: l.estadoFinal || undefined,
           ...(isCorrectivo(l.tipoOT) ? {
             sintoma: l.sintoma || undefined, causaProbable: l.causaProbable || undefined,
-            resolucionAplicada: l.resolucionAplicada || undefined,
             tiempoEstimadoHrs: l.tiempoEstimadoHrs ? Number(l.tiempoEstimadoHrs) : undefined,
             tiempoRealHrs: l.tiempoRealHrs ? Number(l.tiempoRealHrs) : undefined,
           } : {
-            descripcionTrabajo: l.descripcionTrabajo || undefined,
             tareasEjecutadas: l.tareasEjecutadas.length > 0 ? l.tareasEjecutadas : undefined,
             tiempoRealHrs: l.tiempoRealHrs ? Number(l.tiempoRealHrs) : undefined,
           }),
@@ -1799,6 +1839,10 @@ export default function RegistroOTPage() {
                               {l.sintoma && <p style={{ fontSize: 11, color: "#475569", fontStyle: "italic", marginBottom: 2 }}>Síntoma: {l.sintoma}</p>}
                               {l.descripcionTrabajo && <p style={{ fontSize: 11, color: "#475569", marginBottom: 2 }}>{l.descripcionTrabajo}</p>}
                               {l.resolucionAplicada && <p style={{ fontSize: 11, color: "#16a34a" }}>✓ {l.resolucionAplicada}</p>}
+                              {l.estadoFinal && (() => {
+                                const eo = ESTADO_FINAL_OPTIONS.find(o => o.value === l.estadoFinal);
+                                return eo ? <span style={{ fontSize: 10, fontWeight: 700, color: eo.color, background: eo.color + "15", borderRadius: 5, padding: "2px 7px", marginTop: 3, display: "inline-block" }}>{eo.label}</span> : null;
+                              })()}
                             </div>
                           ))}
                           <button onClick={() => router.push("/ordenes/reporte")}
@@ -2119,9 +2163,15 @@ export default function RegistroOTPage() {
                             {l.criticidad && <span style={S.badge(CRIT_COLOR[l.criticidad] ?? "#64748b")}>Crit. {l.criticidad}</span>}
                           </div>
                           <p style={{ fontSize: 12, color: "#64748b", marginBottom: 2 }}>{l.descripcionEquipo}</p>
+                          {l.descripcionTrabajo && <p style={{ fontSize: 12, color: "#475569" }}>{l.descripcionTrabajo}</p>}
                           {isCorrectivo(l.tipoOT) && l.sintoma && <p style={{ fontSize: 12, color: "#475569" }}>{l.sintoma}{l.causaProbable ? ` → ${l.causaProbable}` : ""}</p>}
-                          {isPreventivo(l.tipoOT) && l.descripcionTrabajo && <p style={{ fontSize: 12, color: "#475569" }}>{l.descripcionTrabajo}</p>}
-                          {l.tiempoRealHrs && <p style={{ fontSize: 12, color: "#16a34a", fontWeight: 600, marginTop: 2 }}>⏱ {l.tiempoRealHrs} HH</p>}
+                          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 2 }}>
+                            {l.tiempoRealHrs && <span style={{ fontSize: 12, color: "#16a34a", fontWeight: 600 }}>⏱ {l.tiempoRealHrs} HH</span>}
+                            {l.estadoFinal && (() => {
+                              const eo = ESTADO_FINAL_OPTIONS.find(o => o.value === l.estadoFinal);
+                              return eo ? <span style={{ fontSize: 10, fontWeight: 700, color: eo.color, background: eo.color + "15", borderRadius: 5, padding: "2px 7px" }}>{eo.label}</span> : null;
+                            })()}
+                          </div>
                         </div>
                         <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
                           <button type="button" onClick={() => openEdit(idx)} disabled={!!editLinea}
@@ -2196,24 +2246,19 @@ export default function RegistroOTPage() {
                         {l.tipoOT && <span style={S.badge(TIPO_COLOR[l.tipoOT as TipoOT])}>{l.tipoOT}</span>}
                       </div>
                       <p style={{ fontSize: 12, color: "#64748b", marginBottom: 2 }}>{l.descripcionEquipo}</p>
-                      {isCorrectivo(l.tipoOT) && (
-                        <>
-                          {l.sintoma && <p style={{ fontSize: 12, color: "#475569" }}>Síntoma: {l.sintoma}</p>}
-                          {l.causaProbable && <p style={{ fontSize: 12, color: "#475569" }}>Causa: {l.causaProbable}</p>}
-                          {l.resolucionAplicada && <p style={{ fontSize: 12, color: "#475569" }}>Resolución: {l.resolucionAplicada}</p>}
-                          <div style={{ display: "flex", gap: 12, marginTop: 2 }}>
-                            {l.tiempoEstimadoHrs && <span style={{ fontSize: 12, color: "#94a3b8" }}>Est: {l.tiempoEstimadoHrs}h</span>}
-                            {l.tiempoRealHrs && <span style={{ fontSize: 12, color: "#16a34a", fontWeight: 600 }}>Real: {l.tiempoRealHrs}HH</span>}
-                          </div>
-                        </>
-                      )}
-                      {isPreventivo(l.tipoOT) && (
-                        <>
-                          {l.descripcionTrabajo && <p style={{ fontSize: 12, color: "#475569" }}>{l.descripcionTrabajo}</p>}
-                          {l.tareasEjecutadas.length > 0 && <ul style={{ margin: "3px 0", paddingLeft: 16 }}>{l.tareasEjecutadas.map((t, ti) => <li key={ti} style={{ fontSize: 12, color: "#64748b" }}>{t}</li>)}</ul>}
-                          {l.tiempoRealHrs && <p style={{ fontSize: 12, color: "#16a34a", fontWeight: 600, marginTop: 2 }}>Real: {l.tiempoRealHrs}h</p>}
-                        </>
-                      )}
+                      {isCorrectivo(l.tipoOT) && l.sintoma && <p style={{ fontSize: 12, color: "#475569" }}>Síntoma: {l.sintoma}</p>}
+                      {isCorrectivo(l.tipoOT) && l.causaProbable && <p style={{ fontSize: 12, color: "#475569" }}>Causa: {l.causaProbable}</p>}
+                      {l.descripcionTrabajo && <p style={{ fontSize: 12, color: "#475569" }}>{l.descripcionTrabajo}</p>}
+                      {l.resolucionAplicada && <p style={{ fontSize: 12, color: "#475569" }}>Resolución: {l.resolucionAplicada}</p>}
+                      {isPreventivo(l.tipoOT) && l.tareasEjecutadas.length > 0 && <ul style={{ margin: "3px 0", paddingLeft: 16 }}>{l.tareasEjecutadas.map((t, ti) => <li key={ti} style={{ fontSize: 12, color: "#64748b" }}>{t}</li>)}</ul>}
+                      <div style={{ display: "flex", gap: 12, marginTop: 2, alignItems: "center" }}>
+                        {l.tiempoEstimadoHrs && <span style={{ fontSize: 12, color: "#94a3b8" }}>Est: {l.tiempoEstimadoHrs}h</span>}
+                        {l.tiempoRealHrs && <span style={{ fontSize: 12, color: "#16a34a", fontWeight: 600 }}>Real: {l.tiempoRealHrs}HH</span>}
+                        {l.estadoFinal && (() => {
+                          const eo = ESTADO_FINAL_OPTIONS.find(o => o.value === l.estadoFinal);
+                          return eo ? <span style={{ fontSize: 10, fontWeight: 700, color: eo.color, background: eo.color + "15", borderRadius: 5, padding: "2px 7px" }}>{eo.label}</span> : null;
+                        })()}
+                      </div>
                       {l.observaciones && <p style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic", marginTop: 2 }}>{l.observaciones}</p>}
                     </div>
                   ))}

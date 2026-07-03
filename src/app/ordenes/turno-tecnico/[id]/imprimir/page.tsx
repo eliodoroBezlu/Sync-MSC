@@ -4,7 +4,7 @@ import PrintClientTecnico from "./PrintClientTecnico";
 
 type Params = { params: Promise<{ id: string }> };
 
-type LineaDisplay = { tag: string; tipoOT: string; descripcion: string; resolucion: string; hh: number; observaciones?: string };
+type LineaDisplay = { tag: string; tipoOT: string; descripcion: string; resolucion: string; estadoFinal?: string; hh: number; observaciones?: string };
 
 type OTDisplay = {
   id: string; numeroOT: string; otJdeNumero?: string | null; tag: string; tipoOT: string;
@@ -14,7 +14,7 @@ type OTDisplay = {
   lineas?: LineaDisplay[];
 };
 
-type BitacoraEntry = { turno: string; supervisor: string; nota: string; resolucion?: string; hhAtendidas: number; fecha?: string };
+type BitacoraEntry = { turno: string; supervisor: string; nota: string; resolucion?: string; estadoFinal?: string; hhAtendidas: number; fecha?: string };
 
 type OTPlanRaw = {
   otId?: string; ordenTrabajoId?: string | null; numeroOT: string; tag?: string;
@@ -64,6 +64,7 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
         tipoOT: l.tipoOT,
         descripcion: l.sintoma ?? l.descripcionEquipo ?? l.descripcionTrabajo ?? "",
         resolucion: (l as Record<string, unknown>).resolucionAplicada as string ?? "",
+        estadoFinal: (l as Record<string, unknown>).estadoFinal as string ?? undefined,
         hh: l.tiempoRealHrs ?? 0,
         observaciones: l.observaciones ?? undefined,
       })),
@@ -134,6 +135,7 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
           tipoOT: l.tipoOT,
           descripcion: l.sintoma ?? l.descripcionEquipo ?? l.descripcionTrabajo ?? "",
           resolucion: (l as Record<string, unknown>).resolucionAplicada as string ?? "",
+          estadoFinal: (l as Record<string, unknown>).estadoFinal as string ?? undefined,
           hh: l.tiempoRealHrs ?? 0,
           observaciones: l.observaciones ?? undefined,
         }));
@@ -147,6 +149,7 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
         supervisor: c.tecnicos.map(t => t.nombreCompleto).join(", "),
         nota: c.lineas[0]?.descripcionTrabajo ?? c.lineas[0]?.sintoma ?? "",
         resolucion: (c.lineas[0] as Record<string, unknown>)?.resolucionAplicada as string ?? undefined,
+        estadoFinal: (c.lineas[0] as Record<string, unknown>)?.estadoFinal as string ?? undefined,
         hhAtendidas: c.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0),
         fecha: c.fecha ? new Date(c.fecha).toLocaleDateString("es-BO") : undefined,
       }));
@@ -157,6 +160,7 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
           tipoOT: l.tipoOT,
           descripcion: l.sintoma ?? l.descripcionEquipo ?? l.descripcionTrabajo ?? "",
           resolucion: (l as Record<string, unknown>).resolucionAplicada as string ?? "",
+          estadoFinal: (l as Record<string, unknown>).estadoFinal as string ?? undefined,
           hh: l.tiempoRealHrs ?? 0,
           observaciones: l.observaciones ?? undefined,
         }))

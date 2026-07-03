@@ -35,6 +35,7 @@ function serializeOT(ot: Record<string, unknown> & {
     lineas: (ot.lineas ?? []).map(l => ({
       tag: l.tag, descripcionEquipo: l.descripcionEquipo, tipoOT: l.tipoOT,
       sintoma: l.sintoma, causaProbable: l.causaProbable, resolucionAplicada: l.resolucionAplicada,
+      estadoFinal: l.estadoFinal,
       tiempoEstimadoHrs: l.tiempoEstimadoHrs, tiempoRealHrs: l.tiempoRealHrs,
       descripcionTrabajo: l.descripcionTrabajo, tareasEjecutadas: l.tareasEjecutadas,
       observaciones: l.observaciones,
@@ -200,6 +201,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
             sintoma: l.sintoma as string | null ?? null,
             causaProbable: l.causaProbable as string | null ?? null,
             resolucionAplicada: l.resolucionAplicada as string | null ?? null,
+            estadoFinal: l.estadoFinal as string | null ?? null,
             tiempoEstimadoHrs: l.tiempoEstimadoHrs as number | null ?? null,
             tiempoRealHrs: l.tiempoRealHrs as number | null ?? null,
             descripcionTrabajo: l.descripcionTrabajo as string | null ?? null,

@@ -1,8 +1,26 @@
 "use client";
 import { useState } from "react";
 
-type BitacoraEntry = { turno: string; supervisor: string; nota: string; resolucion?: string; hhAtendidas: number; fecha?: string };
-type LineaDisplay  = { tag: string; tipoOT: string; descripcion: string; resolucion: string; hh: number; observaciones?: string };
+type BitacoraEntry = { turno: string; supervisor: string; nota: string; resolucion?: string; estadoFinal?: string; hhAtendidas: number; fecha?: string };
+type LineaDisplay  = { tag: string; tipoOT: string; descripcion: string; resolucion: string; estadoFinal?: string; hh: number; observaciones?: string };
+
+const ESTADO_FINAL_LABEL: Record<string, { label: string; color: string }> = {
+  operativo:       { label: "Operativo",              color: "#16a34a" },
+  operativo_obs:   { label: "Operativo c/ observación", color: "#d97706" },
+  pendiente:       { label: "Pendiente",              color: "#2563eb" },
+  fuera_servicio:  { label: "Fuera de servicio",      color: "#dc2626" },
+};
+
+function EstadoFinalBadge({ estadoFinal }: { estadoFinal?: string }) {
+  if (!estadoFinal) return null;
+  const e = ESTADO_FINAL_LABEL[estadoFinal];
+  if (!e) return null;
+  return (
+    <span style={{ fontSize: 7, fontWeight: 700, color: e.color, background: e.color + "15", borderRadius: 4, padding: "1px 5px", marginLeft: 5 }}>
+      {e.label}
+    </span>
+  );
+}
 
 type OTDisplay = {
   id: string; numeroOT: string; otJdeNumero?: string | null; tag: string; tipoOT: string;
@@ -203,7 +221,7 @@ export default function PrintClientTecnico({
                     <td style={{ fontFamily: "monospace", fontSize: 9 }}>{otNum(ot)}</td>
                     <td style={{ fontSize: 9 }}>
                       {b.nota || ot.descripcion || "—"}
-                      {b.resolucion && <div style={{ color: "#16a34a", fontStyle: "italic", fontSize: 8, marginTop: 2 }}>✓ {b.resolucion}</div>}
+                      {b.resolucion && <div style={{ color: "#16a34a", fontStyle: "italic", fontSize: 8, marginTop: 2 }}>✓ {b.resolucion}<EstadoFinalBadge estadoFinal={b.estadoFinal} /></div>}
                     </td>
                     <td style={{ fontSize: 9, color: "#92400e" }}>
                       {b.supervisor && <span>{b.supervisor}</span>}
@@ -245,7 +263,7 @@ export default function PrintClientTecnico({
                       <td style={{ fontFamily: "monospace", fontSize: 8, color: "#64748b" }}>{otNum(ot)}</td>
                       <td style={{ fontSize: 9 }}>
                         {l.descripcion && <div>{l.descripcion}</div>}
-                        {l.resolucion  && <div style={{ color: "#16a34a", fontStyle: "italic" }}>✓ {l.resolucion}</div>}
+                        {l.resolucion  && <div style={{ color: "#16a34a", fontStyle: "italic" }}>✓ {l.resolucion}<EstadoFinalBadge estadoFinal={l.estadoFinal} /></div>}
                       </td>
                       <td colSpan={2} style={{ fontSize: 8, color: "#475569" }}>{l.observaciones || ""}</td>
                     </tr>
@@ -267,7 +285,7 @@ export default function PrintClientTecnico({
                   <td style={{ fontFamily: "monospace", fontSize: 9 }}>{otNum(ot)}</td>
                   <td style={{ fontSize: 9 }}>
                     {ot.descripcion || planLineas?.[0]?.descripcion || "—"}
-                    {planLineas?.[0]?.resolucion && <div style={{ color: "#16a34a", fontStyle: "italic", fontSize: 8 }}>✓ {planLineas[0].resolucion}</div>}
+                    {planLineas?.[0]?.resolucion && <div style={{ color: "#16a34a", fontStyle: "italic", fontSize: 8 }}>✓ {planLineas[0].resolucion}<EstadoFinalBadge estadoFinal={planLineas[0].estadoFinal} /></div>}
                   </td>
                   <td style={{ fontSize: 9, fontStyle: ot.nota ? "normal" : "italic", color: ot.nota ? "#1e293b" : "#94a3b8" }}>
                     {ot.nota || planLineas?.[0]?.observaciones || "—"}
@@ -321,7 +339,7 @@ export default function PrintClientTecnico({
                       <td style={{ fontFamily: "monospace", fontSize: 8, color: "#64748b" }}>{otNum(ot)}</td>
                       <td style={{ fontSize: 9 }}>
                         {l.descripcion && <div>{l.descripcion}</div>}
-                        {l.resolucion  && <div style={{ color: "#16a34a", fontStyle: "italic" }}>✓ {l.resolucion}</div>}
+                        {l.resolucion  && <div style={{ color: "#16a34a", fontStyle: "italic" }}>✓ {l.resolucion}<EstadoFinalBadge estadoFinal={l.estadoFinal} /></div>}
                       </td>
                       <td colSpan={2} style={{ fontSize: 8, color: "#475569" }}>
                         {l.observaciones || ""}
@@ -341,7 +359,7 @@ export default function PrintClientTecnico({
                   <td style={{ fontFamily: "monospace", fontSize: 9 }}>{otNum(ot)}</td>
                   <td style={{ fontSize: 9 }}>
                     {ot.descripcion}
-                    {lineas?.[0]?.resolucion && <div style={{ color: "#16a34a", fontStyle: "italic", fontSize: 8 }}>✓ {lineas[0].resolucion}</div>}
+                    {lineas?.[0]?.resolucion && <div style={{ color: "#16a34a", fontStyle: "italic", fontSize: 8 }}>✓ {lineas[0].resolucion}<EstadoFinalBadge estadoFinal={lineas[0].estadoFinal} /></div>}
                   </td>
                   <td style={{ fontSize: 9, color: "#1e293b" }}>
                     {lineas?.[0]?.observaciones

@@ -50,6 +50,7 @@ type Linea = {
   sintoma?: string;
   causaProbable?: string;
   resolucionAplicada?: string;
+  estadoFinal?: string;
   tiempoEstimadoHrs?: number;
   tiempoRealHrs?: number;
   descripcionTrabajo?: string;
@@ -58,6 +59,13 @@ type Linea = {
   inspeccion?: Inspeccion | null;
   adjuntos?: AdjuntoLinea[];
 };
+
+const ESTADO_FINAL_OPTIONS: { value: string; label: string; color: string }[] = [
+  { value: "operativo",      label: "Operativo",              color: "#16a34a" },
+  { value: "operativo_obs",  label: "Operativo c/ observación", color: "#d97706" },
+  { value: "pendiente",      label: "Pendiente",              color: "#2563eb" },
+  { value: "fuera_servicio", label: "Fuera de servicio",      color: "#dc2626" },
+];
 
 type SupForm = {
   requierePlanificacion: boolean; // "Requiere WR" en UI
@@ -1123,10 +1131,14 @@ export default function ReporteOTPage() {
                 {l.tareasEjecutadas && l.tareasEjecutadas.length > 0 && (
                   <ul style={{ margin: "4px 0", paddingLeft: 16 }}>{l.tareasEjecutadas.map((t, ti) => <li key={ti} style={{ fontSize: 12, color: "#64748b" }}>{t}</li>)}</ul>
                 )}
-                {(l.tiempoEstimadoHrs || l.tiempoRealHrs) && (
-                  <div style={{ display: "flex", gap: 12, marginTop: 3 }}>
+                {(l.tiempoEstimadoHrs || l.tiempoRealHrs || l.estadoFinal) && (
+                  <div style={{ display: "flex", gap: 12, marginTop: 3, alignItems: "center" }}>
                     {l.tiempoEstimadoHrs && <span style={{ fontSize: 12, color: "#94a3b8" }}>Est: {l.tiempoEstimadoHrs}HH</span>}
                     {l.tiempoRealHrs && <span style={{ fontSize: 12, color: "#16a34a", fontWeight: 600 }}>Real: {l.tiempoRealHrs}HH</span>}
+                    {l.estadoFinal && (() => {
+                      const eo = ESTADO_FINAL_OPTIONS.find(o => o.value === l.estadoFinal);
+                      return eo ? <span style={{ fontSize: 10, fontWeight: 700, color: eo.color, background: eo.color + "15", borderRadius: 5, padding: "2px 7px" }}>{eo.label}</span> : null;
+                    })()}
                   </div>
                 )}
                 {l.observaciones && <p style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic", marginTop: 2 }}>{l.observaciones}</p>}
@@ -1336,6 +1348,22 @@ export default function ReporteOTPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Estado final del equipo — siempre */}
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ ...S.label, marginBottom: 3 }}>Estado final del equipo</label>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const }}>
+                      {ESTADO_FINAL_OPTIONS.map(o => {
+                        const active = l.estadoFinal === o.value;
+                        return (
+                          <button key={o.value} type="button" onClick={() => patchLinea(i, { estadoFinal: o.value })}
+                            style={{ padding: "6px 11px", borderRadius: 7, fontSize: 12, cursor: "pointer", border: active ? `2px solid ${o.color}` : "1px solid #e2e8f0", background: active ? o.color + "15" : "white", color: active ? o.color : "#64748b", fontWeight: active ? 800 : 400 }}>
+                            {o.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
                   {/* Observaciones — siempre */}
                   <div>

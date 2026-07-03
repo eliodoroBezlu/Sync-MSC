@@ -469,7 +469,7 @@ export default function CertificadoPage() {
           </div>
 
           {/* ── ESPACIADOR — empuja responsables hacia el fondo ───────── */}
-          <div style={{ flex: 1, minHeight: 12 }} />
+          <div style={{ flex: 1, minHeight: 0 }} />
 
         </div>{/* fin cert-body */}
 
@@ -477,9 +477,9 @@ export default function CertificadoPage() {
         <SecTitle>Datos Responsable</SecTitle>
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "end" }}>
           <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
-            <div style={{ height: 63, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
+            <div style={{ height: 52, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
               {record.tecnicoFirma ? (
-                <img src={record.tecnicoFirma} alt="Firma Técnico" style={{ maxHeight: 63, maxWidth: 180, objectFit: "contain" }} />
+                <img src={record.tecnicoFirma} alt="Firma Técnico" style={{ maxHeight: 52, maxWidth: 160, objectFit: "contain" }} />
               ) : (
                 <div style={{ height: 1, width: 80, borderBottom: "1px solid #374151" }} />
               )}
@@ -504,9 +504,9 @@ export default function CertificadoPage() {
             </div>
           </div>
           <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
-            <div style={{ height: 63, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
+            <div style={{ height: 52, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
               {record.supervisorFirma ? (
-                <img src={record.supervisorFirma} alt="Firma Supervisor" style={{ maxHeight: 63, maxWidth: 180, objectFit: "contain" }} />
+                <img src={record.supervisorFirma} alt="Firma Supervisor" style={{ maxHeight: 52, maxWidth: 160, objectFit: "contain" }} />
               ) : (
                 <div style={{ height: 1, width: 80, borderBottom: "1px solid #374151" }} />
               )}
@@ -553,9 +553,9 @@ export default function CertificadoPage() {
             padding: 0 !important;
             max-width: 100% !important;
             width: 100% !important;
-            /* Ocupa exactamente la altura de la página menos los márgenes @page */
-            min-height: calc(100vh - 20mm) !important;
             box-sizing: border-box !important;
+            /* Escala al 90% para garantizar que todo el contenido entre en una hoja */
+            zoom: 0.9;
           }
 
           /* El cuerpo central llena el espacio disponible */
@@ -569,7 +569,7 @@ export default function CertificadoPage() {
 
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
-        @page { size: letter portrait; margin: 10mm 9mm; }
+        @page { size: letter portrait; margin: 7mm 8mm; }
       `}</style>
     </>
   );

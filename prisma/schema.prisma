@@ -160,6 +160,7 @@ model OtLinea {
   sintoma            String?
   causaProbable      String?
   resolucionAplicada String?
+  estadoFinal        String?      // operativo | operativo_obs | pendiente | fuera_servicio
   tiempoEstimadoHrs  Float?
   tiempoRealHrs      Float?
   descripcionTrabajo String?
