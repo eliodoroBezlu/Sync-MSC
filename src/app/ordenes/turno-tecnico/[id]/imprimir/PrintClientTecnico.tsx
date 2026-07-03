@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 
-type BitacoraEntry = { turno: string; supervisor: string; nota: string; hhAtendidas: number; fecha?: string };
+type BitacoraEntry = { turno: string; supervisor: string; nota: string; resolucion?: string; hhAtendidas: number; fecha?: string };
 type LineaDisplay  = { tag: string; tipoOT: string; descripcion: string; resolucion: string; hh: number; observaciones?: string };
 
 type OTDisplay = {
@@ -58,7 +58,7 @@ export default function PrintClientTecnico({
         @import url('https://fonts.googleapis.com/css2?family=Calibri:wght@400;600;700&display=swap');
         @page { size: A4 landscape; margin: 10mm; }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Calibri', 'Segoe UI', Arial, sans-serif; }
-        body { background: white; color: #000; font-size: 9pt; }
+        body { background: white; color: #000; font-size: 10pt; }
         @media screen {
           body { padding: 20px; background: #f0f0f0; }
           .pagina { background: white; width: 277mm; margin: 0 auto 20px; padding: 10mm; box-shadow: 0 2px 12px rgba(0,0,0,0.15); }
@@ -66,7 +66,7 @@ export default function PrintClientTecnico({
         @media print { .no-print { display: none !important; } .pagina { page-break-after: always; } .pagina:last-child { page-break-after: avoid; } }
         table { width: 100%; border-collapse: collapse; }
         th, td { border: 1px solid #000; padding: 3px 5px; vertical-align: middle; }
-        th { background: #1f3864; color: white; font-weight: bold; text-align: center; font-size: 8pt; }
+        th { background: #1f3864; color: white; font-weight: bold; text-align: center; font-size: 9pt; }
         .kpis { display: flex; gap: 6px; margin: 6px 0; }
         .kpi { flex: 1; border: 1px solid #000; padding: 4px; text-align: center; }
         .kpi-val { font-size: 14pt; font-weight: bold; }
@@ -182,7 +182,7 @@ export default function PrintClientTecnico({
             {/* OTs del plan semanal (turnero) */}
             {otsPlan.length > 0 && (
               <tr>
-                <td colSpan={8} style={{ background: "#dbeafe", fontWeight: "bold", fontSize: 8, padding: "3px 6px", color: "#1e40af" }}>
+                <td colSpan={8} style={{ background: "#dbeafe", fontWeight: "bold", fontSize: 9, padding: "3px 6px", color: "#1e40af" }}>
                   PLAN DE TURNO — {reporte.turno.toUpperCase()} ({otsPlan.length} OT{otsPlan.length !== 1 ? "s" : ""} · {otsPlan.reduce((s,o)=>s+o.hhTotal,0)} HH)
                 </td>
               </tr>
@@ -193,20 +193,23 @@ export default function PrintClientTecnico({
                 // OPEPLANT con bitácora: una fila por entrada
                 return entradas.map((b, bi) => (
                   <tr key={`${ot.id}-b${bi}`} className="plan-row" style={{ background: "#fffbeb" }}>
-                    <td style={{ textAlign: "center", fontSize: 8 }}>{idx + 1}.{bi + 1}</td>
-                    <td style={{ textAlign: "center", fontSize: 8, fontWeight: "bold", color: TIPO_COLOR[ot.tipoOT] ?? "#d97706" }}>
+                    <td style={{ textAlign: "center", fontSize: 9 }}>{idx + 1}.{bi + 1}</td>
+                    <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold", color: TIPO_COLOR[ot.tipoOT] ?? "#d97706" }}>
                       {ot.tipoOT || "PDM"}
-                      <div style={{ fontSize: 6, marginTop: 1 }}><span className="opeplant-badge">OPEPLANT</span></div>
+                      <div style={{ fontSize: 7, marginTop: 1 }}><span className="opeplant-badge">OPEPLANT</span></div>
                     </td>
-                    <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 8 }}>OPEPLANT</td>
-                    <td style={{ textAlign: "center", fontSize: 8 }}>{b.hhAtendidas || "—"}</td>
-                    <td style={{ fontFamily: "monospace", fontSize: 8 }}>{otNum(ot)}</td>
-                    <td style={{ fontSize: 8 }}>{b.nota || ot.descripcion || "—"}</td>
-                    <td style={{ fontSize: 8, color: "#92400e" }}>
+                    <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 9 }}>OPEPLANT</td>
+                    <td style={{ textAlign: "center", fontSize: 9 }}>{b.hhAtendidas || "—"}</td>
+                    <td style={{ fontFamily: "monospace", fontSize: 9 }}>{otNum(ot)}</td>
+                    <td style={{ fontSize: 9 }}>
+                      {b.nota || ot.descripcion || "—"}
+                      {b.resolucion && <div style={{ color: "#16a34a", fontStyle: "italic", fontSize: 8, marginTop: 2 }}>✓ {b.resolucion}</div>}
+                    </td>
+                    <td style={{ fontSize: 9, color: "#92400e" }}>
                       {b.supervisor && <span>{b.supervisor}</span>}
                       {b.turno && <span style={{ color: "#64748b" }}> · {b.turno}</span>}
                     </td>
-                    <td style={{ textAlign: "center", fontSize: 7.5, fontWeight: "bold" }}>
+                    <td style={{ textAlign: "center", fontSize: 8.5, fontWeight: "bold" }}>
                       <span style={{ color: "#92400e", background: "#fef3c7", padding: "2px 5px", borderRadius: 3 }}>EJECUTADA</span>
                     </td>
                   </tr>
@@ -215,23 +218,23 @@ export default function PrintClientTecnico({
               // OT de plan normal o OPEPLANT sin bitácora
               return (
                 <tr key={ot.id} className="plan-row" style={{ background: ot.critica ? "#fff1f2" : ot.esGuardia ? "#fffbeb" : "#f8fafc" }}>
-                  <td style={{ textAlign: "center", fontSize: 8 }}>{idx + 1}</td>
-                  <td style={{ textAlign: "center", fontSize: 8, fontWeight: "bold", color: TIPO_COLOR[ot.tipoOT] ?? "#000" }}>
+                  <td style={{ textAlign: "center", fontSize: 9 }}>{idx + 1}</td>
+                  <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold", color: TIPO_COLOR[ot.tipoOT] ?? "#000" }}>
                     {ot.tipoOT || "—"}
-                    <div style={{ fontSize: 6, marginTop: 1 }}>
+                    <div style={{ fontSize: 7, marginTop: 1 }}>
                       <span className={ot.esGuardia ? "opeplant-badge" : "plan-badge"}>{ot.esGuardia ? "OPEPLANT" : "PLAN"}</span>
                     </div>
                   </td>
-                  <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 8 }}>{ot.tag || "OPEPLANT"}</td>
-                  <td style={{ textAlign: "center", fontSize: 8 }}>{ot.hhTotal || "—"}</td>
-                  <td style={{ fontFamily: "monospace", fontSize: 8 }}>{otNum(ot)}</td>
-                  <td style={{ fontSize: 8 }}>{ot.descripcion || "—"}</td>
-                  <td style={{ fontSize: 8, fontStyle: ot.nota ? "normal" : "italic", color: ot.nota ? "#1e293b" : "#94a3b8" }}>
+                  <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 9 }}>{ot.tag || "OPEPLANT"}</td>
+                  <td style={{ textAlign: "center", fontSize: 9 }}>{ot.hhTotal || "—"}</td>
+                  <td style={{ fontFamily: "monospace", fontSize: 9 }}>{otNum(ot)}</td>
+                  <td style={{ fontSize: 9 }}>{ot.descripcion || "—"}</td>
+                  <td style={{ fontSize: 9, fontStyle: ot.nota ? "normal" : "italic", color: ot.nota ? "#1e293b" : "#94a3b8" }}>
                     {ot.nota || "—"}
-                    {ot.critica   && <div style={{ fontSize: 7, color: "#dc2626", fontWeight: "bold" }}>⚠ CRÍTICA</div>}
-                    {ot.pendiente && <div style={{ fontSize: 7, color: "#d97706", fontWeight: "bold" }}>→ SGTE TURNO</div>}
+                    {ot.critica   && <div style={{ fontSize: 8, color: "#dc2626", fontWeight: "bold" }}>⚠ CRÍTICA</div>}
+                    {ot.pendiente && <div style={{ fontSize: 8, color: "#d97706", fontWeight: "bold" }}>→ SGTE TURNO</div>}
                   </td>
-                  <td style={{ textAlign: "center", fontSize: 7.5, fontWeight: "bold" }}>
+                  <td style={{ textAlign: "center", fontSize: 8.5, fontWeight: "bold" }}>
                     <span style={{ color: "#16a34a", background: "#dcfce7", padding: "2px 5px", borderRadius: 3 }}>PLAN</span>
                   </td>
                 </tr>
@@ -241,7 +244,7 @@ export default function PrintClientTecnico({
             {/* OTs registradas (CMR/CMP del sistema) */}
             {otsRegistradas.length > 0 && (
               <tr>
-                <td colSpan={8} style={{ background: "#f0fdf4", fontWeight: "bold", fontSize: 8, padding: "3px 6px", color: "#166534" }}>
+                <td colSpan={8} style={{ background: "#f0fdf4", fontWeight: "bold", fontSize: 9, padding: "3px 6px", color: "#166534" }}>
                   CMR / CMP REGISTRADOS EN SISTEMA ({otsRegistradas.length} OT{otsRegistradas.length !== 1 ? "s" : ""})
                 </td>
               </tr>
@@ -256,34 +259,31 @@ export default function PrintClientTecnico({
                 : <span style={{ color: "#92400e", background: "#fef3c7", padding: "2px 5px", borderRadius: 3 }}>PENDIENTE</span>;
 
               if (lineas && lineas.length > 1) {
-                // Encabezado de OT + una sub-fila por línea
                 return [
-                  // Fila encabezado de OT (solo número y total HH — técnicos están en el encabezado del documento)
                   <tr key={`${ot.id}-hdr`} style={{ background: "#e8f0fe" }}>
-                    <td style={{ textAlign: "center", fontSize: 8, fontWeight: "bold" }}>{baseIdx}</td>
-                    <td colSpan={4} style={{ fontSize: 8, fontWeight: "bold", color: "#1e40af" }}>
+                    <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold" }}>{baseIdx}</td>
+                    <td colSpan={4} style={{ fontSize: 9, fontWeight: "bold", color: "#1e40af" }}>
                       OT {otNum(ot)} · Total: {ot.hhTotal}HH
                     </td>
-                    <td colSpan={2} style={{ fontSize: 8, fontStyle: ot.nota ? "normal" : "italic", color: ot.nota ? "#1e293b" : "#94a3b8" }}>
+                    <td colSpan={2} style={{ fontSize: 9, fontStyle: ot.nota ? "normal" : "italic", color: ot.nota ? "#1e293b" : "#94a3b8" }}>
                       {ot.nota || "—"}
-                      {ot.critica   && <span style={{ fontSize: 7, color: "#dc2626", fontWeight: "bold" }}> ⚠ CRÍTICA</span>}
-                      {ot.pendiente && <span style={{ fontSize: 7, color: "#d97706", fontWeight: "bold" }}> → SGTE TURNO</span>}
+                      {ot.critica   && <span style={{ fontSize: 8, color: "#dc2626", fontWeight: "bold" }}> ⚠ CRÍTICA</span>}
+                      {ot.pendiente && <span style={{ fontSize: 8, color: "#d97706", fontWeight: "bold" }}> → SGTE TURNO</span>}
                     </td>
-                    <td style={{ textAlign: "center", fontSize: 7.5 }}>{estadoBadge}</td>
+                    <td style={{ textAlign: "center", fontSize: 8.5 }}>{estadoBadge}</td>
                   </tr>,
-                  // Una fila por línea de trabajo
                   ...lineas.map((l, li) => (
                     <tr key={`${ot.id}-l${li}`} style={{ background: bgRow }}>
-                      <td style={{ textAlign: "center", fontSize: 7, color: "#94a3b8" }}>{baseIdx}.{li + 1}</td>
-                      <td style={{ textAlign: "center", fontSize: 8, fontWeight: "bold", color: TIPO_COLOR[l.tipoOT] ?? "#000" }}>{l.tipoOT}</td>
-                      <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 8 }}>{l.tag}</td>
-                      <td style={{ textAlign: "center", fontSize: 8 }}>{l.hh || "—"}</td>
-                      <td style={{ fontFamily: "monospace", fontSize: 7, color: "#64748b" }}>{otNum(ot)}</td>
-                      <td style={{ fontSize: 8 }}>
+                      <td style={{ textAlign: "center", fontSize: 8, color: "#94a3b8" }}>{baseIdx}.{li + 1}</td>
+                      <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold", color: TIPO_COLOR[l.tipoOT] ?? "#000" }}>{l.tipoOT}</td>
+                      <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 9 }}>{l.tag}</td>
+                      <td style={{ textAlign: "center", fontSize: 9 }}>{l.hh || "—"}</td>
+                      <td style={{ fontFamily: "monospace", fontSize: 8, color: "#64748b" }}>{otNum(ot)}</td>
+                      <td style={{ fontSize: 9 }}>
                         {l.descripcion && <div>{l.descripcion}</div>}
                         {l.resolucion  && <div style={{ color: "#16a34a", fontStyle: "italic" }}>✓ {l.resolucion}</div>}
                       </td>
-                      <td colSpan={2} style={{ fontSize: 7, color: "#475569" }}>
+                      <td colSpan={2} style={{ fontSize: 8, color: "#475569" }}>
                         {l.observaciones || ""}
                       </td>
                     </tr>
@@ -294,23 +294,23 @@ export default function PrintClientTecnico({
               // OT con una sola línea — fila simple
               return (
                 <tr key={ot.id} style={{ background: bgRow }}>
-                  <td style={{ textAlign: "center", fontSize: 8 }}>{baseIdx}</td>
-                  <td style={{ textAlign: "center", fontSize: 8, fontWeight: "bold", color: TIPO_COLOR[ot.tipoOT] ?? "#000" }}>{ot.tipoOT}</td>
-                  <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 8 }}>{ot.tag}</td>
-                  <td style={{ textAlign: "center", fontSize: 8 }}>{ot.hhTotal || "—"}</td>
-                  <td style={{ fontFamily: "monospace", fontSize: 8 }}>{otNum(ot)}</td>
-                  <td style={{ fontSize: 8 }}>
+                  <td style={{ textAlign: "center", fontSize: 9 }}>{baseIdx}</td>
+                  <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold", color: TIPO_COLOR[ot.tipoOT] ?? "#000" }}>{ot.tipoOT}</td>
+                  <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 9 }}>{ot.tag}</td>
+                  <td style={{ textAlign: "center", fontSize: 9 }}>{ot.hhTotal || "—"}</td>
+                  <td style={{ fontFamily: "monospace", fontSize: 9 }}>{otNum(ot)}</td>
+                  <td style={{ fontSize: 9 }}>
                     {ot.descripcion}
-                    {lineas?.[0]?.resolucion && <div style={{ color: "#16a34a", fontStyle: "italic", fontSize: 7 }}>✓ {lineas[0].resolucion}</div>}
+                    {lineas?.[0]?.resolucion && <div style={{ color: "#16a34a", fontStyle: "italic", fontSize: 8 }}>✓ {lineas[0].resolucion}</div>}
                   </td>
-                  <td style={{ fontSize: 8, color: "#1e293b" }}>
+                  <td style={{ fontSize: 9, color: "#1e293b" }}>
                     {lineas?.[0]?.observaciones
                       ? <span>{lineas[0].observaciones}</span>
                       : <span style={{ fontStyle: "italic", color: "#94a3b8" }}>—</span>}
-                    {ot.critica   && <div style={{ fontSize: 7, color: "#dc2626", fontWeight: "bold" }}>⚠ CRÍTICA</div>}
-                    {ot.pendiente && <div style={{ fontSize: 7, color: "#d97706", fontWeight: "bold" }}>→ SGTE TURNO</div>}
+                    {ot.critica   && <div style={{ fontSize: 8, color: "#dc2626", fontWeight: "bold" }}>⚠ CRÍTICA</div>}
+                    {ot.pendiente && <div style={{ fontSize: 8, color: "#d97706", fontWeight: "bold" }}>→ SGTE TURNO</div>}
                   </td>
-                  <td style={{ textAlign: "center", fontSize: 7.5, fontWeight: "bold" }}>{estadoBadge}</td>
+                  <td style={{ textAlign: "center", fontSize: 8.5, fontWeight: "bold" }}>{estadoBadge}</td>
                 </tr>
               );
             })}

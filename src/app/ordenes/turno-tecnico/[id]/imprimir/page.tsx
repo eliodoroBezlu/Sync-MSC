@@ -14,7 +14,7 @@ type OTDisplay = {
   lineas?: LineaDisplay[];
 };
 
-type BitacoraEntry = { turno: string; supervisor: string; nota: string; hhAtendidas: number; fecha?: string };
+type BitacoraEntry = { turno: string; supervisor: string; nota: string; resolucion?: string; hhAtendidas: number; fecha?: string };
 
 type OTPlanRaw = {
   otId?: string; numeroOT: string; tag?: string;
@@ -101,15 +101,29 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
   const otsPlan: OTDisplay[] = otsPlanRaw.map(o => {
     let bitacora: BitacoraEntry[] = o.bitacora ?? [];
 
-    // Si es OPEPLANT y hay hijas registradas, construir bitácora desde las hijas
+    // Si es OPEPLANT y hay hijas registradas, construir bitácora y lineas desde las hijas
+    let planLineas: LineaDisplay[] | undefined = undefined;
     if (o.esGuardia && childByParentNum.has(o.numeroOT)) {
-      bitacora = childByParentNum.get(o.numeroOT)!.map(c => ({
+      const hijas = childByParentNum.get(o.numeroOT)!;
+      bitacora = hijas.map(c => ({
         turno: c.turno,
         supervisor: c.tecnicos.map(t => t.nombreCompleto).join(", "),
         nota: c.lineas[0]?.descripcionTrabajo ?? c.lineas[0]?.sintoma ?? "",
+        resolucion: (c.lineas[0] as Record<string, unknown>)?.resolucionAplicada as string ?? undefined,
         hhAtendidas: c.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0),
         fecha: c.fecha ? new Date(c.fecha).toLocaleDateString("es-BO") : undefined,
       }));
+      // Construir lineas desde todas las líneas de todas las hijas
+      planLineas = hijas.flatMap(c =>
+        c.lineas.map(l => ({
+          tag: l.tag,
+          tipoOT: l.tipoOT,
+          descripcion: l.sintoma ?? l.descripcionEquipo ?? l.descripcionTrabajo ?? "",
+          resolucion: (l as Record<string, unknown>).resolucionAplicada as string ?? "",
+          hh: l.tiempoRealHrs ?? 0,
+          observaciones: l.observaciones ?? undefined,
+        }))
+      );
     }
 
     return {
@@ -127,6 +141,7 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
       esPlan: true,
       esGuardia: o.esGuardia ?? false,
       bitacora,
+      lineas: planLineas,
     };
   });
 
