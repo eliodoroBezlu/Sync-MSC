@@ -666,9 +666,10 @@ function AdjuntoCard({ adj, onChange, onRemove }: {
 // ─── LineaEditor ─────────────────────────────────────────────────────────────
 
 function LineaEditor({
-  linea, area, isNew, soloCorrectivos, onConfirm, onCancel,
+  linea, area, isNew, soloCorrectivos, fecha, onFechaChange, onConfirm, onCancel,
 }: {
   linea: LineaForm; area: string; isNew: boolean; soloCorrectivos?: boolean;
+  fecha?: string; onFechaChange?: (fecha: string) => void;
   onConfirm: (l: LineaForm) => void;
   onCancel: () => void;
 }) {
@@ -823,8 +824,17 @@ function LineaEditor({
 
   return (
     <div style={{ ...S.card, border: "2px solid #2563eb", background: "#f8fbff", marginBottom: 14 }}>
-      <div style={{ fontWeight: 700, fontSize: 14, color: "#0f2847", marginBottom: 16 }}>
-        {isNew ? "Agregar equipo intervenido" : "Detalles del trabajo"}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, color: "#0f2847" }}>
+          {isNew ? "Agregar equipo intervenido" : "Detalles del trabajo"}
+        </div>
+        {onFechaChange && (
+          <div>
+            <label style={{ ...S.label, marginBottom: 3, textAlign: "right" as const }}>Fecha de ejecución</label>
+            <input type="date" value={fecha ?? ""} onChange={e => onFechaChange(e.target.value)}
+              style={{ ...S.input, width: 150, padding: "6px 9px", fontSize: 13 }} />
+          </div>
+        )}
       </div>
 
       {/* TAG */}
@@ -2166,6 +2176,8 @@ export default function RegistroOTPage() {
                     area={form.areaCodigo}
                     isNew={isNewLinea}
                     soloCorrectivos={!form.origenPlan}
+                    fecha={form.fecha}
+                    onFechaChange={fecha => patchForm({ fecha })}
                     onConfirm={l => confirmLinea(l)}
                     onCancel={cancelLinea}
                   />
