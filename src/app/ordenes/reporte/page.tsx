@@ -1720,12 +1720,15 @@ export default function ReporteOTPage() {
 
         {/* ── Avances Diarios (OTs multi-día del plan) ── */}
         {ot.origenPlan && (() => {
-          const hhLineas = ot.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0);
-          const diasLineas = hhLineas > 0 ? 1 : 0;
           const hhDiarios = (ot.registrosDiarios ?? []).reduce((s, r) => s + r.hhTrabajadas, 0);
           const diasDiarios = ot.registrosDiarios?.length ?? 0;
+          // El día 1 de una OT recurrente ya queda registrado como el primer registrosDiarios
+          // (ver POST /api/ordenes), así que las horas de ot.lineas solo se suman aparte
+          // cuando todavía no existe ningún registro diario (OT de un solo día, sin desglose).
+          const hhLineas = ot.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0);
+          const diasLineas = diasDiarios === 0 && hhLineas > 0 ? 1 : 0;
           const totalDias = diasLineas + diasDiarios;
-          const totalHH = hhLineas + hhDiarios;
+          const totalHH = diasDiarios > 0 ? hhDiarios : hhLineas;
           const puedeAgregarAvance = !["pendiente_revision", "revisado", "concluido"].includes(ot.estado);
           return (
           <div style={S.card}>
