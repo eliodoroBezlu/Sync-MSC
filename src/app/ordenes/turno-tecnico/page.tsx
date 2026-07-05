@@ -271,7 +271,9 @@ export default function ReporteTurnoTecnicoPage() {
           grupo: ot.grupo,
           dia: ot.dia,
           estado: ot.estado ?? "no_iniciada",
-          esGuardia: !!ot.esGuardia,
+          // El flag esGuardia casi nunca queda seteado en BD; el tag "OPEPLANT" es
+          // la señal confiable (mismo criterio que registro/turnero/semanales).
+          esGuardia: !!ot.esGuardia || String(ot.tag ?? "").includes("OPEPLANT"),
           bitacora: Array.isArray(ot.bitacora) ? ot.bitacora : [],
           ordenTrabajoId: ot.ordenTrabajoId,
           ordenTrabajoNum: ot.ordenTrabajoNum,

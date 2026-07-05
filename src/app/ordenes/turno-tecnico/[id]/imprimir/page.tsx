@@ -75,9 +75,15 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
   // ── OTs del plan semanal (guardadas inline en otsPlanData) ───────────────
   const otsPlanRaw = (reporte.otsPlanData ?? []) as OTPlanRaw[];
 
-  // Para OTs OPEPLANT (esGuardia=true), buscar OTs hijas registradas por los turneros
+  // El flag esGuardia casi nunca queda seteado en BD; el tag "OPEPLANT" es la
+  // señal confiable (mismo criterio que registro/turnero/semanales).
+  function esOpeplant(o: OTPlanRaw): boolean {
+    return !!o.esGuardia || String(o.tag ?? "").includes("OPEPLANT");
+  }
+
+  // Para OTs OPEPLANT, buscar OTs hijas registradas por los turneros
   const guardiaNumeros = otsPlanRaw
-    .filter(o => o.esGuardia)
+    .filter(o => esOpeplant(o))
     .map(o => o.numeroOT)
     .filter(Boolean);
 
@@ -93,7 +99,7 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
 
   // Para OTs del plan normales (no OPEPLANT), cargar sus líneas desde la DB
   // Preferir ordenTrabajoId (nuevo); fallback por numeroOT (reportes guardados antes del fix)
-  const planNormales = otsPlanRaw.filter(o => !o.esGuardia);
+  const planNormales = otsPlanRaw.filter(o => !esOpeplant(o));
   const planPorId = planNormales.filter(o => o.ordenTrabajoId).map(o => o.ordenTrabajoId as string);
   const planPorNum = planNormales.filter(o => !o.ordenTrabajoId && o.numeroOT).map(o => o.numeroOT);
 
@@ -129,7 +135,7 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
     let planLineas: LineaDisplay[] | undefined = undefined;
 
     // OT plan normal: cargar lineas desde DB para mostrar resolución
-    const dbLineas = !o.esGuardia ? getPlanLineas(o) : null;
+    const dbLineas = !esOpeplant(o) ? getPlanLineas(o) : null;
     if (dbLineas && dbLineas.length > 0) {
       planLineas = dbLineas.map(l => ({
           tag: l.tag,
@@ -144,7 +150,7 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
     }
 
     // Si es OPEPLANT y hay hijas registradas, construir bitácora y lineas desde las hijas
-    if (o.esGuardia && childByParentNum.has(o.numeroOT)) {
+    if (esOpeplant(o) && childByParentNum.has(o.numeroOT)) {
       const hijas = childByParentNum.get(o.numeroOT)!;
       bitacora = hijas.map(c => ({
         turno: c.turno,
@@ -183,7 +189,7 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
       pendiente: pendientes.has(o.otId ?? ""),
       nota: notasMap.get(o.otId ?? "") ?? "",
       esPlan: true,
-      esGuardia: o.esGuardia ?? false,
+      esGuardia: esOpeplant(o),
       bitacora,
       lineas: planLineas,
     };
