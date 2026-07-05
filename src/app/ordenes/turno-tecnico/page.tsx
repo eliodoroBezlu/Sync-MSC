@@ -84,6 +84,11 @@ function disciplinaDeArea(areaCodigo: string): string {
   return "MECÁNICO";
 }
 
+// Reporte de Turno — Técnico/Turnero es exclusivo de Eléctrico e Instrumentación.
+// Ninguna otra área (contratistas TESA 3348, Telecom 3351, u otras) tiene OPEPLANT
+// ni debe registrar sus OTs en este reporte.
+const AREAS_ELEC_INST = new Set(["3320", "3319", "3311"]);
+
 const TIPO_COLOR: Record<string, string> = { CMP: "#dc2626", CMR: "#d97706", PMP: "#2563eb", PMT: "#0891b2", PTJ: "#7c3aed" };
 const PRIOR_COLOR: Record<string, string> = { URGENTE: "#dc2626", ATENCION: "#d97706", INFORMACION: "#2563eb" };
 const ESTADO_COLOR: Record<string, string> = { borrador: "#64748b", enviado: "#16a34a" };
@@ -168,6 +173,9 @@ export default function ReporteTurnoTecnicoPage() {
   // Área efectiva para cargar OTs
   const areaEfectiva = form.areaCodigo || (user?.areas?.[0] ?? "");
   const disciplina = areaEfectiva ? disciplinaDeArea(areaEfectiva) : "";
+  // Este reporte es exclusivo de Eléctrico/Instrumentación — cualquier otra área
+  // (asignada o elegida) queda bloqueada, aunque areaEfectiva no esté vacía.
+  const areaValida = areaEfectiva !== "" && AREAS_ELEC_INST.has(areaEfectiva);
 
   // ─── Load áreas (para selector admin/sup) ───────────────────────────────────
 
@@ -206,11 +214,16 @@ export default function ReporteTurnoTecnicoPage() {
 
   const loadOTs = useCallback(async () => {
     if (!form.fecha || !user) return;
-    setLoadingOTs(true);
     setOtsReg([]);
     setOtsPlan([]);
     setOtsContinuacion([]);
 
+    // Este reporte es exclusivo de Eléctrico/Instrumentación (únicas áreas con
+    // OPEPLANT). Sin área resuelta o con un área distinta (p.ej. contratistas
+    // TESA 3348 / Telecom 3351) no se carga nada.
+    if (!areaValida) { setLoadingOTs(false); return; }
+
+    setLoadingOTs(true);
     const area = areaEfectiva;
     const { semana, anio } = getWeekYear(form.fecha);
     const diaOT = diaSemana(form.fecha);
@@ -243,10 +256,9 @@ export default function ReporteTurnoTecnicoPage() {
     for (const prog of (Array.isArray(dataPlanes) ? dataPlanes : [])) {
       const disc = prog.disciplina ?? "";
       for (const ot of (prog.otsProgramadas ?? [])) {
-        // Diurno incluye G1-G4 (mantenimiento regular); Nocturno solo Nocturno
-        const esGrupoDiurno = ["Diurno", "G1", "G2", "G3", "G4"].includes(ot.grupo);
-        if (form.turno === "Nocturno" && ot.grupo !== "Nocturno") continue;
-        if (form.turno !== "Nocturno" && !esGrupoDiurno) continue;
+        // Exclusivo del grupo turnero (Diurno/Nocturno) — G1-G4 son mantenimiento
+        // regular (no turneros) y no deben entrar en este reporte.
+        if (ot.grupo !== grupoTurno) continue;
         planes.push({
           id: `plan-${prog._id}-${ot.id ?? ot.numeroOT}`,
           numeroOT: ot.numeroOT,
@@ -609,7 +621,7 @@ export default function ReporteTurnoTecnicoPage() {
                     <select value={form.areaCodigo} onChange={e => patchForm({ areaCodigo: e.target.value })}
                       style={{ ...S.input, cursor: "pointer" }}>
                       <option value="">— Seleccionar área —</option>
-                      {areas.map(a => (
+                      {areas.filter(a => AREAS_ELEC_INST.has(a.codigo)).map(a => (
                         <option key={a.codigo} value={a.codigo}>
                           {a.codigo} — {a.nombre} ({disciplinaDeArea(a.codigo)})
                         </option>
@@ -632,9 +644,20 @@ export default function ReporteTurnoTecnicoPage() {
                   </div>
                 </div>
 
+                {user && !areaEfectiva && (
+                  <p style={{ fontSize: 12, color: "#dc2626", fontWeight: 600, marginBottom: 8 }}>
+                    Sin área asignada — no se puede continuar. Selecciona un área o contacta al administrador.
+                  </p>
+                )}
+                {user && areaEfectiva && !areaValida && (
+                  <p style={{ fontSize: 12, color: "#dc2626", fontWeight: 600, marginBottom: 8 }}>
+                    Este reporte es exclusivo de Eléctrico/Instrumentación — el área {areaEfectiva} no tiene reporte de turno técnico.
+                  </p>
+                )}
+
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
                   <button onClick={() => setStep(2)} style={S.btnPrimary}
-                    disabled={!!(user && user.rol <= 2 && !form.areaCodigo)}>
+                    disabled={!areaValida}>
                     Continuar → OTs
                   </button>
                 </div>

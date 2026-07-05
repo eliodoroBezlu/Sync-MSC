@@ -253,8 +253,12 @@ export async function POST(req: NextRequest) {
       // OPEPLANT: una sola OT acumula todos los avances del ciclo (sin importar la semana).
       // Solo se crea OT nueva cuando el supervisor cierra el ciclo anterior (estado "concluido").
       // Para OTs de plan sin número JDE, se mantiene consolidación por semana (CMP/CMR planificados).
+      // Solo Eléctrico e Instrumentación tienen OPEPLANT. Se exige coincidencia de
+      // areaCodigo como defensa adicional: evita que un número JDE repetido o mal
+      // asignado en otra área (contratista, error de captura, etc.) se fusione con
+      // el ciclo de Eléctrico/Instrumentación.
       const whereExistente: Record<string, unknown> = otJdeNumero
-        ? { otJdeNumero, origenPlan: true, NOT: { estado: "concluido" } }
+        ? { otJdeNumero, origenPlan: true, NOT: { estado: "concluido" }, ...(areaCodigo ? { areaCodigo } : {}) }
         : { origenPlan: true, programacionSemanalId: body.programacionSemanalId };
 
       const existente = await prisma.ordenTrabajo.findFirst({

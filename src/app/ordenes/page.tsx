@@ -10,7 +10,12 @@ type Modulo = {
   soloInst?: boolean;   // true = solo disciplina INST (+ admin)
   soloSup?: boolean;    // true = solo roles 1–3
   soloAdmin?: boolean;  // true = solo rol 1 (Admin)
+  soloElecInst?: boolean; // true = exclusivo áreas Eléctrico (3319/3311) / Instrumentación (3320)
 };
+
+// Únicas áreas con OPEPLANT / reporte de turno técnico. Ninguna otra área
+// (contratistas TESA 3348, Telecom 3351, u otras) debe acceder a este módulo.
+const AREAS_ELEC_INST = ["3320", "3319", "3311"];
 
 const TODOS_MODULOS: Modulo[] = [
   {
@@ -71,6 +76,7 @@ const TODOS_MODULOS: Modulo[] = [
     label: "Reporte Turno Técnico",
     descripcion: "Registro del turno por técnico / turnero — genera PDF",
     color: "#d97706",
+    soloElecInst: true,
     icon: (
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -199,6 +205,7 @@ export default function OrdenesPage() {
   const esInst    = user?.disciplina === "INST";
   const puedeConf = user ? user.rol <= 3 : false;
   const esTESA    = user?.rol === 6 && user?.areas?.includes("3348");
+  const esElecInst = (user?.areas ?? []).some((a) => AREAS_ELEC_INST.includes(a));
 
   const MODULOS_TESA = ["/ordenes/registro", "/ordenes/reporte", "/ordenes/tag", "/ordenes/semanales"];
 
@@ -208,6 +215,7 @@ export default function OrdenesPage() {
     if (m.soloAdmin && !esAdmin && !(esInst && puedeConf)) return false;
     if (m.soloInst && !esInst) return false;
     if (m.soloSup  && !puedeConf) return false;
+    if (m.soloElecInst && !esElecInst) return false;
     return true;
   });
 
