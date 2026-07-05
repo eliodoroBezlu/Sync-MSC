@@ -142,12 +142,13 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   try {
     const { id } = await params;
     const body = await req.json();
-    const { estado, datosSupervision, cambio, cambios, lineas, tecnicos, turno, registroDiario, usuarioId, nombreUsuario, otJdeNumero } = body;
+    const { estado, datosSupervision, cambio, cambios, lineas, tecnicos, turno, fecha, registroDiario, usuarioId, nombreUsuario, otJdeNumero } = body;
 
     const updateData: Record<string, unknown> = {};
     if (estado) updateData.estado = estado;
     if (otJdeNumero !== undefined) updateData.otJdeNumero = otJdeNumero || null;
     if (turno) updateData.turno = turno;
+    if (fecha) updateData.fecha = new Date(fecha);
 
     // Actualizar técnicos: delete + recreate
     if (Array.isArray(tecnicos)) {
@@ -225,10 +226,12 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       }
       const rdUsuarioId = registroDiario.usuarioId ?? usuarioId ?? null;
       const rdFecha = new Date(registroDiario.fecha);
-      // Buscar si ya existe un registro del mismo día y técnico
-      // Fallback: si adjuntos no existe en DB aún, reintenta con select explícito sin esa columna
-      // Buscar registro existente con SQL crudo para evitar validación de columna adjuntos
-      const existingRows = await prisma.$queryRaw<{ id: string }[]>`
+      // Si viene un id explícito (edición de un avance existente), usarlo directo —
+      // evita el lookup por fecha+usuario, que fallaría si el supervisor está corrigiendo la fecha.
+      // Si no, buscar si ya existe un registro del mismo día y técnico (alta de avance nuevo).
+      const existingRows = registroDiario.id
+        ? [{ id: registroDiario.id as string }]
+        : await prisma.$queryRaw<{ id: string }[]>`
         SELECT id FROM "OtRegistroDiario"
         WHERE "ordenTrabajoId" = ${id}
           AND fecha = ${rdFecha}
@@ -245,19 +248,21 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
         try {
           await prisma.$executeRaw`
             UPDATE "OtRegistroDiario"
-            SET "hhTrabajadas" = ${hhTrabajadas},
+            SET fecha = ${rdFecha},
+                "hhTrabajadas" = ${hhTrabajadas},
                 tareas = ${tareas}::text[],
                 observaciones = ${observaciones},
                 adjuntos = ${JSON.stringify(registroDiario.adjuntos ?? [])}::jsonb
-            WHERE id = ${existingId}
+            WHERE id = ${existingId} AND "ordenTrabajoId" = ${id}
           `;
         } catch {
           await prisma.$executeRaw`
             UPDATE "OtRegistroDiario"
-            SET "hhTrabajadas" = ${hhTrabajadas},
+            SET fecha = ${rdFecha},
+                "hhTrabajadas" = ${hhTrabajadas},
                 tareas = ${tareas}::text[],
                 observaciones = ${observaciones}
-            WHERE id = ${existingId}
+            WHERE id = ${existingId} AND "ordenTrabajoId" = ${id}
           `;
         }
       } else {

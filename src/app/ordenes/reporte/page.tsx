@@ -294,6 +294,7 @@ export default function ReporteOTPage() {
   const [editLineas, setEditLineas] = useState<Linea[]>([]);
   const [editOtJdeNumero, setEditOtJdeNumero] = useState("");
   const [editTurno, setEditTurno] = useState("");
+  const [editFecha, setEditFecha] = useState("");
   const [editTecnicos, setEditTecnicos] = useState<{ usuarioId: string; nombreCompleto: string }[]>([]);
   const [usuariosDisponibles, setUsuariosDisponibles] = useState<{ _id: string; nombre: string }[]>([]);
   const [tareaInputs, setTareaInputs] = useState<string[]>([]);
@@ -305,7 +306,7 @@ export default function ReporteOTPage() {
   const [deletingAvanceId, setDeletingAvanceId] = useState<string | null>(null);
   // Editar avance diario (supervisor/admin)
   const [editingAvanceId, setEditingAvanceId] = useState<string | null>(null);
-  const [editAvanceForm, setEditAvanceForm] = useState<{ hhTrabajadas: number; tareasEjecutadas: string[]; observaciones: string; tareaInput: string; adjuntos: { tipo: "foto" | "documento"; nombre: string; dataUrl: string; comentario: string; comentariosExtra: string[] }[] }>({ hhTrabajadas: 0, tareasEjecutadas: [], observaciones: "", tareaInput: "", adjuntos: [] });
+  const [editAvanceForm, setEditAvanceForm] = useState<{ fecha: string; hhTrabajadas: number; tareasEjecutadas: string[]; observaciones: string; tareaInput: string; adjuntos: { tipo: "foto" | "documento"; nombre: string; dataUrl: string; comentario: string; comentariosExtra: string[] }[] }>({ fecha: "", hhTrabajadas: 0, tareasEjecutadas: [], observaciones: "", tareaInput: "", adjuntos: [] });
   const [cargandoAdjAvance, setCargandoAdjAvance] = useState(false);
 
   // Reabrir OT (solo admin)
@@ -438,6 +439,7 @@ export default function ReporteOTPage() {
     setItemCheckInputs(selected.lineas.map(() => ""));
     setEditOtJdeNumero(selected.otJdeNumero ?? "");
     setEditTurno(selected.turno ?? "");
+    setEditFecha(selected.fecha ? new Date(selected.fecha).toISOString().split("T")[0] : "");
     setEditTecnicos(selected.tecnicos.map(t => ({ usuarioId: t.usuarioId ?? "", nombreCompleto: t.nombreCompleto })));
     fetch(`/api/usuarios?rol=4&area=${selected.areaCodigo}&all=true`).then(r => r.json()).then(setUsuariosDisponibles).catch(() => {});
     setEditMode(true);
@@ -537,7 +539,8 @@ export default function ReporteOTPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           registroDiario: {
-            fecha:            avance.fecha,
+            id:               avance._id,
+            fecha:            editAvanceForm.fecha || avance.fecha,
             tecnico:          avance.tecnico,
             usuarioId:        avance.usuarioId,
             hhTrabajadas:     editAvanceForm.hhTrabajadas,
@@ -572,6 +575,7 @@ export default function ReporteOTPage() {
           cambios,
           otJdeNumero: editOtJdeNumero.trim() || null,
           turno: editTurno || undefined,
+          fecha: editFecha || undefined,
           tecnicos: editTecnicos,
           usuarioId: user?.id ?? "sistema",
           nombreUsuario: user?.nombre ?? "Sistema",
@@ -1039,6 +1043,19 @@ export default function ReporteOTPage() {
         <div style={S.card}>
           <div style={{ fontWeight: 700, fontSize: 13, color: "#0f2847", marginBottom: 12 }}>Encabezado</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 24px" }}>
+            <div>
+              <span style={S.label}>Fecha de ejecución</span>
+              {editMode ? (
+                <input
+                  type="date"
+                  value={editFecha}
+                  onChange={e => setEditFecha(e.target.value)}
+                  style={{ marginTop: 4, padding: "6px 10px", border: "1px solid #fcd34d", borderRadius: 6, fontSize: 14, background: "#fffbeb", width: "100%" }}
+                />
+              ) : (
+                <p style={{ fontSize: 14, color: "#1e293b" }}>{new Date(ot.fecha).toLocaleDateString("es-BO", { timeZone: "UTC" })}</p>
+              )}
+            </div>
             <div>
               <span style={S.label}>Área</span>
               <p style={{ fontSize: 14, color: "#1e293b" }}>{ot.areaCodigo} — {areaNombre(ot.areaCodigo)}</p>
@@ -1856,7 +1873,7 @@ export default function ReporteOTPage() {
                           <button
                             onClick={() => {
                               setEditingAvanceId(r._id!);
-                              setEditAvanceForm({ hhTrabajadas: r.hhTrabajadas, tareasEjecutadas: [...r.tareasEjecutadas], observaciones: r.observaciones ?? "", tareaInput: "", adjuntos: [...(r.adjuntos ?? [])] });
+                              setEditAvanceForm({ fecha: new Date(r.fecha).toISOString().split("T")[0], hhTrabajadas: r.hhTrabajadas, tareasEjecutadas: [...r.tareasEjecutadas], observaciones: r.observaciones ?? "", tareaInput: "", adjuntos: [...(r.adjuntos ?? [])] });
                             }}
                             style={{ background: "#fffbeb", color: "#d97706", border: "1px solid #fde68a", borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
                             title="Editar este avance">
@@ -1877,7 +1894,14 @@ export default function ReporteOTPage() {
                     {/* Formulario de edición inline */}
                     {isEditing ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
-                        <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "140px 120px 1fr", gap: 10 }}>
+                          <div>
+                            <label style={S.label}>Fecha</label>
+                            <input type="date"
+                              value={editAvanceForm.fecha}
+                              onChange={e => setEditAvanceForm(f => ({ ...f, fecha: e.target.value }))}
+                              style={S.input} />
+                          </div>
                           <div>
                             <label style={S.label}>HH trabajadas</label>
                             <input type="number" min="0" step="0.5"
