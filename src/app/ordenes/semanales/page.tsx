@@ -397,7 +397,7 @@ function AsignarTecnicosModal({
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch(`/api/usuarios?all=true&area=${areaCodigo}`)
+    fetch(`/api/usuarios?area=${areaCodigo}`)
       .then(r => r.json())
       .then((data: { _id: string; nombre: string }[]) => setTecnicos(data))
       .catch(() => {});

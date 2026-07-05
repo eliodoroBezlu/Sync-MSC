@@ -1161,6 +1161,14 @@ function UsuariosTab() {
     load();
   }
 
+  async function eliminar(item: UsuarioItem) {
+    if (!confirm(`¿Eliminar a "${item.nombre}"? Esta acción no se puede deshacer. Se recomienda solo para registros creados por error.`)) return;
+    const res = await fetch(`/api/usuarios/${item._id}`, { method: "DELETE" });
+    const data = await res.json();
+    if (!data.ok) { alert(data.error ?? "No se pudo eliminar el usuario"); return; }
+    load();
+  }
+
   function toggleArea(codigo: string) {
     setForm((f) => ({ ...f, areas: f.areas.includes(codigo) ? f.areas.filter((a) => a !== codigo) : [...f.areas, codigo] }));
   }
@@ -1447,9 +1455,10 @@ function UsuariosTab() {
                       })()}
                     </td>
                     <td style={C.td}><Badge bg={item.activo ? "#dcfce7" : "#f1f5f9"} color={item.activo ? "#16a34a" : "#94a3b8"}>{item.activo ? "Activo" : "Inactivo"}</Badge></td>
-                    <td style={C.td}>
+                    <td style={{ ...C.td, whiteSpace: "nowrap" as const }}>
                       <button style={{ ...C.btnSmall, marginRight: 4 }} onClick={() => openEdit(item)}>Editar</button>
-                      <button style={item.activo ? C.btnRed : C.btnGreen} onClick={() => toggleActivo(item)}>{item.activo ? "Desactivar" : "Activar"}</button>
+                      <button style={{ ...(item.activo ? C.btnRed : C.btnGreen), marginRight: 4 }} onClick={() => toggleActivo(item)}>{item.activo ? "Desactivar" : "Activar"}</button>
+                      <button style={C.btnRed} onClick={() => eliminar(item)}>Eliminar</button>
                     </td>
                   </tr>
                 );
