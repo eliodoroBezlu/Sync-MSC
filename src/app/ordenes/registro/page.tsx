@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
 import { getFechaTurno, localDateStr, autoTurno, estaEnVentanaCierreSemanal } from "@/lib/turno";
+import { getWeekNumber, getWeekDates, getSemanaAnioOffset } from "@/lib/semana";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -190,39 +191,6 @@ function nombreCoincide(planNombre: string, userNombre: string): boolean {
     if (!mayor.some(m => editDist1(t, m))) return false;
   }
   return true;
-}
-
-function getWeekNumber(d: Date) {
-  const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = dt.getUTCDay() || 7;
-  dt.setUTCDate(dt.getUTCDate() + 4 - day);
-  const y = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
-  return Math.ceil((((dt.getTime() - y.getTime()) / 86400000) + 1) / 7);
-}
-
-// Devuelve las 7 fechas (Lun-Dom) de la semana ISO dada
-function getWeekDates(semana: number, anio: number): Date[] {
-  // Encontrar el 4 de enero (siempre en la semana 1)
-  const jan4 = new Date(anio, 0, 4);
-  // Lunes de la semana 1
-  const lunes1 = new Date(jan4);
-  lunes1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
-  // Lunes de la semana deseada
-  const lunesSemana = new Date(lunes1);
-  lunesSemana.setDate(lunes1.getDate() + (semana - 1) * 7);
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(lunesSemana);
-    d.setDate(lunesSemana.getDate() + i);
-    return d;
-  });
-}
-
-// Dado (semana, año) base y un desplazamiento en semanas, devuelve la semana/año resultante
-// (maneja el cruce de año calculando a partir del lunes real de la semana base)
-function getSemanaAnioOffset(baseSemana: number, baseAnio: number, offsetSemanas: number): { semana: number; anio: number } {
-  const lunes = getWeekDates(baseSemana, baseAnio)[0];
-  lunes.setDate(lunes.getDate() + offsetSemanas * 7);
-  return { semana: getWeekNumber(lunes), anio: lunes.getFullYear() };
 }
 
 const TIPOS_OT: { value: TipoOT; label: string; desc: string; color: string }[] = [
@@ -1132,8 +1100,6 @@ export default function RegistroOTPage() {
   const todayDia = DIA_MAP[now.getDay()];
   const currentSemana = getWeekNumber(now);
   const currentAnio = now.getFullYear();
-  // Cierre OPEPLANT habilitado domingo y lunes (día de turno), ver src/lib/turno.ts
-  const cierreSemanaHabilitado = estaEnVentanaCierreSemanal(shiftFecha);
 
   // ── Vista: "inicio" (listado plan) | "registro" (formulario) ──
   const [view, setView] = useState<"inicio" | "registro">("inicio");
@@ -1151,6 +1117,12 @@ export default function RegistroOTPage() {
     () => getSemanaAnioOffset(currentSemana, currentAnio, semanaOffset),
     [currentSemana, currentAnio, semanaOffset]
   );
+  // Cierre OPEPLANT habilitado solo para la semana que se está mostrando: si ya
+  // terminó (semana anterior) siempre; si es la semana en curso, solo su domingo.
+  const cierreSemanaHabilitado = estaEnVentanaCierreSemanal({
+    semanaOT: semanaMostrada, anioOT: anioMostrado,
+    semanaActual: currentSemana, anioActual: currentAnio,
+  });
 
   // ── Formulario ──
   const emptyForm = useCallback((): FormData => ({
@@ -1775,7 +1747,7 @@ export default function RegistroOTPage() {
                                 </button>
                               ) : (
                                 <span style={{ fontSize: 10, color: "#92400e", fontWeight: 600, textAlign: "right" as const }}>
-                                  Cierre habilitado domingo y lunes
+                                  Cierre habilitado el domingo
                                 </span>
                               )}
                             </div>
