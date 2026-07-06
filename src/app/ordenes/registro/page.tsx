@@ -216,6 +216,14 @@ function getWeekDates(semana: number, anio: number): Date[] {
   });
 }
 
+// Dado (semana, año) base y un desplazamiento en semanas, devuelve la semana/año resultante
+// (maneja el cruce de año calculando a partir del lunes real de la semana base)
+function getSemanaAnioOffset(baseSemana: number, baseAnio: number, offsetSemanas: number): { semana: number; anio: number } {
+  const lunes = getWeekDates(baseSemana, baseAnio)[0];
+  lunes.setDate(lunes.getDate() + offsetSemanas * 7);
+  return { semana: getWeekNumber(lunes), anio: lunes.getFullYear() };
+}
+
 // Turnos: Diurno 06:30–18:29 · Nocturno 18:30–06:29 (cruza medianoche)
 // Si son las 00:00–06:29, el turno nocturno pertenece al día ANTERIOR
 function localDateStr(d: Date): string {
@@ -1161,6 +1169,13 @@ export default function RegistroOTPage() {
   const [diaSeleccionado, setDiaSeleccionado] = useState<DiaSem>(todayDia);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [filtroOT, setFiltroOT] = useState("");
+  // Solo se permite retroceder 1 semana, para que los técnicos puedan cerrar
+  // OTs que quedaron pendientes al cambiar de semana.
+  const [semanaOffset, setSemanaOffset] = useState(0);
+  const { semana: semanaMostrada, anio: anioMostrado } = React.useMemo(
+    () => getSemanaAnioOffset(currentSemana, currentAnio, semanaOffset),
+    [currentSemana, currentAnio, semanaOffset]
+  );
 
   // ── Formulario ──
   const emptyForm = useCallback((): FormData => ({
@@ -1354,7 +1369,7 @@ export default function RegistroOTPage() {
   const recargarPlan = React.useCallback(() => {
     if (!user) return;
     setLoadingPlan(true);
-    const p = new URLSearchParams({ semana: String(currentSemana), anio: String(currentAnio), limit: "50" });
+    const p = new URLSearchParams({ semana: String(semanaMostrada), anio: String(anioMostrado), limit: "50" });
     fetch(`/api/programacion-semanal?${p}`)
       .then(r => r.json())
       .then((planes: PlanDoc[]) => {
@@ -1386,13 +1401,13 @@ export default function RegistroOTPage() {
       .catch(() => {})
       .finally(() => setLoadingPlan(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, currentSemana, currentAnio]);
+  }, [user, semanaMostrada, anioMostrado]);
 
   useEffect(() => {
     if (authLoading || !user) return;
     recargarPlan();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user]);
+  }, [authLoading, user, semanaMostrada, anioMostrado]);
 
 
   // ─── Seleccionar OT del plan → abrir registro ──────────────────────────────
@@ -1627,28 +1642,45 @@ export default function RegistroOTPage() {
             {/* Plan Semanal — navegación por días */}
             <div style={{ ...S.card, border: "1px solid #bfdbfe", background: "#f8fbff", padding: 0, overflow: "hidden" }}>
               {/* Header */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px 10px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px 10px", gap: 8 }}>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 15, color: "#1d4ed8" }}>
-                    Plan de la Semana {currentSemana}
+                    Plan de la Semana {semanaMostrada}{semanaOffset !== 0 ? " (anterior)" : ""}
                   </div>
                   <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
                     {user?.rol === 4 ? "Tus OTs programadas" : "OTs programadas de tu área"}
                   </div>
                 </div>
-                {loadingPlan && <span style={{ fontSize: 12, color: "#94a3b8" }}>Cargando…</span>}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  {loadingPlan && <span style={{ fontSize: 12, color: "#94a3b8" }}>Cargando…</span>}
+                  {semanaOffset === 0 ? (
+                    <button
+                      onClick={() => { setSemanaOffset(-1); setDiaSeleccionado("Do"); }}
+                      style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", background: "white", border: "1px solid #bfdbfe", borderRadius: 7, padding: "6px 10px", cursor: "pointer", whiteSpace: "nowrap" as const }}
+                    >
+                      ‹ Semana anterior
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => { setSemanaOffset(0); setDiaSeleccionado(todayDia); }}
+                      style={{ fontSize: 12, fontWeight: 700, color: "white", background: "#2563eb", border: "1px solid #2563eb", borderRadius: 7, padding: "6px 10px", cursor: "pointer", whiteSpace: "nowrap" as const }}
+                    >
+                      Volver a semana actual ›
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Pestañas de días */}
               {!loadingPlan && (() => {
-                const weekDates = getWeekDates(currentSemana, currentAnio);
+                const weekDates = getWeekDates(semanaMostrada, anioMostrado);
                 // Lu=0 Ma=1 Mi=2 Ju=3 Vi=4 Sa=5 Do=6 en el array weekDates
                 const DIA_IDX: Record<DiaSem, number> = { Lu: 0, Ma: 1, Mi: 2, Ju: 3, Vi: 4, Sa: 5, Do: 6 };
                 return (
                   <div style={{ display: "flex", borderTop: "1px solid #e0eeff", borderBottom: "1px solid #e0eeff", overflowX: "auto", background: "white" }}>
                     {(["Lu","Ma","Mi","Ju","Vi","Sa","Do"] as DiaSem[]).map(dia => {
                       const count = planRefs.filter(r => r.ot.dia === dia).length;
-                      const isHoy = dia === todayDia;
+                      const isHoy = semanaOffset === 0 && dia === todayDia;
                       const isActive = dia === diaSeleccionado;
                       const diaFecha = weekDates[DIA_IDX[dia]];
                       return (
@@ -1690,7 +1722,7 @@ export default function RegistroOTPage() {
                       {filtroNorm
                         ? `Ninguna OT coincide con "${filtroOT}" para ${diaSeleccionado}`
                         : <>Sin OTs programadas para {diaSeleccionado}
-                          {diaSeleccionado === todayDia && <><br /><span style={{ fontSize: 12 }}>Usa el botón de abajo para registrar una OT reactiva.</span></>}
+                          {semanaOffset === 0 && diaSeleccionado === todayDia && <><br /><span style={{ fontSize: 12 }}>Usa el botón de abajo para registrar una OT reactiva.</span></>}
                         </>
                       }
                     </div>
