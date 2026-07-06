@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
+import { getFechaTurno, localDateStr, autoTurno, estaEnVentanaCierreSemanal } from "@/lib/turno";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -223,32 +224,6 @@ function getSemanaAnioOffset(baseSemana: number, baseAnio: number, offsetSemanas
   lunes.setDate(lunes.getDate() + offsetSemanas * 7);
   return { semana: getWeekNumber(lunes), anio: lunes.getFullYear() };
 }
-
-// Turnos: Diurno 06:30–18:29 · Nocturno 18:30–06:29 (cruza medianoche)
-// Si son las 00:00–06:29, el turno nocturno pertenece al día ANTERIOR
-function localDateStr(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function getFechaTurno(): { fecha: string; turno: TurnoTipo } {
-  const ahora = new Date();
-  const min = ahora.getHours() * 60 + ahora.getMinutes();
-  const INICIO_DIA   = 6 * 60 + 30;   // 06:30
-  const INICIO_NOCHE = 18 * 60 + 30;  // 18:30
-  if (min >= INICIO_NOCHE) {
-    return { fecha: localDateStr(ahora), turno: "Nocturno" };
-  } else if (min < INICIO_DIA) {
-    const ayer = new Date(ahora);
-    ayer.setDate(ayer.getDate() - 1);
-    return { fecha: localDateStr(ayer), turno: "Nocturno" };
-  }
-  return { fecha: localDateStr(ahora), turno: "Diurno" };
-}
-
-function autoTurno(): TurnoTipo { return getFechaTurno().turno; }
 
 const TIPOS_OT: { value: TipoOT; label: string; desc: string; color: string }[] = [
   { value: "CMP", label: "CMP", desc: "Correctivo Mayor Programado", color: "#dc2626" },
@@ -1157,8 +1132,8 @@ export default function RegistroOTPage() {
   const todayDia = DIA_MAP[now.getDay()];
   const currentSemana = getWeekNumber(now);
   const currentAnio = now.getFullYear();
-  // Cierre OPEPLANT habilitado solo cuando shiftFecha es domingo (getDay()===0)
-  const cierreSemanaHabilitado = new Date(shiftFecha + "T12:00:00").getDay() === 0;
+  // Cierre OPEPLANT habilitado domingo y lunes (día de turno), ver src/lib/turno.ts
+  const cierreSemanaHabilitado = estaEnVentanaCierreSemanal(shiftFecha);
 
   // ── Vista: "inicio" (listado plan) | "registro" (formulario) ──
   const [view, setView] = useState<"inicio" | "registro">("inicio");
@@ -1800,7 +1775,7 @@ export default function RegistroOTPage() {
                                 </button>
                               ) : (
                                 <span style={{ fontSize: 10, color: "#92400e", fontWeight: 600, textAlign: "right" as const }}>
-                                  Cierre habilitado el domingo
+                                  Cierre habilitado domingo y lunes
                                 </span>
                               )}
                             </div>

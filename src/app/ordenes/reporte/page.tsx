@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
 import { generarInformeOT } from "@/lib/generarInformeOT";
+import { getFechaTurno, estaEnVentanaCierreSemanal } from "@/lib/turno";
 
 // ─── Utilidades de imagen ─────────────────────────────────────────────────────
 
@@ -977,8 +978,8 @@ export default function ReporteOTPage() {
   const canEdit = !isConcluido && (esAdmin || (esTecnico && enEstadoTecnico && esOtPropia) || (esSup && !esTecnico));
 
   // Solo técnico (o admin) puede enviar a revisión desde borrador/corrección
-  // Para OTs del plan (OPEPLANT): solo domingo o admin puede enviar a revisión (cierre semanal)
-  const bloqueoCierreSemanal = ot.origenPlan && new Date().getDay() !== 0 && !esAdmin;
+  // Para OTs del plan (OPEPLANT): solo domingo/lunes (día de turno) o admin puede enviar a revisión (cierre semanal)
+  const bloqueoCierreSemanal = ot.origenPlan && !estaEnVentanaCierreSemanal(getFechaTurno().fecha) && !esAdmin;
   const canSendToReview = enEstadoTecnico && (esAdmin || (esTecnico && esOtPropia)) && !bloqueoCierreSemanal;
 
   // Formulario de supervisión: solo supervisores/admins, cuando la OT está en pendiente_revision
@@ -1527,7 +1528,7 @@ export default function ReporteOTPage() {
             {saveErr && <p style={{ color: "#dc2626", fontSize: 12, marginBottom: 10 }}>⚠ {saveErr}</p>}
             {bloqueoCierreSemanal && enEstadoTecnico && (
               <p style={{ fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>
-                ⏳ Esta OT es del plan semanal. El envío a revisión se habilita el <strong>domingo</strong> al finalizar la semana.
+                ⏳ Esta OT es del plan semanal. El envío a revisión se habilita <strong>domingo y lunes</strong> al finalizar la semana.
               </p>
             )}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
