@@ -1160,6 +1160,7 @@ export default function RegistroOTPage() {
   const [planRefs, setPlanRefs] = useState<PlanRef[]>([]);
   const [diaSeleccionado, setDiaSeleccionado] = useState<DiaSem>(todayDia);
   const [loadingPlan, setLoadingPlan] = useState(false);
+  const [filtroOT, setFiltroOT] = useState("");
 
   // ── Formulario ──
   const emptyForm = useCallback((): FormData => ({
@@ -1594,8 +1595,34 @@ export default function RegistroOTPage() {
       <AppHeader backHref="/ordenes" />
       <div style={S.wrap}>
 
-        <h1 style={{ fontSize: 19, fontWeight: 800, color: "#0f2847", marginBottom: 2 }}>Registro de OT</h1>
-        <p style={{ fontSize: 12, color: "#94a3b8", marginBottom: 16 }}>Semana {currentSemana} · {today} ({todayDia})</p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <h1 style={{ fontSize: 19, fontWeight: 800, color: "#0f2847", marginBottom: 2 }}>Registro de OT</h1>
+            <p style={{ fontSize: 12, color: "#94a3b8", marginBottom: 16 }}>Semana {currentSemana} · {today} ({todayDia})</p>
+          </div>
+          {view === "inicio" && (
+            <div style={{ position: "relative", minWidth: 160 }}>
+              <input
+                value={filtroOT}
+                onChange={e => setFiltroOT(e.target.value)}
+                placeholder="Buscar N° OT…"
+                style={{
+                  width: "100%", padding: "8px 28px 8px 10px", borderRadius: 8,
+                  border: "1px solid #cbd5e1", fontSize: 13, color: "#1e293b",
+                }}
+              />
+              {filtroOT && (
+                <button
+                  onClick={() => setFiltroOT("")}
+                  style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 14, lineHeight: 1 }}
+                  aria-label="Limpiar filtro"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* ════════════════ VISTA INICIO ════════════════════════════════════ */}
         {view === "inicio" && (
@@ -1653,14 +1680,32 @@ export default function RegistroOTPage() {
 
               {/* Lista de OTs del día seleccionado */}
               <div style={{ padding: "10px 12px" }}>
-              {!loadingPlan && planRefs.filter(r => r.ot.dia === diaSeleccionado).length === 0 && (
-                <div style={{ textAlign: "center", padding: "16px 0 8px", color: "#94a3b8", fontSize: 13 }}>
-                  Sin OTs programadas para {diaSeleccionado}
-                  {diaSeleccionado === todayDia && <><br /><span style={{ fontSize: 12 }}>Usa el botón de abajo para registrar una OT reactiva.</span></>}
-                </div>
-              )}
+              {(() => {
+                const filtroNorm = filtroOT.trim().toLowerCase();
+                const refsDelDia = planRefs.filter(r =>
+                  r.ot.dia === diaSeleccionado &&
+                  (!filtroNorm || r.ot.numeroOT.toLowerCase().includes(filtroNorm))
+                );
+                if (loadingPlan) return null;
+                if (refsDelDia.length === 0) {
+                  return (
+                    <div style={{ textAlign: "center", padding: "16px 0 8px", color: "#94a3b8", fontSize: 13 }}>
+                      {filtroNorm
+                        ? `Ninguna OT coincide con "${filtroOT}" para ${diaSeleccionado}`
+                        : <>Sin OTs programadas para {diaSeleccionado}
+                          {diaSeleccionado === todayDia && <><br /><span style={{ fontSize: 12 }}>Usa el botón de abajo para registrar una OT reactiva.</span></>}
+                        </>
+                      }
+                    </div>
+                  );
+                }
+                return null;
+              })()}
 
-              {planRefs.filter(r => r.ot.dia === diaSeleccionado).map((ref, i) => {
+              {planRefs.filter(r =>
+                r.ot.dia === diaSeleccionado &&
+                (!filtroOT.trim() || r.ot.numeroOT.toLowerCase().includes(filtroOT.trim().toLowerCase()))
+              ).map((ref, i) => {
                 const ot = ref.ot;
                 const esRecurrente = recurrentesNums.has(ot.numeroOT);
                 // Para recurrentes sin vínculo propio, usar el ref del hermano ya registrado
