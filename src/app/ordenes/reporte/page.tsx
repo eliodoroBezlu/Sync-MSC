@@ -965,8 +965,11 @@ export default function ReporteOTPage() {
   const estadoColor = ESTADO_COLOR[ot.estado] ?? "#64748b";
   const isConcluido = ot.estado === "concluido";
 
-  // Técnico edita en borrador/corrección; supervisor/admin en cualquier estado activo
+  // Técnico envía a revisión desde borrador/corrección; supervisor/admin en cualquier estado activo
   const enEstadoTecnico = ot.estado === "borrador" || ot.estado === "solicitar_correccion";
+  // Técnico también puede editar la OT y sus avances mientras está "en proceso" (facilita
+  // corregir errores durante la semana); una vez enviada a revisión ya no puede tocarla.
+  const puedeEditarTecnico = enEstadoTecnico || ot.estado === "en_proceso";
 
   // Técnico solo puede editar OTs donde él está asignado (por id o por nombre)
   const tokensNombre = (user?.nombre ?? "").toLowerCase().normalize("NFD").replace(/\p{Mn}/gu, "").split(/\s+/).filter(t => t.length > 2);
@@ -976,7 +979,7 @@ export default function ReporteOTPage() {
     return tokensNombre.some(tok => nombreNorm.includes(tok));
   });
 
-  const canEdit = !isConcluido && (esAdmin || (esTecnico && enEstadoTecnico && esOtPropia) || (esSup && !esTecnico));
+  const canEdit = !isConcluido && (esAdmin || (esTecnico && puedeEditarTecnico && esOtPropia) || (esSup && !esTecnico));
 
   // Solo técnico (o admin) puede enviar a revisión desde borrador/corrección
   // Para OTs del plan (OPEPLANT): solo si su semana ya terminó, o si es la semana en
@@ -1879,7 +1882,7 @@ export default function ReporteOTPage() {
                       </div>
                       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                         <span style={{ fontSize: 11, color: "#94a3b8" }}>{r.tecnico}</span>
-                        {esSup && r._id && !isEditing && (
+                        {(esSup || (esTecnico && esOtPropia && puedeEditarTecnico)) && r._id && !isEditing && (
                           <button
                             onClick={() => {
                               setEditingAvanceId(r._id!);
@@ -1890,7 +1893,7 @@ export default function ReporteOTPage() {
                             ✏
                           </button>
                         )}
-                        {esSup && r._id && !isEditing && (
+                        {(esSup || (esTecnico && esOtPropia && puedeEditarTecnico)) && r._id && !isEditing && (
                           <button
                             onClick={() => setDeletingAvanceId(r._id!)}
                             style={{ background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
