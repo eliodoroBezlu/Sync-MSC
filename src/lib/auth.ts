@@ -1,9 +1,13 @@
-import jwt from "jsonwebtoken";
+import { SignJWT, jwtVerify } from "jose";
 import { Rol, Disciplina } from "@/types";
 
 const JWT_SECRET = process.env.JWT_SECRET || "sync-msc-secret-dev-2025";
 const COOKIE_NAME = "sync_session";
 const MAX_AGE = 60 * 60 * 8; // 8 horas
+
+// jose (ESM) en lugar de jsonwebtoken (CJS): Turbopack lo empaqueta sin
+// problemas y es el mismo esquema (HS256) que valida el proxy.
+const secret = () => new TextEncoder().encode(JWT_SECRET);
 
 export interface SessionPayload {
   id: string;
@@ -14,13 +18,18 @@ export interface SessionPayload {
   disciplina: Disciplina;
 }
 
-export function signToken(payload: SessionPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: MAX_AGE });
+export async function signToken(payload: SessionPayload): Promise<string> {
+  return new SignJWT({ ...payload })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${MAX_AGE}s`)
+    .sign(secret());
 }
 
-export function verifyToken(token: string): SessionPayload | null {
+export async function verifyToken(token: string): Promise<SessionPayload | null> {
   try {
-    return jwt.verify(token, JWT_SECRET) as SessionPayload;
+    const { payload } = await jwtVerify(token, secret());
+    return payload as unknown as SessionPayload;
   } catch {
     return null;
   }

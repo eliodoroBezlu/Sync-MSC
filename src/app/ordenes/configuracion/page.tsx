@@ -1566,6 +1566,22 @@ function AreasTab() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <button
+            style={C.btnOutline}
+            onClick={async () => {
+              try {
+                const r = await fetch("/api/areas/sync", { method: "POST" });
+                const d = await r.json();
+                alert(d.ok ? `Catálogo sincronizado: ${d.synced} áreas` : `Error: ${d.error ?? "no se pudo sincronizar"}`);
+                if (d.ok) location.reload();
+              } catch {
+                alert("Error de red al sincronizar");
+              }
+            }}
+            title="Trae el catálogo maestro desde el IAM (no pisa 'tieneCalibracion')"
+          >
+            ↻ Sincronizar del IAM
+          </button>
           <button style={C.btnBlue} onClick={openAdd}>+ Agregar</button>
           <BulkImportPanel entityName="Áreas" fileName="plantilla_areas.csv" fields={AREA_FIELDS} templateRows={AREA_TEMPLATE} onImport={importarFilas} />
         </div>

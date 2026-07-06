@@ -19,6 +19,9 @@ const migraciones = [
   "ALTER TABLE \"RegistroCalibracion\" ADD COLUMN IF NOT EXISTS \"supervisorFirma\" TEXT",
   "ALTER TABLE \"Usuario\" ADD COLUMN IF NOT EXISTS \"esContratista\" BOOLEAN NOT NULL DEFAULT false",
   "ALTER TABLE \"Usuario\" ADD COLUMN IF NOT EXISTS \"fechaExpiracion\" TIMESTAMP(3)",
+  // ── Vínculo con la identidad centralizada del IAM (login OIDC) ──────────────
+  "ALTER TABLE \"Usuario\" ADD COLUMN IF NOT EXISTS \"iamUserId\" TEXT",
+  "CREATE UNIQUE INDEX IF NOT EXISTS \"Usuario_iamUserId_key\" ON \"Usuario\" (\"iamUserId\")",
   "ALTER TABLE \"OtProgramada\" ADD COLUMN IF NOT EXISTS \"personalAsignadoIds\" TEXT[] NOT NULL DEFAULT '{}'",
   "ALTER TABLE \"OtProgramada\" ADD COLUMN IF NOT EXISTS bitacora JSONB NOT NULL DEFAULT '[]'",
 

@@ -1,48 +1,56 @@
-import { prisma } from "@/lib/prisma";
-import { signToken, COOKIE_NAME, MAX_AGE, SessionPayload } from "@/lib/auth";
-import crypto from "crypto";
+// app/api/auth/login/route.ts
+// Inicio del flujo OIDC Authorization Code + PKCE contra el IAM.
+// Genera code_verifier/state/nonce, los guarda en una cookie corta (oidc_tx)
+// y redirige al endpoint /authorize del IdP (vía proxy del portal en prod).
 import { NextRequest, NextResponse } from "next/server";
-import type { Disciplina } from "@/types";
+import { getOidcClient, generators } from "@/lib/oidc";
+import { getPublicOrigin } from "@/lib/public-url";
 
-export async function POST(req: NextRequest) {
+export const runtime = "nodejs";
+
+const TX_COOKIE = "oidc_tx";
+
+/** Acepta solo destinos same-origin para evitar open-redirect. */
+function safeRedirect(raw: string | null, request: NextRequest): string {
+  if (!raw) return "/inicio";
   try {
-    const { email, password } = await req.json();
-    if (!email || !password)
-      return NextResponse.json({ ok: false, error: "Credenciales requeridas" }, { status: 400 });
-
-    const user = await prisma.usuario.findFirst({
-      where: { email: email.toLowerCase().trim(), activo: true },
-      include: { areas: true },
-    });
-
-    if (!user || !user.passwordHash)
-      return NextResponse.json({ ok: false, error: "Usuario o contraseña incorrectos" }, { status: 401 });
-
-    // Verificar con SHA-256 (mismo hash usado al crear)
-    const hash = crypto.createHash("sha256").update(password + "syncmsc-salt-v1").digest("hex");
-    if (hash !== user.passwordHash)
-      return NextResponse.json({ ok: false, error: "Usuario o contraseña incorrectos" }, { status: 401 });
-
-    const payload: SessionPayload = {
-      id: user.id,
-      nombre: user.apellido ? `${user.nombre} ${user.apellido}` : user.nombre,
-      email: user.email!,
-      rol: user.rol as import("@/types").Rol,
-      areas: user.areas.map((a) => a.areaCodigo),
-      disciplina: (user.disciplina as Disciplina) ?? "GENERAL",
-    };
-
-    const token = signToken(payload);
-    const res = NextResponse.json({ ok: true, user: payload });
-    res.cookies.set(COOKIE_NAME, token, {
-      httpOnly: true,
-      sameSite: "lax",
-      maxAge: MAX_AGE,
-      path: "/",
-    });
-    return res;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Error interno";
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    if (raw.startsWith("/")) return raw;
+    const url = new URL(raw);
+    if (url.origin === getPublicOrigin(request)) return url.pathname + url.search;
+  } catch {
+    /* ignore */
   }
+  return "/inicio";
+}
+
+export async function GET(request: NextRequest) {
+  const client = getOidcClient();
+
+  const codeVerifier = generators.codeVerifier();
+  const codeChallenge = generators.codeChallenge(codeVerifier);
+  const state = generators.state();
+  const nonce = generators.nonce();
+
+  const redirect = safeRedirect(
+    request.nextUrl.searchParams.get("redirect"),
+    request,
+  );
+
+  const authUrl = client.authorizationUrl({
+    scope: "openid profile email",
+    state,
+    nonce,
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+  });
+
+  const res = NextResponse.redirect(authUrl);
+  res.cookies.set(TX_COOKIE, JSON.stringify({ codeVerifier, state, nonce, redirect }), {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 600, // 10 min para completar el login
+  });
+  return res;
 }

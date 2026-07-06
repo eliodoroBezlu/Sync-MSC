@@ -11,12 +11,16 @@ datasource db {
 
 model Usuario {
   id               String   @id @default(cuid())
+  // Vínculo con la identidad centralizada del IAM (User.id / OIDC sub).
+  // Fuente de verdad de rol/disciplina/áreas: el IAM. Esta fila es un
+  // espejo que se re-sincroniza en cada login OIDC.
+  iamUserId        String?  @unique
   nombre           String
   apellido         String?
   email            String?  @unique
-  passwordHash     String?
-  rol              Int      // 1=Admin 2=Sup 3=Supervisor 4=Técnico 5=Planificador
-  disciplina       String   @default("GENERAL") // GENERAL|MEC|ELEC|INST
+  passwordHash     String?  // legacy — ya no se usa con login OIDC
+  rol              Int      // espejo: 1=Admin 2=Sup 3=Supervisor 4=Técnico 5=Planificador 6=Contratista
+  disciplina       String   @default("GENERAL") // espejo: GENERAL|MEC|ELEC|INST
   areaTrabajo      String?
   celular          String?
   jde              String?
@@ -33,6 +37,7 @@ model Usuario {
 
   @@index([rol, activo])
   @@index([jde])
+  @@index([iamUserId])
 }
 
 model UsuarioArea {
