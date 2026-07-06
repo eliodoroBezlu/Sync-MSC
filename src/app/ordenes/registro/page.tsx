@@ -1243,9 +1243,17 @@ export default function RegistroOTPage() {
         const err = await res.json().catch(() => ({}));
         throw new Error((err as { error?: string }).error ?? "Error al enviar a revisión");
       }
-      // Actualizar estado local solo si la API confirmó el cambio
+      // Persistir el nuevo estado en TODOS los días del plan que comparten este numeroOT
+      // (una OT recurrente ocupa una fila por día): si no, al recargar el plan (cambiar de
+      // semana, volver a entrar) el botón "Enviar a revisión" reaparece habilitado.
+      await fetch(`/api/programacion-semanal/${ref.planId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ numeroOT: ref.ot.numeroOT, todosLosDias: true, estado: "en_revision" }),
+      });
+      // Actualizar estado local en todas las filas de esta OT (no solo la que tiene ordenTrabajoId)
       setPlanRefs(prev => prev.map(r =>
-        r.ot.ordenTrabajoId === ref.ot.ordenTrabajoId
+        r.planId === ref.planId && r.ot.numeroOT === ref.ot.numeroOT
           ? { ...r, ot: { ...r.ot, estado: "en_revision" } as OTPlan }
           : r
       ));

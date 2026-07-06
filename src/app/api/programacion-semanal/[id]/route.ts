@@ -40,13 +40,19 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     const body = await req.json();
     const { numeroOT, dia, estado, observaciones,
             pasarNoche, pasarNocheMotivo, pasarNocheNota, pasarNochePor,
-            personalAsignado, personalAsignadoIds } = body;
+            personalAsignado, personalAsignadoIds, todosLosDias } = body;
 
-    if (!numeroOT || !dia)
+    if (!numeroOT || (!dia && !todosLosDias))
       return Response.json({ ok: false, error: "numeroOT y dia son requeridos" }, { status: 400 });
 
-    const whereBase = { programacionSemanalId: id, numeroOT, dia };
-    const whereGrupo = body.grupo
+    // todosLosDias: una OT recurrente ocupa varias filas (una por día programado) que
+    // comparten numeroOT. Al cerrar el ciclo semanal (enviar a revisión) hay que marcarlas
+    // todas, no solo el día desde el que se envió — si no, el badge/botón de los otros
+    // días del plan siguen mostrando el estado viejo al recargar.
+    const whereBase = todosLosDias
+      ? { programacionSemanalId: id, numeroOT }
+      : { programacionSemanalId: id, numeroOT, dia };
+    const whereGrupo = !todosLosDias && body.grupo
       ? { ...whereBase, grupo: String(body.grupo) }
       : whereBase;
 
