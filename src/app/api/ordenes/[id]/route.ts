@@ -154,7 +154,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   const token = req.cookies.get(COOKIE_NAME)?.value;
-  const session = token ? verifyToken(token) : null;
+  const session = token ? await verifyToken(token) : null;
   if (!session) {
     return Response.json({ ok: false, error: "No autenticado" }, { status: 401 });
   }

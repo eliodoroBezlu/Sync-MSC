@@ -1,44 +1,31 @@
-"use client";
+/**
+ * Login de Sync-MSC.
+ * El login es el estándar del IAM (OIDC). Esta página solo:
+ *  - sin error → inicia el flujo OIDC (/api/auth/login)
+ *  - con ?error → muestra el motivo (evita loop de auto-login, ej. sin acceso)
+ */
+import { redirect } from "next/navigation";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { useUser } from "@/context/AuthContext";
+const ERRORS: Record<string, string> = {
+  sin_acceso:
+    "Tu cuenta no tiene acceso al sistema Sync-MSC. Contacta al administrador para que te conceda el acceso desde el portal de identidad.",
+  auth_error: "No se pudo completar el inicio de sesión. Intenta nuevamente.",
+};
 
-export default function LoginPage() {
-  const router = useRouter();
-  const { refetch } = useUser();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; redirect?: string }>;
+}) {
+  const { error, redirect: dest } = await searchParams;
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!email || !password) {
-      setError("Ingrese su correo y contraseña.");
-      return;
-    }
-    setLoading(true);
-    setError("");
-    try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (!data.ok) {
-        setError(data.error || "Credenciales incorrectas.");
-        return;
-      }
-      await refetch();
-      router.push("/inicio");
-    } catch {
-      setError("Error de conexión. Intente nuevamente.");
-    } finally {
-      setLoading(false);
-    }
+  // Sin error → iniciar el flujo OIDC directamente
+  if (!error) {
+    const target = dest && dest.startsWith("/") ? dest : "/inicio";
+    redirect(`/api/auth/login?redirect=${encodeURIComponent(target)}`);
   }
+
+  const message = ERRORS[error!] ?? ERRORS.auth_error;
 
   return (
     <div
@@ -48,7 +35,8 @@ export default function LoginPage() {
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        background: "linear-gradient(180deg, #061322 0%, #0f2847 30%, #1a3d6b 65%, #2a5a8a 100%)",
+        background:
+          "linear-gradient(180deg, #061322 0%, #0f2847 30%, #1a3d6b 65%, #2a5a8a 100%)",
         padding: 24,
       }}
     >
@@ -64,93 +52,37 @@ export default function LoginPage() {
       <div
         style={{
           width: "100%",
-          maxWidth: 380,
+          maxWidth: 420,
           background: "rgba(255,255,255,0.06)",
           border: "1px solid rgba(255,255,255,0.12)",
           borderRadius: 16,
           padding: "36px 32px",
           backdropFilter: "blur(20px)",
+          textAlign: "center",
         }}
       >
-        <h2 style={{ color: "white", fontWeight: 700, fontSize: 18, marginBottom: 24, textAlign: "center" }}>
-          Iniciar Sesión
+        <h2 style={{ color: "white", fontWeight: 700, fontSize: 18, marginBottom: 16 }}>
+          Acceso no disponible
         </h2>
-
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div>
-            <label style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 600, letterSpacing: "0.05em", display: "block", marginBottom: 6 }}>
-              CORREO CORPORATIVO
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="usuario@minera.com"
-              autoComplete="email"
-              style={{
-                width: "100%",
-                background: "rgba(255,255,255,0.08)",
-                border: "1px solid rgba(255,255,255,0.18)",
-                borderRadius: 8,
-                padding: "12px 14px",
-                color: "white",
-                fontSize: 14,
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-          </div>
-
-          <div>
-            <label style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 600, letterSpacing: "0.05em", display: "block", marginBottom: 6 }}>
-              CONTRASEÑA
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              style={{
-                width: "100%",
-                background: "rgba(255,255,255,0.08)",
-                border: "1px solid rgba(255,255,255,0.18)",
-                borderRadius: 8,
-                padding: "12px 14px",
-                color: "white",
-                fontSize: 14,
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-          </div>
-
-          {error && (
-            <div style={{ color: "#fca5a5", fontSize: 13, background: "rgba(239,68,68,0.15)", borderRadius: 6, padding: "8px 12px" }}>
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              marginTop: 8,
-              background: loading ? "#2563eb99" : "#2563eb",
-              color: "white",
-              border: "none",
-              borderRadius: 8,
-              padding: "13px 0",
-              fontWeight: 700,
-              fontSize: 15,
-              cursor: loading ? "not-allowed" : "pointer",
-              letterSpacing: "0.04em",
-              transition: "background 0.2s",
-            }}
-          >
-            {loading ? "Verificando..." : "Ingresar"}
-          </button>
-        </form>
+        <p style={{ color: "#fca5a5", fontSize: 14, lineHeight: 1.5, marginBottom: 24 }}>
+          {message}
+        </p>
+        <a
+          href="/api/auth/login"
+          style={{
+            display: "inline-block",
+            background: "#2563eb",
+            color: "white",
+            borderRadius: 8,
+            padding: "12px 28px",
+            fontWeight: 700,
+            fontSize: 15,
+            textDecoration: "none",
+            letterSpacing: "0.04em",
+          }}
+        >
+          Reintentar
+        </a>
       </div>
 
       <p style={{ color: "rgba(255,255,255,0.25)", fontSize: 11, marginTop: 40 }}>

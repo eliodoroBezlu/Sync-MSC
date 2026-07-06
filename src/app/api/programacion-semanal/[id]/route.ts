@@ -165,7 +165,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     // rol autenticado puede tocar desde el plan semanal.
     if (hhTotal !== undefined) {
       const token = req.cookies.get(COOKIE_NAME)?.value;
-      const session = token ? verifyToken(token) : null;
+      const session = token ? await verifyToken(token) : null;
       if (!session || (session.rol !== 1 && session.rol !== 3)) {
         return Response.json({ ok: false, error: "No autorizado para editar HH" }, { status: 403 });
       }
