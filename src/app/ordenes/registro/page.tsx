@@ -1595,21 +1595,18 @@ export default function RegistroOTPage() {
       <AppHeader backHref="/ordenes" />
       <div style={S.wrap}>
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
           <div>
             <h1 style={{ fontSize: 19, fontWeight: 800, color: "#0f2847", marginBottom: 2 }}>Registro de OT</h1>
             <p style={{ fontSize: 12, color: "#94a3b8", marginBottom: 16 }}>Semana {currentSemana} · {today} ({todayDia})</p>
           </div>
           {view === "inicio" && (
-            <div style={{ position: "relative", minWidth: 160 }}>
+            <div style={{ position: "relative", minWidth: 160, marginBottom: 16 }}>
               <input
                 value={filtroOT}
                 onChange={e => setFiltroOT(e.target.value)}
                 placeholder="Buscar N° OT…"
-                style={{
-                  width: "100%", padding: "8px 28px 8px 10px", borderRadius: 8,
-                  border: "1px solid #cbd5e1", fontSize: 13, color: "#1e293b",
-                }}
+                style={{ ...S.input, paddingRight: 28, borderColor: "#2563eb" }}
               />
               {filtroOT && (
                 <button
