@@ -234,8 +234,10 @@ export default function ReporteOTPage() {
   const { user } = useUser();
   const [otParamId, setOtParamId] = useState<string | null>(null);
   useEffect(() => {
-    const p = new URLSearchParams(window.location.search).get("ot");
-    setOtParamId(p);
+    const params = new URLSearchParams(window.location.search);
+    setOtParamId(params.get("ot"));
+    const buscar = params.get("buscar");
+    if (buscar) setFiltroBuscar(buscar);
   }, []);
 
   // Derivados de rol — Admin(1) y Superintendente(2) tienen acceso total

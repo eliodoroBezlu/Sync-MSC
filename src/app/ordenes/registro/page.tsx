@@ -1749,7 +1749,7 @@ export default function RegistroOTPage() {
                               </button>
                               {cierreSemanaHabilitado ? (
                                 <button
-                                  onClick={() => abrirRegistroPlan(ref)}
+                                  onClick={() => router.push(`/ordenes/reporte?buscar=${encodeURIComponent(ot.numeroOT)}`)}
                                   style={{ fontSize: 11, fontWeight: 700, color: "white", background: "#16a34a", border: "none", borderRadius: 6, padding: "5px 12px", cursor: "pointer", whiteSpace: "nowrap" as const }}>
                                   🔐 Cerrar OT de semana
                                 </button>
