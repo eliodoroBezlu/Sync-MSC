@@ -1679,13 +1679,34 @@ export default function ReporteOTPage() {
                         ...(otBase.registrosDiarios ?? []),
                         ...todosHermanos.flatMap(h => h.registrosDiarios ?? []),
                       ].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
-                      // Fusionar lineas: misma tag+tipoOT → combinar adjuntos, tareas y observaciones
-                      const lineasMap = new Map(otBase.lineas.map(l => [`${l.tag}::${l.tipoOT}`, { ...l, adjuntos: [...(l.adjuntos ?? [])] }]));
-                      for (const h of mismos) {
-                        for (const l of h.lineas) {
+                      // Fusionar lineas: misma tag+tipoOT → combinar adjuntos y tareas.
+                      // Cada tarea se antepone con la fecha de la hija de origen ([dd/mm]) para no
+                      // perder el día en que se ejecutó al fusionar varias hijas en una sola fila,
+                      // y se recorre en orden cronológico para que las tareas queden ordenadas.
+                      // El dedup es por fecha+texto (no solo texto) para no colapsar tareas iguales
+                      // hechas en días distintos.
+                      const fmtDia = (f: string) => {
+                        const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(f) ? `${f}T12:00:00` : f);
+                        return d.toLocaleDateString("es-BO", { day: "2-digit", month: "2-digit" });
+                      };
+                      type LineaMerge = Omit<Linea, "adjuntos" | "tareasEjecutadas"> & {
+                        adjuntos: AdjuntoLinea[];
+                        tareasEjecutadas: string[];
+                        tareasVistas: Set<string>;
+                      };
+                      const conFecha = [
+                        { fecha: otBase.fecha, lineas: otBase.lineas },
+                        ...mismos.map(h => ({ fecha: h.fecha, lineas: h.lineas })),
+                      ].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+                      const lineasMap = new Map<string, LineaMerge>();
+                      for (const { fecha, lineas } of conFecha) {
+                        for (const l of lineas) {
                           const key = `${l.tag}::${l.tipoOT}`;
-                          const existing = lineasMap.get(key);
-                          if (existing) {
+                          let existing = lineasMap.get(key);
+                          if (!existing) {
+                            existing = { ...l, adjuntos: [...(l.adjuntos ?? [])], tareasEjecutadas: [], tareasVistas: new Set() };
+                            lineasMap.set(key, existing);
+                          } else {
                             const adjNombres = new Set((existing.adjuntos ?? []).map(a => a.nombre));
                             for (const adj of (l.adjuntos ?? [])) {
                               if (!adjNombres.has(adj.nombre)) {
@@ -1693,15 +1714,21 @@ export default function ReporteOTPage() {
                                 adjNombres.add(adj.nombre);
                               }
                             }
-                            const tareasSet = new Set(existing.tareasEjecutadas ?? []);
-                            for (const t of (l.tareasEjecutadas ?? [])) tareasSet.add(t);
-                            existing.tareasEjecutadas = Array.from(tareasSet);
-                          } else {
-                            lineasMap.set(key, { ...l, adjuntos: [...(l.adjuntos ?? [])] });
+                          }
+                          for (const t of (l.tareasEjecutadas ?? [])) {
+                            const conPrefijo = `[${fmtDia(fecha)}] ${t}`;
+                            if (!existing.tareasVistas.has(conPrefijo)) {
+                              existing.tareasVistas.add(conPrefijo);
+                              existing.tareasEjecutadas.push(conPrefijo);
+                            }
                           }
                         }
                       }
-                      const lineasMerged = Array.from(lineasMap.values());
+                      const lineasMerged: Linea[] = Array.from(lineasMap.values()).map(l => {
+                        const { tareasVistas, ...resto } = l;
+                        void tareasVistas;
+                        return resto;
+                      });
                       otParaPDF = { ...otBase, tecnicos: tecnicosMerged, registrosDiarios: diariosMerged, lineas: lineasMerged };
                     }
                   } catch { /* usa otBase sin fusión si falla el fetch */ }
