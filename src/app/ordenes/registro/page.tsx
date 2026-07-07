@@ -1183,6 +1183,29 @@ export default function RegistroOTPage() {
     return map;
   }, [planRefs, recurrentesNums]);
 
+  // ── OPEPLANT/guardia: estado real de la OT madre por otJdeNumero, para saber si ya
+  // fue enviada a revisión/cerrada y no seguir ofreciendo "Cerrar OT de semana" ──
+  const [guardiaEstadoMap, setGuardiaEstadoMap] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const nums = Array.from(new Set(
+      planRefs
+        .filter(r => r.ot.esGuardia || r.ot.tag?.includes("OPEPLANT"))
+        .map(r => r.ot.numeroOT)
+    ));
+    let cancelado = false;
+    (async () => {
+      const entradas = await Promise.all(nums.map(async (num) => {
+        try {
+          const data = await fetch(`/api/ordenes?otJdeNumero=${encodeURIComponent(num)}&origenPlan=true&limit=1`).then(r => r.json());
+          const madre = Array.isArray(data) && data.length > 0 ? data[0] : null;
+          return [num, madre?.estado as string | undefined] as const;
+        } catch { return [num, undefined] as const; }
+      }));
+      if (!cancelado) setGuardiaEstadoMap(Object.fromEntries(entradas.filter((e): e is [string, string] => !!e[1])));
+    })();
+    return () => { cancelado = true; };
+  }, [planRefs]);
+
   // ── Avance diario para OTs recurrentes ya iniciadas ──
   const [avanceRef, setAvanceRef] = useState<PlanRef | null>(null);
   const [avanceForm, setAvanceForm] = useState<AvanceDiarioForm>({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] });
@@ -1699,6 +1722,10 @@ export default function RegistroOTPage() {
                 const yaRegistrada = !!ot.ordenTrabajoId || (esRecurrente && !!refRegistradaMap[ot.numeroOT]);
                 // Auto-detectar guardia: tag contiene OPEPLANT o esGuardia marcado
                 const esGuardia = ot.esGuardia || ot.tag?.includes("OPEPLANT");
+                // Estado real de la OT madre (si ya se envió a revisión/cerró, no se debe
+                // seguir ofreciendo el botón de cierre — solo informar que ya está hecho)
+                const estadoMadreGuardia = guardiaEstadoMap[ot.numeroOT];
+                const guardiaYaCerrada = !!estadoMadreGuardia && estadoMadreGuardia !== "borrador" && estadoMadreGuardia !== "en_proceso";
                 const tipoColor = TIPO_COLOR[ot.tipoOT as TipoOT] ?? "#64748b";
                 const estadoClr = ESTADO_CLR[ot.estado] ?? "#64748b";
                 const estadoBg = ESTADO_BG[ot.estado] ?? "#f1f5f9";
@@ -1734,7 +1761,18 @@ export default function RegistroOTPage() {
                           <span style={{ ...S.badge(estadoClr), background: estadoBg }}>{ot.estado.replace(/_/g, " ")}</span>
                         )}
                         {esGuardia ? (
-                          yaRegistrada ? (
+                          guardiaYaCerrada ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
+                              <button
+                                onClick={() => router.push("/ordenes/turnero")}
+                                style={{ fontSize: 12, color: "#64748b", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>
+                                📋 Ver bitácora
+                              </button>
+                              <span style={{ fontSize: 10, fontWeight: 700, background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" as const }}>
+                                {estadoMadreGuardia === "concluido" ? "🔒 OT concluida" : estadoMadreGuardia === "revisado" ? "✓ Revisada" : "✓ Enviada a revisión"}
+                              </span>
+                            </div>
+                          ) : yaRegistrada ? (
                             <button
                               onClick={() => router.push("/ordenes/reporte")}
                               style={{ fontSize: 12, color: "#16a34a", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>
