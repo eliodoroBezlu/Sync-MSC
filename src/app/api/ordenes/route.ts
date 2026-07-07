@@ -348,12 +348,14 @@ export async function POST(req: NextRequest) {
       const fechaOT = new Date(body.fecha);
       const { semana: semanaNum, anio: anioNum } = isoWeekInfo(fechaOT);
 
+      // No se filtra por estado del plan ("borrador"/"publicado"/"cerrado"): los técnicos
+      // de guardia registran avances en terreno sin esperar a que el plan esté publicado,
+      // y el enganche a la OT madre no debe depender de ese paso administrativo.
       const planSemana = await prisma.programacionSemanal.findFirst({
         where: {
           semana: semanaNum,
           anio: anioNum,
           ...(areaCodigo ? { areaCodigo } : {}),
-          estado: { in: ["publicado", "cerrado"] },
         },
         include: { otsProgramadas: { where: { esGuardia: true } } },
       });
