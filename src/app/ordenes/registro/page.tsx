@@ -1110,6 +1110,7 @@ export default function RegistroOTPage() {
   const [diaSeleccionado, setDiaSeleccionado] = useState<DiaSem>(todayDia);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [filtroOT, setFiltroOT] = useState("");
+  const [filtroArea, setFiltroArea] = useState("");
   // Solo se permite retroceder 1 semana, para que los técnicos puedan cerrar
   // OTs que quedaron pendientes al cambiar de semana.
   const [semanaOffset, setSemanaOffset] = useState(0);
@@ -1387,6 +1388,19 @@ export default function RegistroOTPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user, semanaMostrada, anioMostrado]);
 
+  // Áreas presentes en el plan cargado (ya viene pre-filtrado por las áreas del
+  // usuario en recargarPlan) — sirve para armar el selector "Área: X" de arriba.
+  const areasEnPlan = React.useMemo(() => {
+    const codigos = Array.from(new Set(planRefs.map(r => r.areaCodigo).filter(Boolean)));
+    return codigos
+      .map(codigo => ({ codigo, nombre: areas.find(a => a.codigo === codigo)?.nombre ?? codigo }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [planRefs, areas]);
+
+  // Si el área elegida deja de estar disponible (cambio de semana, etc.), resetear a "Todas"
+  useEffect(() => {
+    if (filtroArea && !areasEnPlan.some(a => a.codigo === filtroArea)) setFiltroArea("");
+  }, [areasEnPlan, filtroArea]);
 
   // ─── Seleccionar OT del plan → abrir registro ──────────────────────────────
 
@@ -1594,22 +1608,36 @@ export default function RegistroOTPage() {
             <p style={{ fontSize: 12, color: "#94a3b8", marginBottom: 16 }}>Semana {currentSemana} · {today} ({todayDia})</p>
           </div>
           {view === "inicio" && (
-            <div style={{ position: "relative", minWidth: 160, marginBottom: 16 }}>
-              <input
-                value={filtroOT}
-                onChange={e => setFiltroOT(e.target.value)}
-                placeholder="Buscar N° OT…"
-                style={{ ...S.input, paddingRight: 28, borderColor: "#2563eb" }}
-              />
-              {filtroOT && (
-                <button
-                  onClick={() => setFiltroOT("")}
-                  style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 14, lineHeight: 1 }}
-                  aria-label="Limpiar filtro"
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+              {areasEnPlan.length > 1 && (
+                <select
+                  value={filtroArea}
+                  onChange={e => setFiltroArea(e.target.value)}
+                  style={{ ...S.select, width: "auto", minWidth: 150, borderColor: filtroArea ? "#2563eb" : "#cbd5e1", fontWeight: filtroArea ? 700 : 400 }}
                 >
-                  ✕
-                </button>
+                  <option value="">Todas las áreas</option>
+                  {areasEnPlan.map(a => (
+                    <option key={a.codigo} value={a.codigo}>{a.codigo} — {a.nombre}</option>
+                  ))}
+                </select>
               )}
+              <div style={{ position: "relative", minWidth: 160 }}>
+                <input
+                  value={filtroOT}
+                  onChange={e => setFiltroOT(e.target.value)}
+                  placeholder="Buscar N° OT…"
+                  style={{ ...S.input, paddingRight: 28, borderColor: "#2563eb" }}
+                />
+                {filtroOT && (
+                  <button
+                    onClick={() => setFiltroOT("")}
+                    style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 14, lineHeight: 1 }}
+                    aria-label="Limpiar filtro"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -1657,7 +1685,7 @@ export default function RegistroOTPage() {
                 return (
                   <div style={{ display: "flex", borderTop: "1px solid #e0eeff", borderBottom: "1px solid #e0eeff", overflowX: "auto", background: "white" }}>
                     {(["Lu","Ma","Mi","Ju","Vi","Sa","Do"] as DiaSem[]).map(dia => {
-                      const count = planRefs.filter(r => r.ot.dia === dia).length;
+                      const count = planRefs.filter(r => r.ot.dia === dia && (!filtroArea || r.areaCodigo === filtroArea)).length;
                       const isHoy = semanaOffset === 0 && dia === todayDia;
                       const isActive = dia === diaSeleccionado;
                       const diaFecha = weekDates[DIA_IDX[dia]];
@@ -1691,7 +1719,8 @@ export default function RegistroOTPage() {
                 const filtroNorm = filtroOT.trim().toLowerCase();
                 const refsDelDia = planRefs.filter(r =>
                   r.ot.dia === diaSeleccionado &&
-                  (!filtroNorm || r.ot.numeroOT.toLowerCase().includes(filtroNorm))
+                  (!filtroNorm || r.ot.numeroOT.toLowerCase().includes(filtroNorm)) &&
+                  (!filtroArea || r.areaCodigo === filtroArea)
                 );
                 if (loadingPlan) return null;
                 if (refsDelDia.length === 0) {
@@ -1699,9 +1728,11 @@ export default function RegistroOTPage() {
                     <div style={{ textAlign: "center", padding: "16px 0 8px", color: "#94a3b8", fontSize: 13 }}>
                       {filtroNorm
                         ? `Ninguna OT coincide con "${filtroOT}" para ${diaSeleccionado}`
-                        : <>Sin OTs programadas para {diaSeleccionado}
-                          {semanaOffset === 0 && diaSeleccionado === todayDia && <><br /><span style={{ fontSize: 12 }}>Usa el botón de abajo para registrar una OT reactiva.</span></>}
-                        </>
+                        : filtroArea
+                          ? `Sin OTs del área seleccionada para ${diaSeleccionado}`
+                          : <>Sin OTs programadas para {diaSeleccionado}
+                            {semanaOffset === 0 && diaSeleccionado === todayDia && <><br /><span style={{ fontSize: 12 }}>Usa el botón de abajo para registrar una OT reactiva.</span></>}
+                          </>
                       }
                     </div>
                   );
@@ -1711,7 +1742,8 @@ export default function RegistroOTPage() {
 
               {planRefs.filter(r =>
                 r.ot.dia === diaSeleccionado &&
-                (!filtroOT.trim() || r.ot.numeroOT.toLowerCase().includes(filtroOT.trim().toLowerCase()))
+                (!filtroOT.trim() || r.ot.numeroOT.toLowerCase().includes(filtroOT.trim().toLowerCase())) &&
+                (!filtroArea || r.areaCodigo === filtroArea)
               ).map((ref, i) => {
                 const ot = ref.ot;
                 const esRecurrente = recurrentesNums.has(ot.numeroOT);
@@ -1741,6 +1773,11 @@ export default function RegistroOTPage() {
                           <span style={S.badge(tipoColor)}>{ot.tipoOT}</span>
                           <span style={{ fontWeight: 800, fontSize: 13, color: "#1e293b" }}>{ot.numeroOT}</span>
                           <span style={{ fontSize: 12, color: "#64748b", fontFamily: "monospace" }}>{ot.tag}</span>
+                          {areasEnPlan.length > 1 && (
+                            <span style={{ fontSize: 10, fontWeight: 700, color: "#0369a1", background: "#e0f2fe", borderRadius: 5, padding: "2px 6px" }}>
+                              {ref.areaCodigo} · {areasEnPlan.find(a => a.codigo === ref.areaCodigo)?.nombre ?? ref.areaCodigo}
+                            </span>
+                          )}
                         </div>
                         <p style={{ fontSize: 13, color: "#334155", marginBottom: 5, lineHeight: 1.4 }}>{ot.descripcion}</p>
                         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
