@@ -470,7 +470,9 @@ export async function POST(req: NextRequest) {
             nombreUsuario: body.tecnicos?.[0]?.nombreCompleto || "Sistema",
             cambio: esDePlan
               ? `OT creada desde plan semanal (JDE: ${otJdeNumero ?? "—"} · ${otJdeDia ?? ""})`
-              : body.estado === "pendiente_revision" ? "OT enviada a revisión" : "OT creada como borrador",
+              : body.estado === "pendiente_revision" ? "OT enviada a revisión"
+              : body.estado === "en_proceso" ? "OT reactiva creada — abierta para continuar otro día"
+              : "OT creada como borrador",
           }],
         },
       },

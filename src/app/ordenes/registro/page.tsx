@@ -614,6 +614,159 @@ function AdjuntoCard({ adj, onChange, onRemove }: {
   );
 }
 
+// ─── AvanceDiarioMiniForm ────────────────────────────────────────────────────
+// Formulario reutilizable de "avance del día", usado tanto para OTs recurrentes
+// del plan semanal como para OTs reactivas (CMR/CMP) que continúan otro día.
+
+function AvanceDiarioMiniForm({
+  titulo,
+  form,
+  onChange,
+  cargandoAdj,
+  onCargandoAdjChange,
+  onCancelar,
+  onGuardar,
+  guardando,
+  accentColor = "#1d4ed8",
+}: {
+  titulo: string;
+  form: AvanceDiarioForm;
+  onChange: (updater: (f: AvanceDiarioForm) => AvanceDiarioForm) => void;
+  cargandoAdj: boolean;
+  onCargandoAdjChange: (v: boolean) => void;
+  onCancelar: () => void;
+  onGuardar: () => void;
+  guardando: boolean;
+  accentColor?: string;
+}) {
+  return (
+    <div style={{ marginTop: 10, borderTop: "1px solid #bfdbfe", paddingTop: 10, background: "#f0f7ff", borderRadius: "0 0 10px 10px", padding: "10px 12px" }}>
+      <p style={{ fontSize: 12, fontWeight: 700, color: accentColor, marginBottom: 8 }}>{titulo}</p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr", gap: 8, marginBottom: 8 }}>
+        <div>
+          <label style={{ ...S.label, fontSize: 10 }}>Fecha</label>
+          <input type="date"
+            value={form.fecha}
+            onChange={e => onChange(f => ({ ...f, fecha: e.target.value }))}
+            style={{ ...S.input, fontSize: 13 }} />
+        </div>
+        <div>
+          <label style={{ ...S.label, fontSize: 10 }}>HH trabajadas</label>
+          <input type="number" min="0" step="0.5"
+            value={form.hhTrabajadas}
+            onChange={e => onChange(f => ({ ...f, hhTrabajadas: e.target.value }))}
+            style={{ ...S.input, fontSize: 13 }} />
+        </div>
+        <div>
+          <label style={{ ...S.label, fontSize: 10 }}>Detalle de trabajo</label>
+          <input
+            value={form.observaciones}
+            onChange={e => onChange(f => ({ ...f, observaciones: e.target.value }))}
+            placeholder="Resumen del trabajo hoy…"
+            style={{ ...S.input, fontSize: 13 }} />
+        </div>
+      </div>
+      {/* Tareas del día */}
+      {form.tareas.length > 0 && (
+        <div style={{ marginBottom: 6 }}>
+          {form.tareas.map((t, ti) => (
+            <div key={ti} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+              <span style={{ flex: 1, fontSize: 12, background: "#e0eeff", borderRadius: 5, padding: "4px 8px", color: "#1e293b" }}>{t}</span>
+              <button type="button" onClick={() => onChange(f => ({ ...f, tareas: f.tareas.filter((_, j) => j !== ti) }))}
+                style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 13 }}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        <input
+          value={form.tareaInput}
+          onChange={e => onChange(f => ({ ...f, tareaInput: e.target.value }))}
+          onKeyDown={e => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              const t = form.tareaInput.trim();
+              if (t) onChange(f => ({ ...f, tareas: [...f.tareas, t], tareaInput: "" }));
+            }
+          }}
+          placeholder="Tarea ejecutada hoy — Enter para agregar"
+          style={{ ...S.input, fontSize: 12, flex: 1 }} />
+        <button type="button"
+          onClick={() => { const t = form.tareaInput.trim(); if (t) onChange(f => ({ ...f, tareas: [...f.tareas, t], tareaInput: "" })); }}
+          style={{ ...S.btnOutline, padding: "7px 10px", fontSize: 12 }}>+ Agregar</button>
+      </div>
+      {/* Evidencias del avance */}
+      <div style={{ marginBottom: 10 }}>
+        <label style={{ ...S.label, fontSize: 10, marginBottom: 6 }}>Evidencias (fotos / documentos)</label>
+        {form.adjuntos.map((adj, i) => (
+          <AdjuntoCard key={adj.id}
+            adj={adj}
+            onChange={updated => onChange(f => { const upd = [...f.adjuntos]; upd[i] = updated; return { ...f, adjuntos: upd }; })}
+            onRemove={() => onChange(f => ({ ...f, adjuntos: f.adjuntos.filter((_, j) => j !== i) }))}
+          />
+        ))}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const, marginTop: 4 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1.5px dashed #94a3b8", borderRadius: 8, cursor: cargandoAdj ? "not-allowed" : "pointer", background: "white", fontSize: 12, color: "#475569", fontWeight: 600 }}>
+            <span style={{ fontSize: 16 }}>📷</span>
+            {cargandoAdj ? "Procesando…" : "Tomar foto / imagen"}
+            <input type="file" accept="image/*" capture="environment" style={{ display: "none" }}
+              disabled={cargandoAdj}
+              onChange={async e => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                onCargandoAdjChange(true);
+                try {
+                  const dataUrl = await comprimirImagen(file);
+                  onChange(f => ({ ...f, adjuntos: [...f.adjuntos, { id: Math.random().toString(36).slice(2), tipo: "foto", nombre: file.name, dataUrl, comentario: "", comentariosExtra: [] }] }));
+                } finally { onCargandoAdjChange(false); e.target.value = ""; }
+              }} />
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1.5px dashed #94a3b8", borderRadius: 8, cursor: cargandoAdj ? "not-allowed" : "pointer", background: "white", fontSize: 12, color: "#475569", fontWeight: 600 }}>
+            <span style={{ fontSize: 16 }}>🖼️</span>
+            Galería (JPG/PNG)
+            <input type="file" accept="image/jpeg,image/png,image/heic,image/webp" style={{ display: "none" }}
+              disabled={cargandoAdj}
+              onChange={async e => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                onCargandoAdjChange(true);
+                try {
+                  const dataUrl = await comprimirImagen(file);
+                  onChange(f => ({ ...f, adjuntos: [...f.adjuntos, { id: Math.random().toString(36).slice(2), tipo: "foto", nombre: file.name, dataUrl, comentario: "", comentariosExtra: [] }] }));
+                } finally { onCargandoAdjChange(false); e.target.value = ""; }
+              }} />
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1.5px dashed #94a3b8", borderRadius: 8, cursor: cargandoAdj ? "not-allowed" : "pointer", background: "white", fontSize: 12, color: "#475569", fontWeight: 600 }}>
+            <span style={{ fontSize: 16 }}>📄</span>
+            Documento (PDF/Word)
+            <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }}
+              disabled={cargandoAdj}
+              onChange={async e => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                onCargandoAdjChange(true);
+                try {
+                  const dataUrl = await leerDocumento(file);
+                  onChange(f => ({ ...f, adjuntos: [...f.adjuntos, { id: Math.random().toString(36).slice(2), tipo: "documento", nombre: file.name, dataUrl, comentario: "", comentariosExtra: [] }] }));
+                } finally { onCargandoAdjChange(false); e.target.value = ""; }
+              }} />
+          </label>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button onClick={onCancelar}
+          style={{ fontSize: 12, padding: "5px 14px", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", cursor: "pointer", color: "#64748b" }}>
+          Cancelar
+        </button>
+        <button onClick={onGuardar} disabled={guardando || !form.hhTrabajadas}
+          style={{ ...S.btnPrimary(!form.hhTrabajadas || guardando), fontSize: 12, padding: "5px 14px" }}>
+          {guardando ? "Guardando…" : "Guardar avance"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── LineaEditor ─────────────────────────────────────────────────────────────
 
 function LineaEditor({
@@ -1286,6 +1439,102 @@ export default function RegistroOTPage() {
     }
   }
 
+  // ── OTs reactivas (CMR/CMP) abiertas: continuar en vez de duplicar ──
+  // A diferencia de las OTs del plan, las reactivas no tienen PlanRef —
+  // se detectan y se registran directamente por su ordenTrabajoId.
+  const ESTADOS_OT_CERRADA = ["pendiente_revision", "revisado", "concluido"];
+
+  const [otReactivaAbierta, setOtReactivaAbierta] = useState<{ id: string; numeroOT: string; otJdeNumero: string; estado: string; fecha: string; tecnicos: { nombreCompleto: string }[] } | null>(null);
+  const otReactivaTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function detectarOtReactivaAbierta(valor: string) {
+    if (otReactivaTimer.current) clearTimeout(otReactivaTimer.current);
+    if (!valor || valor.length < 4) { setOtReactivaAbierta(null); return; }
+    otReactivaTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/ordenes?otJdeNumero=${encodeURIComponent(valor)}&origenPlan=false&limit=5`);
+        const data = await res.json();
+        const abierta = Array.isArray(data)
+          ? data.find((o: { estado: string }) => !ESTADOS_OT_CERRADA.includes(o.estado))
+          : null;
+        setOtReactivaAbierta(abierta
+          ? { id: abierta._id, numeroOT: abierta.numeroOT, otJdeNumero: abierta.otJdeNumero, estado: abierta.estado, fecha: abierta.fecha, tecnicos: abierta.tecnicos ?? [] }
+          : null);
+      } catch { setOtReactivaAbierta(null); }
+    }, 400);
+  }
+
+  const [avanceReactivaRef, setAvanceReactivaRef] = useState<{ id: string; numeroOT: string } | null>(null);
+  const [avanceReactivaForm, setAvanceReactivaForm] = useState<AvanceDiarioForm>({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] });
+  const [savingAvanceReactiva, setSavingAvanceReactiva] = useState(false);
+  const [cargandoAdjAvanceReactiva, setCargandoAdjAvanceReactiva] = useState(false);
+  const [enviandoRevisionReactiva, setEnviandoRevisionReactiva] = useState(false);
+
+  async function confirmarAvanceReactiva() {
+    if (!avanceReactivaRef) return;
+    setSavingAvanceReactiva(true);
+    try {
+      const res = await fetch(`/api/ordenes/${avanceReactivaRef.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          registroDiario: {
+            fecha: avanceReactivaForm.fecha,
+            tecnico: user?.nombre ?? "Técnico",
+            usuarioId: user?.id,
+            hhTrabajadas: parseFloat(avanceReactivaForm.hhTrabajadas) || 0,
+            tareasEjecutadas: avanceReactivaForm.tareas,
+            observaciones: avanceReactivaForm.observaciones || null,
+            adjuntos: avanceReactivaForm.adjuntos.map(a => ({ tipo: a.tipo, nombre: a.nombre, dataUrl: a.dataUrl, comentario: a.comentario, comentariosExtra: a.comentariosExtra })),
+          },
+          cambio: `Avance del día registrado sobre OT reactiva ${avanceReactivaRef.numeroOT}`,
+          usuarioId: user?.id,
+          nombreUsuario: user?.nombre,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? "Error al guardar avance");
+      }
+      setAvanceReactivaRef(null);
+      setOtReactivaAbierta(null);
+      patchForm({ otJdeNumero: "" });
+      setView("inicio");
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Error al guardar avance");
+    } finally {
+      setSavingAvanceReactiva(false);
+    }
+  }
+
+  async function enviarRevisionReactiva(ot: { id: string; numeroOT: string }) {
+    setEnviandoRevisionReactiva(true);
+    try {
+      const res = await fetch(`/api/ordenes/${ot.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          estado: "pendiente_revision",
+          cambio: "OT reactiva enviada a revisión — trabajo concluido",
+          usuarioId: user?.id,
+          nombreUsuario: user?.nombre,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? "Error al enviar a revisión");
+      }
+      setAvanceReactivaRef(null);
+      setOtReactivaAbierta(null);
+      patchForm({ otJdeNumero: "" });
+      setView("inicio");
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Error al enviar a revisión");
+    } finally {
+      setEnviandoRevisionReactiva(false);
+    }
+  }
+
   // ── Detalle OTs ya registradas ──
   const [otDetalles, setOtDetalles] = useState<Record<string, OTDetalle | null>>({});
 
@@ -1564,7 +1813,7 @@ export default function RegistroOTPage() {
       <div style={S.page}>
         <AppHeader backHref="/ordenes" />
         <div style={{ ...S.wrap, maxWidth: 460, textAlign: "center", paddingTop: 64 }}>
-          <div style={{ fontSize: 52, marginBottom: 10 }}>{doneOT.estado === "pendiente_revision" ? "📋" : "💾"}</div>
+          <div style={{ fontSize: 52, marginBottom: 10 }}>{doneOT.estado === "pendiente_revision" ? "📋" : doneOT.estado === "en_proceso" ? "🔓" : "💾"}</div>
           <h2 style={{ fontSize: 22, fontWeight: 800, color: "#1e293b", marginBottom: 6 }}>OT Registrada</h2>
           {form.otJdeNumero ? (
             <>
@@ -1584,7 +1833,9 @@ export default function RegistroOTPage() {
               ? "Avance diario registrado en OT existente. La OT acumula todos los días de la semana."
               : doneOT.parentOtNum
                 ? "OT registrada y vinculada a la OPEPLANT de la semana. No aparece suelta en el panel del supervisor."
-                : doneOT.estado === "pendiente_revision" ? "OT enviada al supervisor para revisión." : "OT guardada como borrador."}
+                : doneOT.estado === "pendiente_revision" ? "OT enviada al supervisor para revisión."
+                : doneOT.estado === "en_proceso" ? "OT guardada y abierta — busca el mismo N° OT otro día para agregar avances sin duplicarla."
+                : "OT guardada como borrador."}
           </p>
           <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
             <button onClick={() => { setDone(false); setDoneOT(null); setView("inicio"); recargarPlan(); }} style={S.btnPrimary()}>Volver al plan</button>
@@ -1946,134 +2197,16 @@ export default function RegistroOTPage() {
 
                     {/* ── Mini-form Avance Diario (recurrentes) ── */}
                     {avanceRef?.planId === ref.planId && avanceRef?.ot.numeroOT === ot.numeroOT && (
-                      <div style={{ marginTop: 10, borderTop: "1px solid #bfdbfe", paddingTop: 10, background: "#f0f7ff", borderRadius: "0 0 10px 10px", padding: "10px 12px" }}>
-                        <p style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", marginBottom: 8 }}>+ Avance del día {diaSeleccionado}</p>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr", gap: 8, marginBottom: 8 }}>
-                          <div>
-                            <label style={{ ...S.label, fontSize: 10 }}>Fecha</label>
-                            <input type="date"
-                              value={avanceForm.fecha}
-                              onChange={e => setAvanceForm(f => ({ ...f, fecha: e.target.value }))}
-                              style={{ ...S.input, fontSize: 13 }} />
-                          </div>
-                          <div>
-                            <label style={{ ...S.label, fontSize: 10 }}>HH trabajadas</label>
-                            <input type="number" min="0" step="0.5"
-                              value={avanceForm.hhTrabajadas}
-                              onChange={e => setAvanceForm(f => ({ ...f, hhTrabajadas: e.target.value }))}
-                              style={{ ...S.input, fontSize: 13 }} />
-                          </div>
-                          <div>
-                            <label style={{ ...S.label, fontSize: 10 }}>Detalle de trabajo</label>
-                            <input
-                              value={avanceForm.observaciones}
-                              onChange={e => setAvanceForm(f => ({ ...f, observaciones: e.target.value }))}
-                              placeholder="Resumen del trabajo hoy…"
-                              style={{ ...S.input, fontSize: 13 }} />
-                          </div>
-                        </div>
-                        {/* Tareas del día */}
-                        {avanceForm.tareas.length > 0 && (
-                          <div style={{ marginBottom: 6 }}>
-                            {avanceForm.tareas.map((t, ti) => (
-                              <div key={ti} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                                <span style={{ flex: 1, fontSize: 12, background: "#e0eeff", borderRadius: 5, padding: "4px 8px", color: "#1e293b" }}>{t}</span>
-                                <button type="button" onClick={() => setAvanceForm(f => ({ ...f, tareas: f.tareas.filter((_, j) => j !== ti) }))}
-                                  style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 13 }}>✕</button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                          <input
-                            value={avanceForm.tareaInput}
-                            onChange={e => setAvanceForm(f => ({ ...f, tareaInput: e.target.value }))}
-                            onKeyDown={e => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                const t = avanceForm.tareaInput.trim();
-                                if (t) setAvanceForm(f => ({ ...f, tareas: [...f.tareas, t], tareaInput: "" }));
-                              }
-                            }}
-                            placeholder="Tarea ejecutada hoy — Enter para agregar"
-                            style={{ ...S.input, fontSize: 12, flex: 1 }} />
-                          <button type="button"
-                            onClick={() => { const t = avanceForm.tareaInput.trim(); if (t) setAvanceForm(f => ({ ...f, tareas: [...f.tareas, t], tareaInput: "" })); }}
-                            style={{ ...S.btnOutline, padding: "7px 10px", fontSize: 12 }}>+ Agregar</button>
-                        </div>
-                        {/* Evidencias del avance */}
-                        <div style={{ marginBottom: 10 }}>
-                          <label style={{ ...S.label, fontSize: 10, marginBottom: 6 }}>Evidencias (fotos / documentos)</label>
-                          {avanceForm.adjuntos.map((adj, i) => (
-                            <AdjuntoCard key={adj.id}
-                              adj={adj}
-                              onChange={updated => {
-                                const upd = [...avanceForm.adjuntos];
-                                upd[i] = updated;
-                                setAvanceForm(f => ({ ...f, adjuntos: upd }));
-                              }}
-                              onRemove={() => setAvanceForm(f => ({ ...f, adjuntos: f.adjuntos.filter((_, j) => j !== i) }))}
-                            />
-                          ))}
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const, marginTop: 4 }}>
-                            <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1.5px dashed #94a3b8", borderRadius: 8, cursor: cargandoAdjAvance ? "not-allowed" : "pointer", background: "white", fontSize: 12, color: "#475569", fontWeight: 600 }}>
-                              <span style={{ fontSize: 16 }}>📷</span>
-                              {cargandoAdjAvance ? "Procesando…" : "Tomar foto / imagen"}
-                              <input type="file" accept="image/*" capture="environment" style={{ display: "none" }}
-                                disabled={cargandoAdjAvance}
-                                onChange={async e => {
-                                  const file = e.target.files?.[0];
-                                  if (!file) return;
-                                  setCargandoAdjAvance(true);
-                                  try {
-                                    const dataUrl = await comprimirImagen(file);
-                                    setAvanceForm(f => ({ ...f, adjuntos: [...f.adjuntos, { id: Math.random().toString(36).slice(2), tipo: "foto", nombre: file.name, dataUrl, comentario: "", comentariosExtra: [] }] }));
-                                  } finally { setCargandoAdjAvance(false); e.target.value = ""; }
-                                }} />
-                            </label>
-                            <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1.5px dashed #94a3b8", borderRadius: 8, cursor: cargandoAdjAvance ? "not-allowed" : "pointer", background: "white", fontSize: 12, color: "#475569", fontWeight: 600 }}>
-                              <span style={{ fontSize: 16 }}>🖼️</span>
-                              Galería (JPG/PNG)
-                              <input type="file" accept="image/jpeg,image/png,image/heic,image/webp" style={{ display: "none" }}
-                                disabled={cargandoAdjAvance}
-                                onChange={async e => {
-                                  const file = e.target.files?.[0];
-                                  if (!file) return;
-                                  setCargandoAdjAvance(true);
-                                  try {
-                                    const dataUrl = await comprimirImagen(file);
-                                    setAvanceForm(f => ({ ...f, adjuntos: [...f.adjuntos, { id: Math.random().toString(36).slice(2), tipo: "foto", nombre: file.name, dataUrl, comentario: "", comentariosExtra: [] }] }));
-                                  } finally { setCargandoAdjAvance(false); e.target.value = ""; }
-                                }} />
-                            </label>
-                            <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1.5px dashed #94a3b8", borderRadius: 8, cursor: cargandoAdjAvance ? "not-allowed" : "pointer", background: "white", fontSize: 12, color: "#475569", fontWeight: 600 }}>
-                              <span style={{ fontSize: 16 }}>📄</span>
-                              Documento (PDF/Word)
-                              <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" style={{ display: "none" }}
-                                disabled={cargandoAdjAvance}
-                                onChange={async e => {
-                                  const file = e.target.files?.[0];
-                                  if (!file) return;
-                                  setCargandoAdjAvance(true);
-                                  try {
-                                    const dataUrl = await leerDocumento(file);
-                                    setAvanceForm(f => ({ ...f, adjuntos: [...f.adjuntos, { id: Math.random().toString(36).slice(2), tipo: "documento", nombre: file.name, dataUrl, comentario: "", comentariosExtra: [] }] }));
-                                  } finally { setCargandoAdjAvance(false); e.target.value = ""; }
-                                }} />
-                            </label>
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                          <button onClick={() => setAvanceRef(null)}
-                            style={{ fontSize: 12, padding: "5px 14px", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", cursor: "pointer", color: "#64748b" }}>
-                            Cancelar
-                          </button>
-                          <button onClick={confirmarAvanceDiario} disabled={savingAvance || !avanceForm.hhTrabajadas}
-                            style={{ ...S.btnPrimary(!avanceForm.hhTrabajadas || savingAvance), fontSize: 12, padding: "5px 14px" }}>
-                            {savingAvance ? "Guardando…" : "Guardar avance"}
-                          </button>
-                        </div>
-                      </div>
+                      <AvanceDiarioMiniForm
+                        titulo={`+ Avance del día ${diaSeleccionado}`}
+                        form={avanceForm}
+                        onChange={setAvanceForm}
+                        cargandoAdj={cargandoAdjAvance}
+                        onCargandoAdjChange={setCargandoAdjAvance}
+                        onCancelar={() => setAvanceRef(null)}
+                        onGuardar={confirmarAvanceDiario}
+                        guardando={savingAvance}
+                      />
                     )}
 
                     {/* Mini-form Pasar a Noche (inline, solo para esta OT) */}
@@ -2190,9 +2323,10 @@ export default function RegistroOTPage() {
                             const val = e.target.value.toUpperCase();
                             patchForm({ otJdeNumero: val });
                             detectarOtMadre(val);
+                            detectarOtReactivaAbierta(val);
                           }}
                           placeholder="100234"
-                          style={{ ...S.input, fontFamily: "monospace", letterSpacing: "0.05em", width: 150, borderColor: otMadreInfo ? "#d97706" : undefined }}
+                          style={{ ...S.input, fontFamily: "monospace", letterSpacing: "0.05em", width: 150, borderColor: otMadreInfo ? "#d97706" : otReactivaAbierta ? "#2563eb" : undefined }}
                         />
                         {otMadreInfo && (
                           <div style={{ marginTop: 6, background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "8px 10px" }}>
@@ -2204,6 +2338,44 @@ export default function RegistroOTPage() {
                               No aparecerá suelta en el panel del supervisor — se verá agrupada en el Turnero.
                             </p>
                           </div>
+                        )}
+                        {!otMadreInfo && otReactivaAbierta && (
+                          <div style={{ marginTop: 6, background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 8, padding: "8px 10px" }}>
+                            <p style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", marginBottom: 2 }}>
+                              🔓 Ya existe una OT abierta con este número
+                            </p>
+                            <p style={{ fontSize: 11, color: "#1e40af", lineHeight: 1.5, marginBottom: 6 }}>
+                              Creada el {new Date(otReactivaAbierta.fecha).toLocaleDateString("es-BO")}
+                              {otReactivaAbierta.tecnicos.length > 0 && <> · Técnicos: {otReactivaAbierta.tecnicos.map(t => t.nombreCompleto).join(", ")}</>}.
+                              {" "}Continúa el registro aquí en vez de crear una OT nueva.
+                            </p>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
+                              <button type="button"
+                                onClick={() => { setAvanceReactivaRef({ id: otReactivaAbierta.id, numeroOT: otReactivaAbierta.numeroOT }); setAvanceReactivaForm({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] }); }}
+                                style={{ fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 6, border: "none", background: "#2563eb", color: "white", cursor: "pointer" }}>
+                                + Agregar avance del día →
+                              </button>
+                              <button type="button"
+                                onClick={() => enviarRevisionReactiva({ id: otReactivaAbierta.id, numeroOT: otReactivaAbierta.numeroOT })}
+                                disabled={enviandoRevisionReactiva}
+                                style={{ fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 6, border: "1px solid #16a34a", background: "white", color: "#16a34a", cursor: "pointer" }}>
+                                {enviandoRevisionReactiva ? "Enviando…" : "Enviar a revisión ✓"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {avanceReactivaRef?.id === otReactivaAbierta?.id && (
+                          <AvanceDiarioMiniForm
+                            titulo="+ Avance del día — OT reactiva"
+                            form={avanceReactivaForm}
+                            onChange={setAvanceReactivaForm}
+                            cargandoAdj={cargandoAdjAvanceReactiva}
+                            onCargandoAdjChange={setCargandoAdjAvanceReactiva}
+                            onCancelar={() => setAvanceReactivaRef(null)}
+                            onGuardar={confirmarAvanceReactiva}
+                            guardando={savingAvanceReactiva}
+                            accentColor="#2563eb"
+                          />
                         )}
                       </div>
                     )}
@@ -2381,6 +2553,7 @@ export default function RegistroOTPage() {
                     <>
                       <p style={{ fontSize: 12, color: "#64748b", lineHeight: 1.7, marginBottom: 12 }}>
                         <strong style={{ color: "#1e293b" }}>Borrador</strong>: guarda sin enviar.{" "}
+                        {!form.origenPlan && <><strong style={{ color: "#2563eb" }}>Guardar y continuar</strong>: deja la OT abierta para agregar avances otro día.{" "}</>}
                         <strong style={{ color: "#1e293b" }}>Enviar a revisión</strong>: el supervisor recibirá para aprobar.
                         {form.origenPlan && <><br /><strong style={{ color: "#1d4ed8" }}>El estado en el plan semanal se actualizará automáticamente.</strong></>}
                       </p>
@@ -2389,7 +2562,12 @@ export default function RegistroOTPage() {
                         <button onClick={() => submit("borrador")} style={{ ...S.btnOutline, opacity: submitting ? 0.6 : 1 }} disabled={submitting}>
                           {submitting ? "Guardando..." : "💾 Borrador"}
                         </button>
-                        <button onClick={() => submit("pendiente_revision")} style={{ ...S.btnGreen(submitting), marginLeft: "auto" }} disabled={submitting}>
+                        {!form.origenPlan && (
+                          <button onClick={() => submit("en_proceso")} style={{ ...S.btnPrimary(submitting), marginLeft: "auto" }} disabled={submitting}>
+                            {submitting ? "Guardando..." : "Guardar y continuar →"}
+                          </button>
+                        )}
+                        <button onClick={() => submit("pendiente_revision")} style={{ ...S.btnGreen(submitting), marginLeft: form.origenPlan ? "auto" : undefined }} disabled={submitting}>
                           {submitting ? "Enviando..." : "Enviar a revisión ✓"}
                         </button>
                       </div>
