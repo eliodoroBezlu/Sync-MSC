@@ -1602,44 +1602,44 @@ export default function RegistroOTPage() {
       <AppHeader backHref="/ordenes" />
       <div style={S.wrap}>
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <h1 style={{ fontSize: 19, fontWeight: 800, color: "#0f2847", marginBottom: 2 }}>Registro de OT</h1>
-            <p style={{ fontSize: 12, color: "#94a3b8", marginBottom: 16 }}>Semana {currentSemana} · {today} ({todayDia})</p>
-          </div>
-          {view === "inicio" && (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-              {areasEnPlan.length > 1 && (
-                <select
-                  value={filtroArea}
-                  onChange={e => setFiltroArea(e.target.value)}
-                  style={{ ...S.select, width: "auto", minWidth: 150, borderColor: filtroArea ? "#2563eb" : "#cbd5e1", fontWeight: filtroArea ? 700 : 400 }}
-                >
-                  <option value="">Todas las áreas</option>
-                  {areasEnPlan.map(a => (
-                    <option key={a.codigo} value={a.codigo}>{a.codigo} — {a.nombre}</option>
-                  ))}
-                </select>
-              )}
-              <div style={{ position: "relative", minWidth: 160 }}>
-                <input
-                  value={filtroOT}
-                  onChange={e => setFiltroOT(e.target.value)}
-                  placeholder="Buscar N° OT…"
-                  style={{ ...S.input, paddingRight: 28, borderColor: "#2563eb" }}
-                />
-                {filtroOT && (
-                  <button
-                    onClick={() => setFiltroOT("")}
-                    style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 14, lineHeight: 1 }}
-                    aria-label="Limpiar filtro"
+        <div>
+          <h1 style={{ fontSize: 19, fontWeight: 800, color: "#0f2847", marginBottom: 2 }}>Registro de OT</h1>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+            <p style={{ fontSize: 12, color: "#94a3b8", margin: 0, whiteSpace: "nowrap" }}>Semana {currentSemana} · {today} ({todayDia})</p>
+            {view === "inicio" && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                {areasEnPlan.length > 1 && (
+                  <select
+                    value={filtroArea}
+                    onChange={e => setFiltroArea(e.target.value)}
+                    style={{ ...S.select, width: "auto", maxWidth: 110, padding: "5px 6px", fontSize: 11, borderColor: filtroArea ? "#2563eb" : "#cbd5e1", fontWeight: filtroArea ? 700 : 400 }}
                   >
-                    ✕
-                  </button>
+                    <option value="">Todas las áreas</option>
+                    {areasEnPlan.map(a => (
+                      <option key={a.codigo} value={a.codigo}>{a.codigo} — {a.nombre}</option>
+                    ))}
+                  </select>
                 )}
+                <div style={{ position: "relative", width: 108 }}>
+                  <input
+                    value={filtroOT}
+                    onChange={e => setFiltroOT(e.target.value)}
+                    placeholder="Buscar OT…"
+                    style={{ ...S.input, padding: "5px 24px 5px 8px", fontSize: 11, borderColor: "#2563eb" }}
+                  />
+                  {filtroOT && (
+                    <button
+                      onClick={() => setFiltroOT("")}
+                      style={{ position: "absolute", right: 5, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 13, lineHeight: 1 }}
+                      aria-label="Limpiar filtro"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* ════════════════ VISTA INICIO ════════════════════════════════════ */}
