@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import { checkOpeplant } from "@/lib/opeplant";
 
 const include = {
   tecnicos: true,
@@ -216,14 +217,6 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(resultado.map(o => serializeOT(o as Parameters<typeof serializeOT>[0])));
 }
 
-function isoWeekInfo(date: Date): { semana: number; anio: number } {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const semana = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-  return { semana, anio: d.getUTCFullYear() };
-}
-
 async function siguienteNumeroOT(): Promise<string> {
   const counter = await prisma.contador.upsert({
     where: { nombre: "ordenTrabajo" },
@@ -342,27 +335,17 @@ export async function POST(req: NextRequest) {
     // Detectar si otJdeNumero corresponde a la OT OPEPLANT del plan de la semana.
     // Si coincide: buscar-o-crear la OT consolidada madre y registrar esta reactiva como hija oculta.
     // Si no coincide: fallback al comportamiento anterior (buscar madre por JDE).
+    // checkOpeplant() es la MISMA función que usa /api/ordenes/opeplant-check para
+    // la detección en el formulario — evita que backend y frontend clasifiquen distinto.
     let parentOtId: string | null = null;
     let parentOtNum: string | null = null;
     if (otJdeNumero && !esDePlan) {
       const fechaOT = new Date(body.fecha);
-      const { semana: semanaNum, anio: anioNum } = isoWeekInfo(fechaOT);
 
       // No se filtra por estado del plan ("borrador"/"publicado"/"cerrado"): los técnicos
       // de guardia registran avances en terreno sin esperar a que el plan esté publicado,
       // y el enganche a la OT madre no debe depender de ese paso administrativo.
-      const planSemana = await prisma.programacionSemanal.findFirst({
-        where: {
-          semana: semanaNum,
-          anio: anioNum,
-          ...(areaCodigo ? { areaCodigo } : {}),
-        },
-        include: { otsProgramadas: { where: { esGuardia: true } } },
-      });
-
-      const esOpeplantPlan = planSemana?.otsProgramadas.some(
-        o => String(o.numeroOT).toUpperCase() === String(otJdeNumero).toUpperCase()
-      );
+      const { esOpeplantPlan, planSemana } = await checkOpeplant(otJdeNumero, areaCodigo, fechaOT);
 
       if (esOpeplantPlan && planSemana) {
         // Buscar la OT consolidada madre de esta semana
@@ -412,6 +395,24 @@ export async function POST(req: NextRequest) {
 
         parentOtId = madre!.id;
         parentOtNum = madre!.numeroOT;
+
+        // Auto-reparación: OTs reactivas standalone creadas para este mismo N° OT
+        // ANTES de que se reconociera como OPEPLANT (p. ej. porque el plan aún no
+        // tenía este número marcado esGuardia, o porque el técnico las cargó por
+        // fuera del flujo correcto) quedan "huérfanas" — parentOtId null pero en
+        // realidad pertenecen a esta madre. Se adoptan aquí para que su avance
+        // entre a Bitácora/Turnero en vez de perderse fuera de la consolidación.
+        await prisma.ordenTrabajo.updateMany({
+          where: {
+            otJdeNumero,
+            origenPlan: false,
+            parentOtId: null,
+            ...(areaCodigo ? { areaCodigo } : {}),
+            id: { not: madre!.id },
+            fecha: { gte: planSemana.fechaInicio, lte: planSemana.fechaFin },
+          },
+          data: { parentOtId: madre!.id },
+        });
       } else {
         // Sin match en plan — buscar madre existente por JDE (comportamiento anterior)
         const otMadre = await prisma.ordenTrabajo.findFirst({

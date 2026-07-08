@@ -1298,19 +1298,23 @@ export default function RegistroOTPage() {
   const [done, setDone] = useState(false);
   const [doneOT, setDoneOT] = useState<{ numeroOT: string; estado: string; consolidado?: boolean; parentOtNum?: string | null } | null>(null);
 
-  // Detección de OT madre OPEPLANT al escribir N° OT
-  const [otMadreInfo, setOtMadreInfo] = useState<{ id: string; numeroOT: string } | null>(null);
+  // Detección de OT madre OPEPLANT al escribir N° OT.
+  // Consulta el plan semanal directamente (vía /api/ordenes/opeplant-check), no si
+  // ya existe una OT madre creada — así se detecta desde el primer técnico de la
+  // semana y nunca se confunde con una OT reactiva CMR/CMP fuera del programa.
+  const [otMadreInfo, setOtMadreInfo] = useState<{ id: string | null; numeroOT: string | null; estado?: string } | null>(null);
   const otMadreTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function detectarOtMadre(valor: string) {
+  function detectarOtMadre(valor: string, areaCodigo: string, fecha: string) {
     if (otMadreTimer.current) clearTimeout(otMadreTimer.current);
-    if (!valor || valor.length < 4) { setOtMadreInfo(null); return; }
+    if (!valor || valor.length < 4 || !areaCodigo) { setOtMadreInfo(null); return; }
     otMadreTimer.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/ordenes?otJdeNumero=${encodeURIComponent(valor)}&origenPlan=true&limit=1`);
+        const res = await fetch(`/api/ordenes/opeplant-check?otJdeNumero=${encodeURIComponent(valor)}&areaCodigo=${encodeURIComponent(areaCodigo)}&fecha=${encodeURIComponent(fecha)}`);
         const data = await res.json();
-        const madre = Array.isArray(data) && data.length > 0 ? data[0] : null;
-        setOtMadreInfo(madre ? { id: madre._id, numeroOT: madre.numeroOT } : null);
+        setOtMadreInfo(data.esOpeplantPlan
+          ? { id: data.madre?.id ?? null, numeroOT: data.madre?.numeroOT ?? null, estado: data.madre?.estado }
+          : null);
       } catch { setOtMadreInfo(null); }
     }, 400);
   }
@@ -2309,7 +2313,11 @@ export default function RegistroOTPage() {
                   <div style={{ display: "grid", gridTemplateColumns: form.origenPlan ? "1fr" : "1fr 150px", gap: "0 12px", alignItems: "start" }}>
                     <div>
                       <label style={S.label}>Área</label>
-                      <select value={form.areaCodigo} onChange={e => patchForm({ areaCodigo: e.target.value, tecnicos: [] })} style={S.select}>
+                      <select value={form.areaCodigo} onChange={e => {
+                        const val = e.target.value;
+                        patchForm({ areaCodigo: val, tecnicos: [] });
+                        if (!form.origenPlan) detectarOtMadre(form.otJdeNumero, val, form.fecha);
+                      }} style={S.select}>
                         <option value="">— Seleccionar —</option>
                         {areas.map(a => <option key={a.codigo} value={a.codigo}>{a.codigo} — {a.nombre}</option>)}
                       </select>
@@ -2324,7 +2332,7 @@ export default function RegistroOTPage() {
                           onChange={e => {
                             const val = e.target.value.toUpperCase();
                             patchForm({ otJdeNumero: val });
-                            detectarOtMadre(val);
+                            detectarOtMadre(val, form.areaCodigo, form.fecha);
                             detectarOtReactivaAbierta(val);
                           }}
                           placeholder="100234"
@@ -2333,13 +2341,24 @@ export default function RegistroOTPage() {
                       </div>
                     )}
                   </div>
-                  {!form.origenPlan && otMadreInfo && (
+                  {!form.origenPlan && otMadreInfo && ESTADOS_OT_CERRADA.includes(otMadreInfo.estado ?? "") && (
+                    <div style={{ marginTop: 10, background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: "8px 10px" }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "#991b1b", marginBottom: 2 }}>
+                        🔒 Ciclo OPEPLANT ya cerrado
+                      </p>
+                      <p style={{ fontSize: 11, color: "#b91c1c", lineHeight: 1.5 }}>
+                        La OT OPEPLANT {form.otJdeNumero} de esta semana ya fue enviada a revisión (estado: {otMadreInfo.estado}). Contacta al supervisor.
+                      </p>
+                    </div>
+                  )}
+                  {!form.origenPlan && otMadreInfo && !ESTADOS_OT_CERRADA.includes(otMadreInfo.estado ?? "") && (
                     <div style={{ marginTop: 10, background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "8px 10px" }}>
                       <p style={{ fontSize: 12, fontWeight: 700, color: "#92400e", marginBottom: 2 }}>
                         🔄 OT OPEPLANT detectada
                       </p>
                       <p style={{ fontSize: 11, color: "#b45309", lineHeight: 1.5 }}>
-                        Esta OT se vinculará como entrada de bitácora de la semana bajo la <strong>OT {form.otJdeNumero}</strong>.
+                        Esta OT se vinculará como entrada de bitácora de la semana bajo la <strong>OT {form.otJdeNumero}</strong>
+                        {otMadreInfo.numeroOT ? <> (consolidada en OT {otMadreInfo.numeroOT})</> : null}.
                         No aparecerá suelta en el panel del supervisor — se verá agrupada en el Turnero.
                       </p>
                     </div>
