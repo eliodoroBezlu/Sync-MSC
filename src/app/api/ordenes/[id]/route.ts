@@ -334,13 +334,15 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       const esRecurrente = diasVinculados > 1;
 
       if (esRecurrente) {
-        // OT recurrente: solo actualiza el día de inicio; los otros días se marcan vía avance diario
-        if (ot.otJdeDia) {
-          await prisma.otProgramada.updateMany({
-            where: { ordenTrabajoId: ot.id, dia: ot.otJdeDia },
-            data: { estado: estadoPlan },
-          });
-        }
+        // OT recurrente: todos los días del plan comparten ordenTrabajoId — hay que
+        // sincronizar todas las filas, no solo la del día de inicio. `ot.otJdeDia` queda
+        // null para estas OTs (ver registro/page.tsx), así que no sirve como filtro: antes
+        // este bloque no hacía nada y acciones como "Reabrir OT" o "Solicitar corrección"
+        // (Reporte) no se reflejaban en las tarjetas del plan semanal.
+        await prisma.otProgramada.updateMany({
+          where: { ordenTrabajoId: ot.id },
+          data: { estado: estadoPlan },
+        });
       } else {
         // OT normal: actualiza todos los registros vinculados (suele ser solo uno)
         await prisma.otProgramada.updateMany({
