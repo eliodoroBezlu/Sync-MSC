@@ -2304,7 +2304,7 @@ export default function RegistroOTPage() {
                       {errs.turno && <p style={S.err}>{errs.turno}</p>}
                     </div>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: form.origenPlan ? "1fr" : "1fr auto", gap: "0 12px", alignItems: "start" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: form.origenPlan ? "1fr" : "1fr 150px", gap: "0 12px", alignItems: "start" }}>
                     <div>
                       <label style={S.label}>Área</label>
                       <select value={form.areaCodigo} onChange={e => patchForm({ areaCodigo: e.target.value, tecnicos: [] })} style={S.select}>
@@ -2326,60 +2326,60 @@ export default function RegistroOTPage() {
                             detectarOtReactivaAbierta(val);
                           }}
                           placeholder="100234"
-                          style={{ ...S.input, fontFamily: "monospace", letterSpacing: "0.05em", width: 150, borderColor: otMadreInfo ? "#d97706" : otReactivaAbierta ? "#2563eb" : undefined }}
+                          style={{ ...S.input, fontFamily: "monospace", letterSpacing: "0.05em", width: "100%", borderColor: otMadreInfo ? "#d97706" : otReactivaAbierta ? "#2563eb" : undefined }}
                         />
-                        {otMadreInfo && (
-                          <div style={{ marginTop: 6, background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "8px 10px" }}>
-                            <p style={{ fontSize: 12, fontWeight: 700, color: "#92400e", marginBottom: 2 }}>
-                              🔄 OT OPEPLANT detectada
-                            </p>
-                            <p style={{ fontSize: 11, color: "#b45309", lineHeight: 1.5 }}>
-                              Esta OT se vinculará como entrada de bitácora de la semana bajo la <strong>OT {form.otJdeNumero}</strong>.
-                              No aparecerá suelta en el panel del supervisor — se verá agrupada en el Turnero.
-                            </p>
-                          </div>
-                        )}
-                        {!otMadreInfo && otReactivaAbierta && (
-                          <div style={{ marginTop: 6, background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 8, padding: "8px 10px" }}>
-                            <p style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", marginBottom: 2 }}>
-                              🔓 Ya existe una OT abierta con este número
-                            </p>
-                            <p style={{ fontSize: 11, color: "#1e40af", lineHeight: 1.5, marginBottom: 6 }}>
-                              Creada el {new Date(otReactivaAbierta.fecha).toLocaleDateString("es-BO")}
-                              {otReactivaAbierta.tecnicos.length > 0 && <> · Técnicos: {otReactivaAbierta.tecnicos.map(t => t.nombreCompleto).join(", ")}</>}.
-                              {" "}Continúa el registro aquí en vez de crear una OT nueva.
-                            </p>
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
-                              <button type="button"
-                                onClick={() => { setAvanceReactivaRef({ id: otReactivaAbierta.id, numeroOT: otReactivaAbierta.numeroOT }); setAvanceReactivaForm({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] }); }}
-                                style={{ fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 6, border: "none", background: "#2563eb", color: "white", cursor: "pointer" }}>
-                                + Agregar avance del día →
-                              </button>
-                              <button type="button"
-                                onClick={() => enviarRevisionReactiva({ id: otReactivaAbierta.id, numeroOT: otReactivaAbierta.numeroOT })}
-                                disabled={enviandoRevisionReactiva}
-                                style={{ fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 6, border: "1px solid #16a34a", background: "white", color: "#16a34a", cursor: "pointer" }}>
-                                {enviandoRevisionReactiva ? "Enviando…" : "Enviar a revisión ✓"}
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                        {avanceReactivaRef?.id === otReactivaAbierta?.id && (
-                          <AvanceDiarioMiniForm
-                            titulo="+ Avance del día — OT reactiva"
-                            form={avanceReactivaForm}
-                            onChange={setAvanceReactivaForm}
-                            cargandoAdj={cargandoAdjAvanceReactiva}
-                            onCargandoAdjChange={setCargandoAdjAvanceReactiva}
-                            onCancelar={() => setAvanceReactivaRef(null)}
-                            onGuardar={confirmarAvanceReactiva}
-                            guardando={savingAvanceReactiva}
-                            accentColor="#2563eb"
-                          />
-                        )}
                       </div>
                     )}
                   </div>
+                  {!form.origenPlan && otMadreInfo && (
+                    <div style={{ marginTop: 10, background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "8px 10px" }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "#92400e", marginBottom: 2 }}>
+                        🔄 OT OPEPLANT detectada
+                      </p>
+                      <p style={{ fontSize: 11, color: "#b45309", lineHeight: 1.5 }}>
+                        Esta OT se vinculará como entrada de bitácora de la semana bajo la <strong>OT {form.otJdeNumero}</strong>.
+                        No aparecerá suelta en el panel del supervisor — se verá agrupada en el Turnero.
+                      </p>
+                    </div>
+                  )}
+                  {!form.origenPlan && !otMadreInfo && otReactivaAbierta && (
+                    <div style={{ marginTop: 10, background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 8, padding: "8px 10px" }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", marginBottom: 2 }}>
+                        🔓 Ya existe una OT abierta con este número
+                      </p>
+                      <p style={{ fontSize: 11, color: "#1e40af", lineHeight: 1.5, marginBottom: 6 }}>
+                        Creada el {new Date(otReactivaAbierta.fecha).toLocaleDateString("es-BO")}
+                        {otReactivaAbierta.tecnicos.length > 0 && <> · Técnicos: {otReactivaAbierta.tecnicos.map(t => t.nombreCompleto).join(", ")}</>}.
+                        {" "}Continúa el registro aquí en vez de crear una OT nueva.
+                      </p>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
+                        <button type="button"
+                          onClick={() => { setAvanceReactivaRef({ id: otReactivaAbierta.id, numeroOT: otReactivaAbierta.numeroOT }); setAvanceReactivaForm({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] }); }}
+                          style={{ fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 6, border: "none", background: "#2563eb", color: "white", cursor: "pointer" }}>
+                          + Agregar avance del día →
+                        </button>
+                        <button type="button"
+                          onClick={() => enviarRevisionReactiva({ id: otReactivaAbierta.id, numeroOT: otReactivaAbierta.numeroOT })}
+                          disabled={enviandoRevisionReactiva}
+                          style={{ fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 6, border: "1px solid #16a34a", background: "white", color: "#16a34a", cursor: "pointer" }}>
+                          {enviandoRevisionReactiva ? "Enviando…" : "Enviar a revisión ✓"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {!form.origenPlan && avanceReactivaRef?.id === otReactivaAbierta?.id && (
+                    <AvanceDiarioMiniForm
+                      titulo="+ Avance del día — OT reactiva"
+                      form={avanceReactivaForm}
+                      onChange={setAvanceReactivaForm}
+                      cargandoAdj={cargandoAdjAvanceReactiva}
+                      onCargandoAdjChange={setCargandoAdjAvanceReactiva}
+                      onCancelar={() => setAvanceReactivaRef(null)}
+                      onGuardar={confirmarAvanceReactiva}
+                      guardando={savingAvanceReactiva}
+                      accentColor="#2563eb"
+                    />
+                  )}
                 </div>
 
                 <TecnicosPanel
