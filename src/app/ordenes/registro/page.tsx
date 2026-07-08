@@ -1454,8 +1454,10 @@ export default function RegistroOTPage() {
       try {
         const res = await fetch(`/api/ordenes?otJdeNumero=${encodeURIComponent(valor)}&origenPlan=false&limit=5`);
         const data = await res.json();
+        // Excluye hijas de OPEPLANT (parentOtId) — esas se consolidan en su
+        // OT madre y siguen el flujo de Turnero/bitácora, no este de avance.
         const abierta = Array.isArray(data)
-          ? data.find((o: { estado: string }) => !ESTADOS_OT_CERRADA.includes(o.estado))
+          ? data.find((o: { estado: string; parentOtId?: string | null }) => !o.parentOtId && !ESTADOS_OT_CERRADA.includes(o.estado))
           : null;
         setOtReactivaAbierta(abierta
           ? { id: abierta._id, numeroOT: abierta.numeroOT, otJdeNumero: abierta.otJdeNumero, estado: abierta.estado, fecha: abierta.fecha, tecnicos: abierta.tecnicos ?? [] }
@@ -2367,7 +2369,7 @@ export default function RegistroOTPage() {
                       </div>
                     </div>
                   )}
-                  {!form.origenPlan && avanceReactivaRef?.id === otReactivaAbierta?.id && (
+                  {!form.origenPlan && !!avanceReactivaRef && !!otReactivaAbierta && avanceReactivaRef.id === otReactivaAbierta.id && (
                     <AvanceDiarioMiniForm
                       titulo="+ Avance del día — OT reactiva"
                       form={avanceReactivaForm}

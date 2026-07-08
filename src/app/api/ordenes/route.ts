@@ -421,6 +421,32 @@ export async function POST(req: NextRequest) {
         if (otMadre) {
           parentOtId = otMadre.id;
           parentOtNum = otMadre.numeroOT;
+        } else {
+          // Reactiva standalone (CMR/CMP) sin relación a OPEPLANT: si ya existe
+          // una abierta con este mismo N° OT, rechazar la creación duplicada —
+          // el técnico debe continuar sobre esa OT (avance diario / enviar a
+          // revisión) en vez de crear una nueva. Espejo del guard de OPEPLANT.
+          const ESTADOS_CERRADOS_REACTIVA = ["pendiente_revision", "revisado", "concluido"];
+          const reactivaAbierta = await prisma.ordenTrabajo.findFirst({
+            where: {
+              otJdeNumero,
+              origenPlan: false,
+              parentOtId: null,
+              NOT: { estado: { in: ESTADOS_CERRADOS_REACTIVA } },
+            },
+            select: { id: true, numeroOT: true, estado: true },
+          });
+          if (reactivaAbierta) {
+            return NextResponse.json(
+              {
+                ok: false,
+                error: `Ya existe una OT abierta con el N° ${otJdeNumero} (estado: ${reactivaAbierta.estado}). Continúa el registro sobre esa OT en vez de crear una nueva.`,
+                otAbiertaId: reactivaAbierta.id,
+                otAbiertaNumeroOT: reactivaAbierta.numeroOT,
+              },
+              { status: 409 }
+            );
+          }
         }
       }
     }
