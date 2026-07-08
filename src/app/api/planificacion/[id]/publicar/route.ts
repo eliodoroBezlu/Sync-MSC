@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { validarPlan } from "@/lib/planificacion/validarPlan";
+import { mapEstadoAlPlan } from "@/lib/otEstado";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -98,9 +99,22 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
       await tx.otProgramada.deleteMany({ where: { programacionSemanalId: ps.id } });
       await tx.personalSemanal.deleteMany({ where: { programacionSemanalId: ps.id } });
 
+      // OTs que JDE sigue reportando de semanas anteriores (trabajos que se
+      // extienden más de una semana) ya tienen una OrdenTrabajo abierta con
+      // su propio historial de avances. Si no las enlazamos aquí, Registro
+      // las muestra como "no iniciada" / "Registrar 1er día" y el técnico no
+      // puede continuar (crear una OT nueva choca con el numeroOT único).
+      const numerosOT = Array.from(new Set(borrador.ots.map(o => o.numeroOT)));
+      const otsExistentes = await tx.ordenTrabajo.findMany({
+        where: { numeroOT: { in: numerosOT }, estado: { not: "concluido" } },
+        select: { id: true, numeroOT: true, estado: true },
+      });
+      const existentePorNumero = new Map(otsExistentes.map(o => [o.numeroOT, o]));
+
       // Crear OtProgramada por cada día de cada OtBorrador
       for (const ot of borrador.ots) {
         const diasOt: string[] = ot.dias.length > 0 ? ot.dias : ["Lu", "Ma", "Mi", "Ju", "Vi"];
+        const continuacion = existentePorNumero.get(ot.numeroOT);
         for (const dia of diasOt) {
           const offset = DIA_OFFSET[dia] ?? 0;
           const fechaDiaOt = fechaDia(lunes, offset);
@@ -122,7 +136,8 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
               grupo:            ot.grupo,
               dia,
               esGuardia:        ot.esGuardia,
-              estado:           "no_iniciada",
+              estado:           continuacion ? mapEstadoAlPlan(continuacion.estado) : "no_iniciada",
+              ordenTrabajoId:   continuacion?.id,
               ordenTrabajoNum:  ot.numeroOT,
               // fechaInicio not in schema — store via dia field
             },

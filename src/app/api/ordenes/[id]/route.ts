@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
+import { mapEstadoAlPlan } from "@/lib/otEstado";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -59,16 +60,6 @@ function serializeOT(ot: Record<string, unknown> & {
       revisadoEn: ot.supRevisadoEn,
     },
   };
-}
-
-function mapEstadoAlPlan(estado: string): string {
-  switch (estado) {
-    case "pendiente_revision":   return "completada";
-    case "solicitar_correccion": return "en_revision";
-    case "revisado":             return "completada";
-    case "concluido":            return "completada";
-    default:                     return "en_proceso";
-  }
 }
 
 const DIA_ABREV: Record<number, string> = { 1: "Lu", 2: "Ma", 3: "Mi", 4: "Ju", 5: "Vi", 6: "Sa", 0: "Do" };

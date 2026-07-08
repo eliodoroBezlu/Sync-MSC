@@ -1,7 +1,48 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
+import { mapEstadoAlPlan } from "@/lib/otEstado";
 
 type BitacoraEntry = { turno: string; supervisor: string; nota: string; hhAtendidas: number; fecha?: string };
+
+type OtProgramadaRow = Record<string, unknown> & {
+  id: string; numeroOT: string; estado: string; ordenTrabajoId: string | null; ordenTrabajoNum: string | null;
+};
+
+// OTs que JDE sigue reportando semana tras semana (trabajos que se extienden
+// más de una semana) ya tienen una OrdenTrabajo abierta con su propio
+// historial. Si el plan de una semana quedó publicado sin enlazarla (p. ej.
+// se publicó antes de que existiera, o antes de este fix), Registro las
+// muestra como "no iniciada" aunque el técnico ya viene registrando avances.
+// Se reconcilia en cada lectura para que se autocorrija sin acción manual.
+async function reconciliarContinuaciones(
+  programas: Array<{ otsProgramadas: OtProgramadaRow[] }>
+): Promise<void> {
+  const pendientes = programas
+    .flatMap(p => p.otsProgramadas)
+    .filter(o => !o.ordenTrabajoId && o.estado === "no_iniciada");
+  if (pendientes.length === 0) return;
+
+  const numeros = [...new Set(pendientes.map(o => o.numeroOT))];
+  const existentes = await prisma.ordenTrabajo.findMany({
+    where: { numeroOT: { in: numeros }, estado: { not: "concluido" } },
+    select: { id: true, numeroOT: true, estado: true },
+  });
+  if (existentes.length === 0) return;
+
+  const porNumero = new Map(existentes.map(o => [o.numeroOT, o]));
+  for (const row of pendientes) {
+    const existente = porNumero.get(row.numeroOT);
+    if (!existente) continue;
+    const nuevoEstado = mapEstadoAlPlan(existente.estado);
+    await prisma.otProgramada.update({
+      where: { id: row.id },
+      data: { ordenTrabajoId: existente.id, ordenTrabajoNum: existente.numeroOT, estado: nuevoEstado },
+    });
+    row.ordenTrabajoId = existente.id;
+    row.ordenTrabajoNum = existente.numeroOT;
+    row.estado = nuevoEstado;
+  }
+}
 
 // Offset por día de la semana (lunes = 0)
 const DIA_OFFSET: Record<string, number> = { Lu: 0, Ma: 1, Mi: 2, Ju: 3, Vi: 4, Sa: 5, Do: 6 };
@@ -84,6 +125,7 @@ export async function GET(req: NextRequest) {
       const { NextResponse } = await import("next/server");
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+    await reconciliarContinuaciones([programa as unknown as { otsProgramadas: OtProgramadaRow[] }]);
     const { NextResponse } = await import("next/server");
     return NextResponse.json(serializePrograma(programa as Parameters<typeof serializePrograma>[0], {}, {}));
   }
@@ -113,6 +155,8 @@ export async function GET(req: NextRequest) {
     orderBy: [{ anio: "desc" }, { semana: "desc" }],
     take: limit,
   });
+
+  await reconciliarContinuaciones(programas as unknown as { otsProgramadas: OtProgramadaRow[] }[]);
 
   // Construir mapa de bitácora desde ReporteTurno técnicos del período
   // usando HH reales (tiempoRealHrs de sub-OTs registrados), NO el hhTotal planificado
