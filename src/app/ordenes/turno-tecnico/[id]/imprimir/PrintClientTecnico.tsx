@@ -86,6 +86,12 @@ export default function PrintClientTecnico({
   const numerosRegistrados = new Set(otsRegistradas.map(o => o.otJdeNumero ?? o.numeroOT));
   const otsPlan = ots.filter(o => o.esPlan && !numerosRegistrados.has(o.otJdeNumero ?? o.numeroOT));
 
+  // Las OPEPLANT con bitácora se muestran junto a las CMR/CMP registradas
+  // (sección verde), no dentro del plan de turno (sección azul) — mismo
+  // criterio visual que el reporte original.
+  const otsPlanBitacora = otsPlan.filter(o => o.esGuardia && o.bitacora && o.bitacora.length > 0);
+  const otsPlanResto = otsPlan.filter(o => !(o.esGuardia && o.bitacora && o.bitacora.length > 0));
+
   return (
     <>
       <style>{`
@@ -214,41 +220,14 @@ export default function PrintClientTecnico({
           </thead>
           <tbody>
             {/* OTs del plan semanal (turnero) */}
-            {otsPlan.length > 0 && (
+            {otsPlanResto.length > 0 && (
               <tr>
                 <td colSpan={8} style={{ background: "#dbeafe", fontWeight: "bold", fontSize: 9, padding: "3px 6px", color: "#1e40af" }}>
-                  PLAN DE TURNO — {reporte.turno.toUpperCase()} ({otsPlan.length} OT{otsPlan.length !== 1 ? "s" : ""} · {otsPlan.reduce((s,o)=>s+o.hhTotal,0)} HH)
+                  PLAN DE TURNO — {reporte.turno.toUpperCase()} ({otsPlanResto.length} OT{otsPlanResto.length !== 1 ? "s" : ""} · {otsPlanResto.reduce((s,o)=>s+o.hhTotal,0)} HH)
                 </td>
               </tr>
             )}
-            {otsPlan.map((ot, idx) => {
-              const entradas = ot.esGuardia && ot.bitacora && ot.bitacora.length > 0 ? ot.bitacora : null;
-              if (entradas) {
-                // OPEPLANT con bitácora: una fila por entrada
-                return entradas.map((b, bi) => (
-                  <tr key={`${ot.id}-b${bi}`} className="plan-row" style={{ background: "#fffbeb" }}>
-                    <td style={{ textAlign: "center", fontSize: 9 }}>{idx + 1}.{bi + 1}</td>
-                    <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold", color: TIPO_COLOR[ot.tipoOT] ?? "#d97706" }}>
-                      {ot.tipoOT || "PDM"}
-                      <div style={{ fontSize: 7, marginTop: 1 }}><span className="opeplant-badge">OPEPLANT</span></div>
-                    </td>
-                    <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 9 }}>OPEPLANT</td>
-                    <td style={{ textAlign: "center", fontSize: 9 }}>{b.hhAtendidas || "—"}</td>
-                    <td style={{ fontFamily: "monospace", fontSize: 9 }}>{otNum(ot)}</td>
-                    <td style={{ fontSize: 9 }}>
-                      {b.nota || ot.descripcion || "—"}
-                      {b.resolucion && <div style={{ color: "#16a34a", fontStyle: "italic", fontSize: 8, marginTop: 2 }}>✓ {b.resolucion}<EstadoFinalBadge estadoFinal={b.estadoFinal} /></div>}
-                    </td>
-                    <td style={{ fontSize: 9, color: "#92400e" }}>
-                      {b.supervisor && <span>{b.supervisor}</span>}
-                      {b.turno && <span style={{ color: "#64748b" }}> · {b.turno}</span>}
-                    </td>
-                    <td style={{ textAlign: "center", fontSize: 8.5, fontWeight: "bold" }}>
-                      <span style={{ color: "#92400e", background: "#fef3c7", padding: "2px 5px", borderRadius: 3 }}>EJECUTADA</span>
-                    </td>
-                  </tr>
-                ));
-              }
+            {otsPlanResto.map((ot, idx) => {
               // OT de plan normal o OPEPLANT sin bitácora
               const planLineas = ot.lineas && ot.lineas.length > 0 ? ot.lineas : null;
               // Si tiene múltiples líneas con resolución, mostrar una sub-fila por línea
@@ -320,18 +299,44 @@ export default function PrintClientTecnico({
               );
             })}
 
-            {/* OTs registradas (CMR/CMP del sistema) */}
-            {otsRegistradas.length > 0 && (
+            {/* OTs OPEPLANT (bitácora) + OTs registradas (CMR/CMP del sistema) */}
+            {(otsPlanBitacora.length > 0 || otsRegistradas.length > 0) && (
               <tr>
                 <td colSpan={8} style={{ background: "#f0fdf4", fontWeight: "bold", fontSize: 9, padding: "3px 6px", color: "#166534" }}>
-                  CMR / CMP REGISTRADOS EN SISTEMA ({otsRegistradas.length} OT{otsRegistradas.length !== 1 ? "s" : ""})
+                  CMR / CMP REGISTRADOS EN SISTEMA ({otsPlanBitacora.length + otsRegistradas.length} OT{(otsPlanBitacora.length + otsRegistradas.length) !== 1 ? "s" : ""})
                 </td>
               </tr>
             )}
+            {otsPlanBitacora.map((ot, idx) => {
+              const entradas = ot.bitacora ?? [];
+              return entradas.map((b, bi) => (
+                <tr key={`${ot.id}-b${bi}`} className="plan-row" style={{ background: "#fffbeb" }}>
+                  <td style={{ textAlign: "center", fontSize: 9 }}>{otsPlanResto.length + idx + 1}.{bi + 1}</td>
+                  <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold", color: TIPO_COLOR[ot.tipoOT] ?? "#d97706" }}>
+                    {ot.tipoOT || "PDM"}
+                    <div style={{ fontSize: 7, marginTop: 1 }}><span className="opeplant-badge">OPEPLANT</span></div>
+                  </td>
+                  <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 9 }}>OPEPLANT</td>
+                  <td style={{ textAlign: "center", fontSize: 9 }}>{b.hhAtendidas || "—"}</td>
+                  <td style={{ fontFamily: "monospace", fontSize: 9 }}>{otNum(ot)}</td>
+                  <td style={{ fontSize: 9 }}>
+                    {b.nota || ot.descripcion || "—"}
+                    {b.resolucion && <div style={{ color: "#16a34a", fontStyle: "italic", fontSize: 8, marginTop: 2 }}>✓ {b.resolucion}<EstadoFinalBadge estadoFinal={b.estadoFinal} /></div>}
+                  </td>
+                  <td style={{ fontSize: 9, color: "#92400e" }}>
+                    {b.supervisor && <span>{b.supervisor}</span>}
+                    {b.turno && <span style={{ color: "#64748b" }}> · {b.turno}</span>}
+                  </td>
+                  <td style={{ textAlign: "center", fontSize: 8.5, fontWeight: "bold" }}>
+                    <span style={{ color: "#92400e", background: "#fef3c7", padding: "2px 5px", borderRadius: 3 }}>EJECUTADA</span>
+                  </td>
+                </tr>
+              ));
+            })}
             {otsRegistradas.map((ot, idx) => {
               const concluida = ["completada","concluido","revisado"].includes(ot.estado);
               const lineas = ot.lineas && ot.lineas.length > 0 ? ot.lineas : null;
-              const baseIdx = otsPlan.length + idx + 1;
+              const baseIdx = otsPlanResto.length + otsPlanBitacora.length + idx + 1;
               const bgRow = ot.critica ? "#fff1f2" : concluida ? "#f0fdf4" : "white";
               const estadoBadge = concluida
                 ? <span style={{ color: "#16a34a", background: "#dcfce7", padding: "2px 5px", borderRadius: 3 }}>EJECUTADA</span>
