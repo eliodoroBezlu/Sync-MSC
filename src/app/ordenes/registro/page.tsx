@@ -2553,25 +2553,68 @@ export default function RegistroOTPage() {
                   </div>
                 )}
 
-                <div style={{ ...S.card, background: "#f8fafc" }}>
-                  {form.esRecurrente ? (
-                    <>
-                      <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "10px 13px", marginBottom: 12 }}>
-                        <p style={{ fontSize: 12, color: "#1d4ed8", fontWeight: 700, marginBottom: 3 }}>🔁 OT Recurrente — acumula HH durante la semana</p>
-                        <p style={{ fontSize: 12, color: "#475569", lineHeight: 1.6 }}>
-                          Se guardará en estado <strong>En Proceso</strong>. Los días siguientes agregas avances diarios desde la tarjeta del plan.
-                          Al finalizar la semana, usa <strong>Enviar a revisión</strong> desde la tarjeta para cerrar todo el ciclo.
-                        </p>
+                {(() => {
+                  // OPEPLANT/turnero — dos caminos posibles hasta acá: (a) desde la tarjeta
+                  // del plan semanal (form.origenPlan, N° OT marcado esGuardia), o (b) el
+                  // técnico tipeó el N° OT manualmente y el sistema lo detectó (otMadreInfo).
+                  // En ambos casos el cierre real del ciclo es una acción única a nivel de
+                  // la OT madre (botón "Cerrar OT de semana" en la tarjeta → Reporte), NO
+                  // algo que cada técnico decida al guardar su propio avance/hija. Por eso
+                  // no se ofrece "Enviar a revisión" acá — evita que un técnico bloquee sin
+                  // querer el ciclo completo para sus compañeros, o llene un botón que en
+                  // el caso (b) no tiene ningún efecto real (la hija nunca se re-abre ni se
+                  // filtra por estado en Reporte/PDF).
+                  const formEsGuardia = form.origenPlan && !!planRefs.find(r =>
+                    r.planId === form.programacionSemanalId &&
+                    r.ot.numeroOT === form.otJdeNumero &&
+                    (r.ot.esGuardia || r.ot.tag?.includes("OPEPLANT"))
+                  );
+                  const otMadreCerrada = !!otMadreInfo && ESTADOS_OT_CERRADA.includes(otMadreInfo.estado ?? "");
+
+                  if (form.esRecurrente || formEsGuardia) {
+                    return (
+                      <div style={{ ...S.card, background: "#f8fafc" }}>
+                        <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "10px 13px", marginBottom: 12 }}>
+                          <p style={{ fontSize: 12, color: "#1d4ed8", fontWeight: 700, marginBottom: 3 }}>
+                            {formEsGuardia ? "🔄 OT OPEPLANT — turnero de la semana" : "🔁 OT Recurrente — acumula HH durante la semana"}
+                          </p>
+                          <p style={{ fontSize: 12, color: "#475569", lineHeight: 1.6 }}>
+                            Se guarda como avance de bitácora. Los días siguientes agregas más avances desde la tarjeta del plan.{" "}
+                            <strong>El cierre completo de la semana se hace una sola vez desde &quot;🔐 Cerrar OT de semana&quot; en la tarjeta</strong> — no acá.
+                          </p>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <button onClick={() => setStep(2)} style={S.btnGhost} disabled={submitting}>← Editar</button>
+                          <button onClick={() => submit("en_proceso")} style={{ ...S.btnPrimary(submitting), marginLeft: "auto" }} disabled={submitting}>
+                            {submitting ? "Guardando..." : "💾 Guardar avance →"}
+                          </button>
+                        </div>
                       </div>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                        <button onClick={() => setStep(2)} style={S.btnGhost} disabled={submitting}>← Editar</button>
-                        <button onClick={() => submit("en_proceso")} style={{ ...S.btnPrimary(submitting), marginLeft: "auto" }} disabled={submitting}>
-                          {submitting ? "Guardando..." : "Guardar 1er día →"}
-                        </button>
+                    );
+                  }
+
+                  if (otMadreInfo) {
+                    return (
+                      <div style={{ ...S.card, background: "#f8fafc" }}>
+                        <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "10px 13px", marginBottom: 12 }}>
+                          <p style={{ fontSize: 12, color: "#1d4ed8", fontWeight: 700, marginBottom: 3 }}>🔄 OT OPEPLANT — turnero de la semana</p>
+                          <p style={{ fontSize: 12, color: "#475569", lineHeight: 1.6 }}>
+                            Se guarda como avance de bitácora bajo la OT {form.otJdeNumero}.{" "}
+                            <strong>El cierre completo de la semana lo hace el supervisor desde Reporte</strong> — no hace falta &quot;enviar a revisión&quot; cada avance por separado.
+                          </p>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <button onClick={() => setStep(2)} style={S.btnGhost} disabled={submitting}>← Editar</button>
+                          <button onClick={() => submit("en_proceso")} style={{ ...S.btnPrimary(submitting), marginLeft: "auto" }} disabled={submitting || otMadreCerrada}>
+                            {submitting ? "Guardando..." : "💾 Guardar avance →"}
+                          </button>
+                        </div>
                       </div>
-                    </>
-                  ) : (
-                    <>
+                    );
+                  }
+
+                  return (
+                    <div style={{ ...S.card, background: "#f8fafc" }}>
                       <p style={{ fontSize: 12, color: "#64748b", lineHeight: 1.7, marginBottom: 12 }}>
                         <strong style={{ color: "#1e293b" }}>Borrador</strong>: guarda sin enviar.{" "}
                         {!form.origenPlan && <><strong style={{ color: "#2563eb" }}>Guardar y continuar</strong>: deja la OT abierta para agregar avances otro día.{" "}</>}
@@ -2592,9 +2635,9 @@ export default function RegistroOTPage() {
                           {submitting ? "Enviando..." : "Enviar a revisión ✓"}
                         </button>
                       </div>
-                    </>
-                  )}
-                </div>
+                    </div>
+                  );
+                })()}
               </>
             )}
           </>
