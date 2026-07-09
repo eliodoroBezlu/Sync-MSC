@@ -21,10 +21,14 @@ export async function checkOpeplant(otJdeNumero: string, areaCodigo: string | nu
       anio,
       ...(areaCodigo ? { areaCodigo } : {}),
     },
-    include: { otsProgramadas: { where: { esGuardia: true } } },
+    include: { otsProgramadas: true },
   });
+  // Igual que la detección en las tarjetas del plan (registro/page.tsx): una OT es
+  // OPEPLANT si esGuardia está marcado O si el tag la etiqueta como tal — el importador
+  // no siempre setea ambos de forma consistente, así que hay que aceptar cualquiera.
   const esOpeplantPlan = !!planSemana?.otsProgramadas.some(
     o => String(o.numeroOT).toUpperCase() === String(otJdeNumero).toUpperCase()
+      && (o.esGuardia || o.tag?.includes("OPEPLANT"))
   );
   return { esOpeplantPlan, planSemana };
 }
