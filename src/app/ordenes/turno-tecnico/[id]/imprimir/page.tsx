@@ -87,11 +87,21 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
     .map(o => o.numeroOT)
     .filter(Boolean);
 
+  // Acotar al día y turno de este reporte — sin esto se traen hijas de
+  // cualquier fecha/turno con el mismo N° OT, mezclando técnicos y turnos
+  // ajenos a este reporte puntual.
+  const diaReporte = new Date(reporte.fecha);
+  diaReporte.setHours(0, 0, 0, 0);
+  const diaSiguiente = new Date(diaReporte);
+  diaSiguiente.setDate(diaSiguiente.getDate() + 1);
+
   const childOTs = guardiaNumeros.length > 0
     ? await prisma.ordenTrabajo.findMany({
         where: {
           otJdeNumero: { in: guardiaNumeros },
           parentOtId: { not: null },
+          turno: reporte.turno,
+          fecha: { gte: diaReporte, lt: diaSiguiente },
         },
         include: { lineas: true, tecnicos: true },
       })
