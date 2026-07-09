@@ -39,6 +39,7 @@ type OTPlan = {
   personalAsignado: string[]; grupo: string; dia: string;
   estado: string; esGuardia: boolean;
   bitacora?: BitacoraEntry[];
+  hijasReales?: OTRegistrada[];
   ordenTrabajoId?: string; ordenTrabajoNum?: string;
   areaCodigo: string; disciplina: string;
 };
@@ -227,6 +228,18 @@ export default function ReporteTurnoTecnicoPage() {
     const soloCorrectivos = (Array.isArray(dataOrd) ? dataOrd : []).filter(o =>
       o.lineas.some(l => l.tipoOT === "CMR" || l.tipoOT === "CMP")
     );
+
+    // Mapa de OTs hijas reales por N° OT JDE, sin filtrar por técnico — la
+    // guardia OPEPLANT es compartida entre turneros, así que la tarjeta de
+    // Bitácora debe mostrar lo registrado aunque lo haya cargado otro técnico.
+    const hijasPorNumeroOT = new Map<string, OTRegistrada[]>();
+    for (const o of soloCorrectivos) {
+      if (!o.otJdeNumero) continue;
+      const arr = hijasPorNumeroOT.get(o.otJdeNumero) ?? [];
+      arr.push(o);
+      hijasPorNumeroOT.set(o.otJdeNumero, arr);
+    }
+
     // Filtrar además por nombre del técnico si es rol=4
     const registradas = user.rol === 4
       ? soloCorrectivos.filter(o =>
@@ -265,6 +278,7 @@ export default function ReporteTurnoTecnicoPage() {
           // la señal confiable (mismo criterio que registro/turnero/semanales).
           esGuardia: !!ot.esGuardia || String(ot.tag ?? "").includes("OPEPLANT"),
           bitacora: Array.isArray(ot.bitacora) ? ot.bitacora : [],
+          hijasReales: hijasPorNumeroOT.get(ot.numeroOT) ?? [],
           ordenTrabajoId: ot.ordenTrabajoId,
           ordenTrabajoNum: ot.ordenTrabajoNum,
           areaCodigo: prog.areaCodigo ?? area,
@@ -770,6 +784,35 @@ export default function ReporteTurnoTecnicoPage() {
                                     {o.ordenTrabajoNum && <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>OT #{o.ordenTrabajoNum}</span>}
                                   </div>
                                   <p style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>{o.descripcion || "Guardia de turno"}</p>
+                                  {o.hijasReales && o.hijasReales.length > 0 ? (
+                                    <div style={{ marginTop: 6, display: "flex", flexDirection: "column" as const, gap: 4 }} onClick={e => e.stopPropagation()}>
+                                      {o.hijasReales.map(h => {
+                                        const linea = h.lineas[0];
+                                        return (
+                                          <div key={h._id} style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 6, padding: "6px 9px" }}>
+                                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const, alignItems: "center" }}>
+                                              <span style={{ fontSize: 10, fontWeight: 700, color: "#166534" }}>✓ Registrado en el sistema</span>
+                                              {linea?.tag && <span style={{ fontFamily: "monospace", fontSize: 11, color: "#1d4ed8" }}>{linea.tag}</span>}
+                                              {linea?.tiempoRealHrs != null && linea.tiempoRealHrs > 0 && (
+                                                <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 700 }}>{linea.tiempoRealHrs}h</span>
+                                              )}
+                                            </div>
+                                            <p style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>
+                                              {linea?.sintoma ?? linea?.descripcionEquipo ?? linea?.descripcionTrabajo ?? "—"}
+                                            </p>
+                                            {linea?.resolucionAplicada && (
+                                              <p style={{ fontSize: 11, color: "#16a34a", fontStyle: "italic" as const, marginTop: 2 }}>✓ {linea.resolucionAplicada}</p>
+                                            )}
+                                            {h.tecnicos.length > 0 && (
+                                              <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>👤 {h.tecnicos.map(t => t.nombreCompleto).join(", ")}</p>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <p style={{ fontSize: 11, color: "#b45309", marginTop: 4, fontStyle: "italic" as const }}>Aún sin OT registrada en el sistema para este N° OT.</p>
+                                  )}
                                   {o.ordenTrabajoId && (
                                     <div style={{ marginTop: 6 }} onClick={e => e.stopPropagation()}>
                                       {opeplantCerrada.has(o.ordenTrabajoId) ? (
