@@ -4,7 +4,7 @@ import PrintClientTecnico from "./PrintClientTecnico";
 
 type Params = { params: Promise<{ id: string }> };
 
-type LineaDisplay = { tag: string; tipoOT: string; descripcion: string; resolucion: string; estadoFinal?: string; hh: number; observaciones?: string; tareasEjecutadas?: string[] };
+type LineaDisplay = { tag: string; tipoOT: string; descripcion: string; resolucion: string; estadoFinal?: string; hh: number; observaciones?: string; tareasEjecutadas?: string[]; descripcionTrabajo?: string };
 
 type OTDisplay = {
   id: string; numeroOT: string; otJdeNumero?: string | null; tag: string; tipoOT: string;
@@ -65,6 +65,7 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
         hh: l.tiempoRealHrs ?? 0,
         observaciones: l.observaciones ?? undefined,
         tareasEjecutadas: l.tareasEjecutadas ?? [],
+        descripcionTrabajo: l.descripcionTrabajo ?? undefined,
       })),
     };
   }
@@ -157,6 +158,7 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
           hh: l.tiempoRealHrs ?? 0,
           observaciones: l.observaciones ?? undefined,
         tareasEjecutadas: l.tareasEjecutadas ?? [],
+        descripcionTrabajo: l.descripcionTrabajo ?? undefined,
         }));
     }
 

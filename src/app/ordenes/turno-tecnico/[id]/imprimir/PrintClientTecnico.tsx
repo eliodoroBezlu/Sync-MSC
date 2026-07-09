@@ -2,15 +2,22 @@
 import { useState } from "react";
 
 type BitacoraEntry = { turno: string; supervisor: string; nota: string; resolucion?: string; estadoFinal?: string; hhAtendidas: number; fecha?: string };
-type LineaDisplay  = { tag: string; tipoOT: string; descripcion: string; resolucion: string; estadoFinal?: string; hh: number; observaciones?: string; tareasEjecutadas?: string[] };
+type LineaDisplay  = { tag: string; tipoOT: string; descripcion: string; resolucion: string; estadoFinal?: string; hh: number; observaciones?: string; tareasEjecutadas?: string[]; descripcionTrabajo?: string };
 
-function TareasEjecutadas({ tareas }: { tareas?: string[] }) {
-  if (!tareas || tareas.length === 0) return <span style={{ fontStyle: "italic", color: "#94a3b8" }}>—</span>;
-  return (
-    <ul style={{ margin: 0, paddingLeft: 14 }}>
-      {tareas.map((t, i) => <li key={i} style={{ fontSize: 8 }}>{t}</li>)}
-    </ul>
-  );
+// El checklist de tareas (tareasEjecutadas) es opcional y casi nunca se usa;
+// el detalle de trabajo real casi siempre queda en descripcionTrabajo (campo
+// obligatorio del formulario), así que se usa como respaldo para no dejar
+// la columna en blanco.
+function TareasEjecutadas({ tareas, fallback }: { tareas?: string[]; fallback?: string }) {
+  if (tareas && tareas.length > 0) {
+    return (
+      <ul style={{ margin: 0, paddingLeft: 14 }}>
+        {tareas.map((t, i) => <li key={i} style={{ fontSize: 8 }}>{t}</li>)}
+      </ul>
+    );
+  }
+  if (fallback) return <span style={{ fontSize: 9 }}>{fallback}</span>;
+  return <span style={{ fontStyle: "italic", color: "#94a3b8" }}>—</span>;
 }
 
 const ESTADO_FINAL_LABEL: Record<string, { label: string; color: string }> = {
@@ -274,7 +281,7 @@ export default function PrintClientTecnico({
                         {l.descripcion && <div>{l.descripcion}</div>}
                         {l.resolucion  && <div style={{ color: "#16a34a", fontStyle: "italic" }}>✓ {l.resolucion}<EstadoFinalBadge estadoFinal={l.estadoFinal} /></div>}
                       </td>
-                      <td colSpan={2} style={{ fontSize: 8, color: "#475569" }}><TareasEjecutadas tareas={l.tareasEjecutadas} /></td>
+                      <td colSpan={2} style={{ fontSize: 8, color: "#475569" }}><TareasEjecutadas tareas={l.tareasEjecutadas} fallback={l.descripcionTrabajo} /></td>
                     </tr>
                   )),
                 ];
@@ -299,7 +306,10 @@ export default function PrintClientTecnico({
                   <td style={{ fontSize: 8, color: "#475569" }}>
                     {planLineas?.[0]?.tareasEjecutadas && planLineas[0].tareasEjecutadas.length > 0
                       ? <TareasEjecutadas tareas={planLineas[0].tareasEjecutadas} />
-                      : <span style={{ fontStyle: ot.nota ? "normal" : "italic", color: ot.nota ? "#1e293b" : "#94a3b8", fontSize: 9 }}>{ot.nota || "—"}</span>}
+                      : (() => {
+                          const texto = ot.nota || planLineas?.[0]?.descripcionTrabajo || "";
+                          return <span style={{ fontStyle: texto ? "normal" : "italic", color: texto ? "#1e293b" : "#94a3b8", fontSize: 9 }}>{texto || "—"}</span>;
+                        })()}
                     {ot.critica   && <div style={{ fontSize: 8, color: "#dc2626", fontWeight: "bold" }}>⚠ CRÍTICA</div>}
                     {ot.pendiente && <div style={{ fontSize: 8, color: "#d97706", fontWeight: "bold" }}>→ SGTE TURNO</div>}
                   </td>
@@ -353,7 +363,7 @@ export default function PrintClientTecnico({
                         {l.resolucion  && <div style={{ color: "#16a34a", fontStyle: "italic" }}>✓ {l.resolucion}<EstadoFinalBadge estadoFinal={l.estadoFinal} /></div>}
                       </td>
                       <td colSpan={2} style={{ fontSize: 8, color: "#475569" }}>
-                        <TareasEjecutadas tareas={l.tareasEjecutadas} />
+                        <TareasEjecutadas tareas={l.tareasEjecutadas} fallback={l.descripcionTrabajo} />
                       </td>
                     </tr>
                   )),
@@ -373,7 +383,7 @@ export default function PrintClientTecnico({
                     {lineas?.[0]?.resolucion && <div style={{ color: "#16a34a", fontStyle: "italic", fontSize: 8 }}>✓ {lineas[0].resolucion}<EstadoFinalBadge estadoFinal={lineas[0].estadoFinal} /></div>}
                   </td>
                   <td style={{ fontSize: 8, color: "#475569" }}>
-                    <TareasEjecutadas tareas={lineas?.[0]?.tareasEjecutadas} />
+                    <TareasEjecutadas tareas={lineas?.[0]?.tareasEjecutadas} fallback={lineas?.[0]?.descripcionTrabajo} />
                     {ot.critica   && <div style={{ fontSize: 8, color: "#dc2626", fontWeight: "bold" }}>⚠ CRÍTICA</div>}
                     {ot.pendiente && <div style={{ fontSize: 8, color: "#d97706", fontWeight: "bold" }}>→ SGTE TURNO</div>}
                   </td>
