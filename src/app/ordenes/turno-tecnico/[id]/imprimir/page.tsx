@@ -35,14 +35,11 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
   const notasMap   = new Map(notasArr.map(n => [n.otId, n.nota]));
 
   // ── OTs registradas en el sistema ────────────────────────────────────────
-  const ordenes = (reporte.otIds ?? []).length
-    ? await prisma.ordenTrabajo.findMany({
-        where: { id: { in: reporte.otIds } },
-        include: { lineas: true, tecnicos: true },
-      })
-    : [];
-
-  const otsRegistradas: OTDisplay[] = ordenes.map(o => {
+  function mapOrdenToDisplay(o: {
+    id: string; numeroOT: string; otJdeNumero: string | null; estado: string;
+    tecnicos: { nombreCompleto: string }[];
+    lineas: { tag: string; tipoOT: string; sintoma: string | null; descripcionEquipo: string | null; descripcionTrabajo: string | null; tiempoRealHrs: number | null; observaciones: string | null; tareasEjecutadas: string[] }[];
+  }): OTDisplay {
     const linea = o.lineas[0];
     const hhTotal = o.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0);
     return {
@@ -70,7 +67,14 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
         tareasEjecutadas: l.tareasEjecutadas ?? [],
       })),
     };
-  });
+  }
+
+  const ordenes = (reporte.otIds ?? []).length
+    ? await prisma.ordenTrabajo.findMany({
+        where: { id: { in: reporte.otIds } },
+        include: { lineas: true, tecnicos: true },
+      })
+    : [];
 
   // ── OTs del plan semanal (guardadas inline en otsPlanData) ───────────────
   const otsPlanRaw = (reporte.otsPlanData ?? []) as OTPlanRaw[];
@@ -81,15 +85,15 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
     return !!o.esGuardia || String(o.tag ?? "").includes("OPEPLANT");
   }
 
-  // Para OTs OPEPLANT, buscar OTs hijas registradas por los turneros
+  // Para OTs OPEPLANT, buscar OTs hijas registradas por los turneros en este
+  // mismo día y turno — se muestran como CMR/CMP normales (una fila por
+  // hija), no fusionadas dentro de la fila de plan. Excluye las que el
+  // técnico ya seleccionó a mano (otIds) para no duplicarlas.
   const guardiaNumeros = otsPlanRaw
     .filter(o => esOpeplant(o))
     .map(o => o.numeroOT)
     .filter(Boolean);
 
-  // Acotar al día y turno de este reporte — sin esto se traen hijas de
-  // cualquier fecha/turno con el mismo N° OT, mezclando técnicos y turnos
-  // ajenos a este reporte puntual.
   const diaReporte = new Date(reporte.fecha);
   diaReporte.setHours(0, 0, 0, 0);
   const diaSiguiente = new Date(diaReporte);
@@ -102,10 +106,13 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
           parentOtId: { not: null },
           turno: reporte.turno,
           fecha: { gte: diaReporte, lt: diaSiguiente },
+          id: { notIn: reporte.otIds ?? [] },
         },
         include: { lineas: true, tecnicos: true },
       })
     : [];
+
+  const otsRegistradas: OTDisplay[] = [...ordenes, ...childOTs].map(mapOrdenToDisplay);
 
   // Para OTs del plan normales (no OPEPLANT), cargar sus líneas desde la DB
   // Preferir ordenTrabajoId (nuevo); fallback por numeroOT (reportes guardados antes del fix)
@@ -132,19 +139,13 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
     return null;
   }
 
-  // Agrupar hijas por otJdeNumero para armar la bitácora de cada OPEPLANT
-  const childByParentNum = new Map<string, typeof childOTs>();
-  for (const c of childOTs) {
-    if (!c.otJdeNumero) continue;
-    if (!childByParentNum.has(c.otJdeNumero)) childByParentNum.set(c.otJdeNumero, []);
-    childByParentNum.get(c.otJdeNumero)!.push(c);
-  }
-
   const otsPlan: OTDisplay[] = otsPlanRaw.map(o => {
-    let bitacora: BitacoraEntry[] = o.bitacora ?? [];
     let planLineas: LineaDisplay[] | undefined = undefined;
 
-    // OT plan normal: cargar lineas desde DB para mostrar resolución
+    // OT plan normal: cargar lineas desde DB para mostrar resolución.
+    // Las OPEPLANT nunca traen sus líneas por acá — si ya tienen hijas
+    // registradas, el deduplicado en PrintClientTecnico las excluye de esta
+    // sección porque el numeroOT ya aparece en otsRegistradas.
     const dbLineas = !esOpeplant(o) ? getPlanLineas(o) : null;
     if (dbLineas && dbLineas.length > 0) {
       planLineas = dbLineas.map(l => ({
@@ -157,33 +158,6 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
           observaciones: l.observaciones ?? undefined,
         tareasEjecutadas: l.tareasEjecutadas ?? [],
         }));
-    }
-
-    // Si es OPEPLANT y hay hijas registradas, construir bitácora y lineas desde las hijas
-    if (esOpeplant(o) && childByParentNum.has(o.numeroOT)) {
-      const hijas = childByParentNum.get(o.numeroOT)!;
-      bitacora = hijas.map(c => ({
-        turno: c.turno,
-        supervisor: c.tecnicos.map(t => t.nombreCompleto).join(", "),
-        nota: c.lineas[0]?.descripcionTrabajo ?? c.lineas[0]?.sintoma ?? "",
-        resolucion: (c.lineas[0] as Record<string, unknown>)?.resolucionAplicada as string ?? undefined,
-        estadoFinal: (c.lineas[0] as Record<string, unknown>)?.estadoFinal as string ?? undefined,
-        hhAtendidas: c.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0),
-        fecha: c.fecha ? new Date(c.fecha).toLocaleDateString("es-BO") : undefined,
-      }));
-      // Construir lineas desde todas las líneas de todas las hijas
-      planLineas = hijas.flatMap(c =>
-        c.lineas.map(l => ({
-          tag: l.tag,
-          tipoOT: l.tipoOT,
-          descripcion: l.sintoma ?? l.descripcionEquipo ?? l.descripcionTrabajo ?? "",
-          resolucion: (l as Record<string, unknown>).resolucionAplicada as string ?? "",
-          estadoFinal: (l as Record<string, unknown>).estadoFinal as string ?? undefined,
-          hh: l.tiempoRealHrs ?? 0,
-          observaciones: l.observaciones ?? undefined,
-        tareasEjecutadas: l.tareasEjecutadas ?? [],
-        }))
-      );
     }
 
     return {
@@ -200,7 +174,7 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
       nota: notasMap.get(o.otId ?? "") ?? "",
       esPlan: true,
       esGuardia: esOpeplant(o),
-      bitacora,
+      bitacora: o.bitacora ?? [],
       lineas: planLineas,
     };
   });
