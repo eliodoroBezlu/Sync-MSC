@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
+import { getFechaTurno } from "@/lib/turno";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -51,17 +52,6 @@ const DIA_MAP = ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"] as const;
 // G1-G4 son técnicos de mantenimiento regular (no turneros)
 const GRUPO_DIURNO   = "Diurno";
 const GRUPO_NOCTURNO = "Nocturno";
-
-function getFechaTurno() {
-  const ahora = new Date();
-  const min = ahora.getHours() * 60 + ahora.getMinutes();
-  if (min >= 18 * 60 + 30) return { fecha: ahora.toISOString().split("T")[0], turno: "Nocturno" as const };
-  if (min < 6 * 60 + 30) {
-    const ayer = new Date(ahora); ayer.setDate(ayer.getDate() - 1);
-    return { fecha: ayer.toISOString().split("T")[0], turno: "Nocturno" as const };
-  }
-  return { fecha: ahora.toISOString().split("T")[0], turno: "Diurno" as const };
-}
 
 function getWeekYear(fechaStr: string) {
   const d = new Date(fechaStr + "T12:00:00");

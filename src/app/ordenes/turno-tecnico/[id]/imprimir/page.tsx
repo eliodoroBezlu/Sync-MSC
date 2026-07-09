@@ -95,10 +95,14 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
     .map(o => o.numeroOT)
     .filter(Boolean);
 
+  // Rango de día calculado en UTC. reporte.fecha y la fecha de las hijas se
+  // guardan a partir de un string "YYYY-MM-DD" que Date interpreta como
+  // medianoche UTC; acotar con setHours/setDate (que usan la zona horaria
+  // del proceso) desplaza el límite en servidores fuera de UTC y excluye
+  // hijas de turnos Nocturno que cruzan medianoche.
   const diaReporte = new Date(reporte.fecha);
-  diaReporte.setHours(0, 0, 0, 0);
-  const diaSiguiente = new Date(diaReporte);
-  diaSiguiente.setDate(diaSiguiente.getDate() + 1);
+  const inicioDia = new Date(Date.UTC(diaReporte.getUTCFullYear(), diaReporte.getUTCMonth(), diaReporte.getUTCDate()));
+  const finDia = new Date(Date.UTC(diaReporte.getUTCFullYear(), diaReporte.getUTCMonth(), diaReporte.getUTCDate() + 1));
 
   const childOTs = guardiaNumeros.length > 0
     ? await prisma.ordenTrabajo.findMany({
@@ -106,7 +110,7 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
           otJdeNumero: { in: guardiaNumeros },
           parentOtId: { not: null },
           turno: reporte.turno,
-          fecha: { gte: diaReporte, lt: diaSiguiente },
+          fecha: { gte: inicioDia, lt: finDia },
           id: { notIn: reporte.otIds ?? [] },
         },
         include: { lineas: true, tecnicos: true },
