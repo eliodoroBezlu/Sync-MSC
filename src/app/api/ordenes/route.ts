@@ -6,6 +6,7 @@ const include = {
   tecnicos: true,
   lineas: true,
   historial: { orderBy: { fechaHora: "asc" as const } },
+  registrosDiarios: { orderBy: { fecha: "asc" as const } },
 };
 
 function serializeOT(ot: Record<string, unknown> & {
@@ -56,6 +57,7 @@ function serializeOT(ot: Record<string, unknown> & {
     registrosDiarios: (ot.registrosDiarios ?? []).map(r => ({
       _id: r.id,
       fecha: r.fecha,
+      turno: r.turno ?? null,
       tecnico: r.tecnico,
       usuarioId: r.usuarioId,
       hhTrabajadas: r.hhTrabajadas,
@@ -272,6 +274,7 @@ export async function POST(req: NextRequest) {
 
         const registroData = {
           fecha: new Date(body.fecha),
+          turno: normalizeString(body.turno),
           tecnico: body.tecnicos?.[0]?.nombreCompleto || "Técnico",
           usuarioId: body.tecnicos?.[0]?.usuarioId || null,
           hhTrabajadas: (body.lineas ?? []).reduce((sum: number, l: Record<string, unknown>) => sum + (Number(l.tiempoRealHrs) || 0), 0),
@@ -282,14 +285,14 @@ export async function POST(req: NextRequest) {
         const newRdId2 = crypto.randomUUID();
         try {
           await prisma.$executeRaw`
-            INSERT INTO "OtRegistroDiario" (id, "ordenTrabajoId", fecha, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones, adjuntos)
-            VALUES (${newRdId2}, ${existente.id}, ${registroData.fecha}, ${registroData.tecnico}, ${registroData.usuarioId},
+            INSERT INTO "OtRegistroDiario" (id, "ordenTrabajoId", fecha, turno, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones, adjuntos)
+            VALUES (${newRdId2}, ${existente.id}, ${registroData.fecha}, ${registroData.turno}, ${registroData.tecnico}, ${registroData.usuarioId},
                     ${registroData.hhTrabajadas}, ${registroData.tareasEjecutadas}::text[], ${registroData.observaciones}, '[]'::jsonb)
           `;
         } catch {
           await prisma.$executeRaw`
-            INSERT INTO "OtRegistroDiario" (id, "ordenTrabajoId", fecha, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones)
-            VALUES (${newRdId2}, ${existente.id}, ${registroData.fecha}, ${registroData.tecnico}, ${registroData.usuarioId},
+            INSERT INTO "OtRegistroDiario" (id, "ordenTrabajoId", fecha, turno, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones)
+            VALUES (${newRdId2}, ${existente.id}, ${registroData.fecha}, ${registroData.turno}, ${registroData.tecnico}, ${registroData.usuarioId},
                     ${registroData.hhTrabajadas}, ${registroData.tareasEjecutadas}::text[], ${registroData.observaciones})
           `;
         }
@@ -530,17 +533,18 @@ export async function POST(req: NextRequest) {
       const tecnicoPrimerDia: string = body.tecnicos?.[0]?.nombreCompleto ?? "Técnico";
       const usuarioPrimerDia: string | null = body.tecnicos?.[0]?.usuarioId ?? null;
       const newRdId = crypto.randomUUID();
+      const turnoPrimerDia = normalizeString(body.turno);
       // Guardar con SQL crudo para evitar error si columna adjuntos aún no existe en DB
       try {
         await prisma.$executeRaw`
-          INSERT INTO "OtRegistroDiario" (id, "ordenTrabajoId", fecha, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones, adjuntos)
-          VALUES (${newRdId}, ${ot.id}, ${rdFecha}, ${tecnicoPrimerDia}, ${usuarioPrimerDia},
+          INSERT INTO "OtRegistroDiario" (id, "ordenTrabajoId", fecha, turno, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones, adjuntos)
+          VALUES (${newRdId}, ${ot.id}, ${rdFecha}, ${turnoPrimerDia}, ${tecnicoPrimerDia}, ${usuarioPrimerDia},
                   ${hhPrimerDia}, ${tareasPrimerDia}::text[], ${obsPrimerDia}, '[]'::jsonb)
         `;
       } catch {
         await prisma.$executeRaw`
-          INSERT INTO "OtRegistroDiario" (id, "ordenTrabajoId", fecha, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones)
-          VALUES (${newRdId}, ${ot.id}, ${rdFecha}, ${tecnicoPrimerDia}, ${usuarioPrimerDia},
+          INSERT INTO "OtRegistroDiario" (id, "ordenTrabajoId", fecha, turno, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones)
+          VALUES (${newRdId}, ${ot.id}, ${rdFecha}, ${turnoPrimerDia}, ${tecnicoPrimerDia}, ${usuarioPrimerDia},
                   ${hhPrimerDia}, ${tareasPrimerDia}::text[], ${obsPrimerDia})
         `;
       }

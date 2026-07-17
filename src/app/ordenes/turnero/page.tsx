@@ -55,6 +55,16 @@ type Linea = {
   observaciones?: string;
 };
 
+type RegistroDiario = {
+  _id?: string;
+  fecha: string;
+  turno?: string | null;
+  tecnico: string;
+  hhTrabajadas: number;
+  tareasEjecutadas: string[];
+  observaciones?: string | null;
+};
+
 type OTReactiva = {
   _id: string;
   numeroOT: string;
@@ -65,7 +75,51 @@ type OTReactiva = {
   tecnicos: { nombreCompleto: string }[];
   lineas: Linea[];
   estado: string;
+  registrosDiarios?: RegistroDiario[];
 };
+
+// Un "avance" es un registro diario individual (una jornada de trabajo) de una OT.
+// Antes, OPEPLANT acumulaba todos los avances del ciclo en una sola OT madre cuya
+// fecha/turno quedaban fijos desde su creación — por eso avances posteriores en
+// otro día/turno nunca aparecían en la grilla. Ahora cada avance se posiciona
+// según su propio registro diario, no según la fecha/turno estáticos de la OT.
+type Avance = {
+  cardId: string;
+  ot: OTReactiva;
+  fecha: string;
+  turno: string;
+  tecnico: string;
+  hhTrabajadas: number;
+  tareasEjecutadas: string[];
+  observaciones?: string | null;
+};
+
+function avancesDeOT(ot: OTReactiva): Avance[] {
+  const registros = ot.registrosDiarios ?? [];
+  if (registros.length > 0) {
+    return registros.map(r => ({
+      cardId: r._id ?? `${ot._id}-${r.fecha}`,
+      ot,
+      fecha: r.fecha,
+      turno: r.turno || ot.turno,
+      tecnico: r.tecnico,
+      hhTrabajadas: r.hhTrabajadas,
+      tareasEjecutadas: r.tareasEjecutadas,
+      observaciones: r.observaciones,
+    }));
+  }
+  // OT legacy sin registrosDiarios: usar los datos estáticos de la OT como único avance
+  return [{
+    cardId: ot._id,
+    ot,
+    fecha: ot.fecha,
+    turno: ot.turno,
+    tecnico: ot.tecnicos.map(t => t.nombreCompleto).join(" · ") || "—",
+    hhTrabajadas: ot.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0),
+    tareasEjecutadas: [],
+    observaciones: null,
+  }];
+}
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -278,23 +332,24 @@ export default function TurneroPage() {
 
   const grupos = ["Diurno", "Nocturno"] as const;
 
-  // OTs reactivas filtradas por área y turno
-  function otsDeAreaGrupo(areaCodigo: string, grupo: string): OTReactiva[] {
-    return otsReactivas.filter(ot =>
-      ot.turno === grupo && (!ot.areaCodigo || ot.areaCodigo === areaCodigo)
+  const avances = otsReactivas.flatMap(avancesDeOT);
+
+  // Avances filtrados por área y turno (cada avance se posiciona por su propio día/turno)
+  function avancesDeAreaGrupo(areaCodigo: string, grupo: string): Avance[] {
+    return avances.filter(a =>
+      a.turno === grupo && (!a.ot.areaCodigo || a.ot.areaCodigo === areaCodigo)
     );
   }
 
-  function otsPorAreaDia(areaCodigo: string, grupo: string, diaAbrev: string): OTReactiva[] {
+  function avancesPorAreaDia(areaCodigo: string, grupo: string, diaAbrev: string): Avance[] {
     const fechaStr = isoDateStr(fechasDias[diaAbrev]);
-    return otsDeAreaGrupo(areaCodigo, grupo).filter(ot => ot.fecha.startsWith(fechaStr));
+    return avancesDeAreaGrupo(areaCodigo, grupo).filter(a => a.fecha.startsWith(fechaStr));
   }
 
   // KPIs globales
-  const totalOTs = otsReactivas.length;
-  const totalHH  = otsReactivas.reduce((s, ot) =>
-    s + ot.lineas.reduce((a, l) => a + (l.tiempoRealHrs ?? 0), 0), 0);
-  const diasConOTs = new Set(otsReactivas.map(ot => ot.fecha.slice(0, 10))).size;
+  const totalAvances = avances.length;
+  const totalHH  = avances.reduce((s, a) => s + a.hhTrabajadas, 0);
+  const diasConOTs = new Set(avances.map(a => a.fecha.slice(0, 10))).size;
 
   if (!user) return null;
 
@@ -339,7 +394,7 @@ export default function TurneroPage() {
         {/* KPIs */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
           {[
-            { val: totalOTs,      label: "OTs reactivas registradas", color: "#2563eb" },
+            { val: totalAvances,  label: "Avances reactivos registrados", color: "#2563eb" },
             { val: Math.round(totalHH * 10) / 10, label: "HH atendidas total", color: "#d97706" },
             { val: diasConOTs,    label: "Días con actividad",        color: "#16a34a" },
           ].map(k => (
@@ -363,8 +418,8 @@ export default function TurneroPage() {
             {areasUnicas.map(area => {
               const opepDeArea = opeplantEntradas.filter(e => e.areaCodigo === area.areaCodigo);
               if (opepDeArea.length === 0) return null;
-              const otsArea = otsReactivas.filter(ot => !ot.areaCodigo || ot.areaCodigo === area.areaCodigo);
-              const hhArea = otsArea.reduce((s, ot) => s + ot.lineas.reduce((a, l) => a + (l.tiempoRealHrs ?? 0), 0), 0);
+              const avancesArea = avances.filter(a => !a.ot.areaCodigo || a.ot.areaCodigo === area.areaCodigo);
+              const hhArea = avancesArea.reduce((s, a) => s + a.hhTrabajadas, 0);
 
               return (
                 <div key={area.areaCodigo}>
@@ -376,7 +431,7 @@ export default function TurneroPage() {
                         {area.disciplina} · Área {area.areaCodigo}
                       </span>
                       <span style={{ fontSize: 11, color: "#d97706", fontWeight: 700 }}>
-                        {otsArea.length} OTs · {Math.round(hhArea * 10) / 10}HH semana
+                        {avancesArea.length} avances · {Math.round(hhArea * 10) / 10}HH semana
                       </span>
                       <div style={{ height: 2, flex: 1, background: "#e2e8f0" }} />
                     </div>
@@ -384,8 +439,8 @@ export default function TurneroPage() {
 
                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                   {grupos.map(grupo => {
-                    const otsGrupo = otsDeAreaGrupo(area.areaCodigo, grupo);
-                    const hhGrupo  = otsGrupo.reduce((s, ot) => s + ot.lineas.reduce((a, l) => a + (l.tiempoRealHrs ?? 0), 0), 0);
+                    const avancesGrupo = avancesDeAreaGrupo(area.areaCodigo, grupo);
+                    const hhGrupo  = avancesGrupo.reduce((s, a) => s + a.hhTrabajadas, 0);
                     const opepGrupo = opepDeArea.filter(e => e.grupo === grupo);
                     if (opepGrupo.length === 0) return null;
 
@@ -409,16 +464,16 @@ export default function TurneroPage() {
                             </span>
                           </div>
                           <span style={{ fontSize: 12, fontWeight: 700 }}>
-                            {otsGrupo.length} OT{otsGrupo.length !== 1 ? "s" : ""} · {Math.round(hhGrupo * 10) / 10}HH
+                            {avancesGrupo.length} avance{avancesGrupo.length !== 1 ? "s" : ""} · {Math.round(hhGrupo * 10) / 10}HH
                           </span>
                         </div>
 
                         {/* Días de la semana */}
                         <div style={{ display: "flex", flexDirection: "column" }}>
                           {DIAS_SEMANA.map((dia, idx) => {
-                            const otsDelDia = otsPorAreaDia(area.areaCodigo, grupo, dia);
+                            const avancesDelDia = avancesPorAreaDia(area.areaCodigo, grupo, dia);
                             const fecha = fechasDias[dia];
-                            const hhDia = otsDelDia.reduce((s, ot) => s + ot.lineas.reduce((a, l) => a + (l.tiempoRealHrs ?? 0), 0), 0);
+                            const hhDia = avancesDelDia.reduce((s, a) => s + a.hhTrabajadas, 0);
 
                       return (
                         <div key={dia} style={{ borderTop: idx > 0 ? "1px solid #f1f5f9" : undefined }}>
@@ -427,31 +482,31 @@ export default function TurneroPage() {
                             <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
                               {DIAS_FULL[dia]} {fecha.toLocaleDateString("es-BO", { day: "2-digit", month: "short", timeZone: "UTC" })}
                             </span>
-                            {otsDelDia.length > 0 ? (
+                            {avancesDelDia.length > 0 ? (
                               <span style={{ fontSize: 11, color: "#d97706", fontWeight: 700 }}>
-                                {otsDelDia.length} OT{otsDelDia.length !== 1 ? "s" : ""} · {Math.round(hhDia * 10) / 10}HH
+                                {avancesDelDia.length} avance{avancesDelDia.length !== 1 ? "s" : ""} · {Math.round(hhDia * 10) / 10}HH
                               </span>
                             ) : (
                               <span style={{ fontSize: 11, color: "#cbd5e1", fontStyle: "italic" }}>Sin actividad</span>
                             )}
                           </div>
 
-                          {/* Lista de OTs reactivas del día */}
-                          {otsDelDia.length > 0 && (
+                          {/* Lista de avances del día */}
+                          {avancesDelDia.length > 0 && (
                             <div style={{ padding: "8px 18px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-                              {otsDelDia.map(ot => {
+                              {avancesDelDia.map(a => {
+                                const ot = a.ot;
                                 const estadoColor = ESTADO_COLOR[ot.estado] ?? "#64748b";
-                                const hhOT = ot.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0);
                                 return (
-                                  <div key={ot._id} style={{ background: "#fafafa", borderRadius: 10, border: "1px solid #e2e8f0", padding: "10px 14px", borderLeft: "3px solid #d97706" }}>
+                                  <div key={a.cardId} style={{ background: "#fafafa", borderRadius: 10, border: "1px solid #e2e8f0", padding: "10px 14px", borderLeft: "3px solid #d97706" }}>
                                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
                                       <span style={{ fontWeight: 800, fontSize: 13, fontFamily: "monospace", color: "#0f2847" }}>{ot.otJdeNumero ? `OT ${ot.otJdeNumero}` : `#${ot.numeroOT}`}</span>
                                       <span style={S.badge(estadoColor)}>{ESTADO_LABEL[ot.estado] ?? ot.estado}</span>
                                       {ot.lineas.map((l, i) => (
                                         <span key={i} style={S.badge(TIPO_COLOR[l.tipoOT] ?? "#64748b")}>{l.tipoOT}</span>
                                       ))}
-                                      {hhOT > 0 && (
-                                        <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: "#d97706" }}>{Math.round(hhOT * 10) / 10}HH</span>
+                                      {a.hhTrabajadas > 0 && (
+                                        <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: "#d97706" }}>{Math.round(a.hhTrabajadas * 10) / 10}HH</span>
                                       )}
                                       {esSup && (
                                         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
@@ -473,16 +528,16 @@ export default function TurneroPage() {
                                       )}
                                     </div>
                                     <p style={{ fontSize: 12, color: "#475569", marginBottom: 3 }}>
-                                      {ot.tecnicos.map(t => t.nombreCompleto).join(" · ")}
+                                      {a.tecnico}
                                     </p>
-                                    {ot.lineas.map((l, i) => (
-                                      <div key={i} style={{ marginTop: 3 }}>
-                                        <span style={{ fontSize: 11, fontWeight: 700, color: "#1d4ed8", fontFamily: "monospace" }}>{l.tag}</span>
-                                        {l.descripcionEquipo && <span style={{ fontSize: 11, color: "#64748b", marginLeft: 6 }}>{l.descripcionEquipo}</span>}
-                                        {l.sintoma && <p style={{ fontSize: 11, color: "#94a3b8", fontStyle: "italic", marginTop: 1 }}>{l.sintoma}</p>}
-                                        {l.resolucionAplicada && <p style={{ fontSize: 11, color: "#16a34a", marginTop: 1 }}>✓ {l.resolucionAplicada}</p>}
-                                      </div>
-                                    ))}
+                                    {a.tareasEjecutadas.length > 0 && (
+                                      <ul style={{ margin: "3px 0 0", paddingLeft: 16, fontSize: 11, color: "#334155" }}>
+                                        {a.tareasEjecutadas.map((t, i) => <li key={i}>{t}</li>)}
+                                      </ul>
+                                    )}
+                                    {a.observaciones && (
+                                      <p style={{ fontSize: 11, color: "#7c3aed", marginTop: 3 }}>{a.observaciones}</p>
+                                    )}
                                   </div>
                                 );
                               })}
@@ -496,7 +551,7 @@ export default function TurneroPage() {
                         {/* Footer del grupo */}
                         <div style={{ background: "#f1f5f9", padding: "10px 18px", display: "flex", justifyContent: "flex-end", gap: 24 }}>
                           <span style={{ fontSize: 12, color: "#64748b" }}>
-                            Total semana: <strong>{otsGrupo.length} OT{otsGrupo.length !== 1 ? "s" : ""}</strong>
+                            Total semana: <strong>{avancesGrupo.length} avance{avancesGrupo.length !== 1 ? "s" : ""}</strong>
                           </span>
                           <span style={{ fontSize: 12, color: "#d97706", fontWeight: 700 }}>
                             {Math.round(hhGrupo * 10) / 10} HH acumuladas

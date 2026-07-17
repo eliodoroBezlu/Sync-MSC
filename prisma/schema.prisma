@@ -189,6 +189,7 @@ model OtRegistroDiario {
   id             String       @id @default(cuid())
   ordenTrabajoId String
   fecha          DateTime
+  turno          String?
   tecnico        String
   usuarioId      String?
   hhTrabajadas   Float

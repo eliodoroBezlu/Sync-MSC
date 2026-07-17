@@ -47,7 +47,7 @@ function serializeOT(ot: Record<string, unknown> & {
       nombreUsuario: h.nombreUsuario, cambio: h.cambio,
     })),
     registrosDiarios: (ot.registrosDiarios ?? []).map(r => ({
-      _id: r.id, fecha: r.fecha, tecnico: r.tecnico, usuarioId: r.usuarioId,
+      _id: r.id, fecha: r.fecha, turno: r.turno ?? null, tecnico: r.tecnico, usuarioId: r.usuarioId,
       hhTrabajadas: r.hhTrabajadas, tareasEjecutadas: r.tareas, observaciones: r.observaciones,
       adjuntos: (r.adjuntos as unknown[] | null) ?? [],
     })),
@@ -74,14 +74,14 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   // reintenta sin registrosDiarios para no bloquear el resto de la app.
   type OTResult = Awaited<ReturnType<typeof prisma.ordenTrabajo.findUnique<{ where: { id: string }; include: typeof include }>>> ;
   let ot: OTResult = await prisma.ordenTrabajo.findUnique({ where: { id }, include }).catch(() => null);
-  let registrosDiariosRaw: { id: string; fecha: Date; tecnico: string; usuarioId: string | null; hhTrabajadas: number; tareas: string[]; observaciones: string | null }[] = [];
+  let registrosDiariosRaw: { id: string; fecha: Date; turno: string | null; tecnico: string; usuarioId: string | null; hhTrabajadas: number; tareas: string[]; observaciones: string | null }[] = [];
   if (ot === null) {
     const includeSinDiarios = { tecnicos: true, lineas: true, historial: { orderBy: { fechaHora: "asc" as const } } };
     const otFallback = await prisma.ordenTrabajo.findUnique({ where: { id }, include: includeSinDiarios }).catch(() => null);
     ot = otFallback as unknown as OTResult;
     // Leer registros diarios con SQL crudo (columna adjuntos aún no existe en DB)
     registrosDiariosRaw = await prisma.$queryRaw<typeof registrosDiariosRaw>`
-      SELECT id, fecha, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones
+      SELECT id, fecha, turno, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones
       FROM "OtRegistroDiario"
       WHERE "ordenTrabajoId" = ${id}
       ORDER BY fecha ASC
@@ -95,6 +95,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     serialized.registrosDiarios = registrosDiariosRaw.map(r => ({
       _id: r.id,
       fecha: r.fecha,
+      turno: r.turno,
       tecnico: r.tecnico,
       usuarioId: r.usuarioId,
       hhTrabajadas: r.hhTrabajadas,
@@ -116,11 +117,12 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
       .map(h => ({
         _id: h.id,
         fecha: h.fecha,
+        turno: h.turno ?? null,
         tecnico: h.tecnicos.map(t => t.nombreCompleto).join(", ") || "—",
         usuarioId: null,
         hhTrabajadas: h.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0),
         tareasEjecutadas: [] as string[],
-        observaciones: h.turno ?? null,
+        observaciones: null as string | null,
         adjuntos: [] as unknown[],
       }));
     if (avances.length > 0) serialized.registrosDiarios = avances;
@@ -234,12 +236,14 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       const tareas = registroDiario.tareasEjecutadas ?? [];
       const observaciones = registroDiario.observaciones ?? null;
       const hhTrabajadas: number = registroDiario.hhTrabajadas;
+      const rdTurno: string | null = registroDiario.turno ?? turno ?? null;
       if (existingId) {
         // Intentar update con adjuntos; si falla (columna no existe) actualizar sin ella
         try {
           await prisma.$executeRaw`
             UPDATE "OtRegistroDiario"
             SET fecha = ${rdFecha},
+                turno = ${rdTurno},
                 "hhTrabajadas" = ${hhTrabajadas},
                 tareas = ${tareas}::text[],
                 observaciones = ${observaciones},
@@ -250,6 +254,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
           await prisma.$executeRaw`
             UPDATE "OtRegistroDiario"
             SET fecha = ${rdFecha},
+                turno = ${rdTurno},
                 "hhTrabajadas" = ${hhTrabajadas},
                 tareas = ${tareas}::text[],
                 observaciones = ${observaciones}
@@ -261,15 +266,15 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
         // Intentar insert con adjuntos; si falla (columna no existe) insertar sin ella
         try {
           await prisma.$executeRaw`
-            INSERT INTO "OtRegistroDiario" (id, "ordenTrabajoId", fecha, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones, adjuntos)
-            VALUES (${newId}, ${id}, ${rdFecha}, ${registroDiario.tecnico}, ${rdUsuarioId},
+            INSERT INTO "OtRegistroDiario" (id, "ordenTrabajoId", fecha, turno, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones, adjuntos)
+            VALUES (${newId}, ${id}, ${rdFecha}, ${rdTurno}, ${registroDiario.tecnico}, ${rdUsuarioId},
                     ${hhTrabajadas}, ${tareas}::text[], ${observaciones},
                     ${JSON.stringify(registroDiario.adjuntos ?? [])}::jsonb)
           `;
         } catch {
           await prisma.$executeRaw`
-            INSERT INTO "OtRegistroDiario" (id, "ordenTrabajoId", fecha, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones)
-            VALUES (${newId}, ${id}, ${rdFecha}, ${registroDiario.tecnico}, ${rdUsuarioId},
+            INSERT INTO "OtRegistroDiario" (id, "ordenTrabajoId", fecha, turno, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones)
+            VALUES (${newId}, ${id}, ${rdFecha}, ${rdTurno}, ${registroDiario.tecnico}, ${rdUsuarioId},
                     ${hhTrabajadas}, ${tareas}::text[], ${observaciones})
           `;
         }
@@ -303,14 +308,14 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     let ot: OTUpdateResult = await prisma.ordenTrabajo.update({
       where: { id }, data: updateData, include,
     }).catch(() => null as unknown as OTUpdateResult);
-    let patchRegistrosDiariosRaw: { id: string; fecha: Date; tecnico: string; usuarioId: string | null; hhTrabajadas: number; tareas: string[]; observaciones: string | null }[] = [];
+    let patchRegistrosDiariosRaw: { id: string; fecha: Date; turno: string | null; tecnico: string; usuarioId: string | null; hhTrabajadas: number; tareas: string[]; observaciones: string | null }[] = [];
     if (!ot) {
       ot = await prisma.ordenTrabajo.update({
         where: { id }, data: updateData, include: includeSinDiarios,
       }) as unknown as OTUpdateResult;
       // Columna adjuntos aún no existe: recuperar registros diarios con SQL crudo
       patchRegistrosDiariosRaw = await prisma.$queryRaw<typeof patchRegistrosDiariosRaw>`
-        SELECT id, fecha, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones
+        SELECT id, fecha, turno, tecnico, "usuarioId", "hhTrabajadas", tareas, observaciones
         FROM "OtRegistroDiario"
         WHERE "ordenTrabajoId" = ${id}
         ORDER BY fecha ASC
@@ -357,7 +362,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     const serializedPatch = serializeOT(ot as Parameters<typeof serializeOT>[0]);
     if (patchRegistrosDiariosRaw.length > 0) {
       serializedPatch.registrosDiarios = patchRegistrosDiariosRaw.map(r => ({
-        _id: r.id, fecha: r.fecha, tecnico: r.tecnico, usuarioId: r.usuarioId,
+        _id: r.id, fecha: r.fecha, turno: r.turno, tecnico: r.tecnico, usuarioId: r.usuarioId,
         hhTrabajadas: r.hhTrabajadas, tareasEjecutadas: r.tareas,
         observaciones: r.observaciones, adjuntos: [],
       }));
