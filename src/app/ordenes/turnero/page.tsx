@@ -52,6 +52,7 @@ type Linea = {
   resolucionAplicada?: string;
   tiempoRealHrs?: number;
   descripcionEquipo?: string;
+  descripcionTrabajo?: string;
   observaciones?: string;
 };
 
@@ -157,7 +158,7 @@ const S = {
 
 type EditForm = {
   estado: string;
-  lineas: { tag: string; descripcionEquipo: string; tipoOT: string; sintoma: string; resolucionAplicada: string; tiempoRealHrs: string; observaciones: string }[];
+  lineas: { tag: string; descripcionEquipo: string; tipoOT: string; sintoma: string; resolucionAplicada: string; tiempoRealHrs: string; descripcionTrabajo: string; observaciones: string }[];
 };
 
 export default function TurneroPage() {
@@ -245,6 +246,7 @@ export default function TurneroPage() {
         sintoma: l.sintoma ?? "",
         resolucionAplicada: l.resolucionAplicada ?? "",
         tiempoRealHrs: String(l.tiempoRealHrs ?? ""),
+        descripcionTrabajo: l.descripcionTrabajo ?? "",
         observaciones: l.observaciones ?? "",
       })),
     });
@@ -503,7 +505,7 @@ export default function TurneroPage() {
                                       <span style={{ fontWeight: 800, fontSize: 13, fontFamily: "monospace", color: "#0f2847" }}>{ot.otJdeNumero ? `OT ${ot.otJdeNumero}` : `#${ot.numeroOT}`}</span>
                                       <span style={S.badge(estadoColor)}>{ESTADO_LABEL[ot.estado] ?? ot.estado}</span>
                                       {ot.lineas.map((l, i) => (
-                                        <span key={i} style={S.badge(TIPO_COLOR[l.tipoOT] ?? "#64748b")}>{l.tipoOT}</span>
+                                        <span key={i} style={S.badge(TIPO_COLOR[l.tipoOT] ?? "#64748b")}>{l.tag} · {l.tipoOT}</span>
                                       ))}
                                       {a.hhTrabajadas > 0 && (
                                         <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: "#d97706" }}>{Math.round(a.hhTrabajadas * 10) / 10}HH</span>
@@ -530,6 +532,22 @@ export default function TurneroPage() {
                                     <p style={{ fontSize: 12, color: "#475569", marginBottom: 3 }}>
                                       {a.tecnico}
                                     </p>
+                                    {(!ot.registrosDiarios || ot.registrosDiarios.length === 0) && ot.lineas.length > 0 && (
+                                      <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 2 }}>
+                                        {ot.lineas.map((l, i) => (
+                                          (l.sintoma || l.descripcionTrabajo || l.resolucionAplicada) && (
+                                            <div key={i} style={{ fontSize: 11, color: "#334155" }}>
+                                              {ot.lineas.length > 1 && (
+                                                <span style={{ fontWeight: 700, color: "#1d4ed8", fontFamily: "monospace" }}>{l.tag}: </span>
+                                              )}
+                                              {l.sintoma && <span>{l.sintoma}. </span>}
+                                              {l.descripcionTrabajo && <span>{l.descripcionTrabajo}</span>}
+                                              {l.resolucionAplicada && <span style={{ color: "#16a34a" }}> ✓ {l.resolucionAplicada}</span>}
+                                            </div>
+                                          )
+                                        ))}
+                                      </div>
+                                    )}
                                     {a.tareasEjecutadas.length > 0 && (
                                       <ul style={{ margin: "3px 0 0", paddingLeft: 16, fontSize: 11, color: "#334155" }}>
                                         {a.tareasEjecutadas.map((t, i) => <li key={i}>{t}</li>)}
@@ -650,6 +668,22 @@ export default function TurneroPage() {
               </div>
 
               <div style={{ marginBottom: 10 }}>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#1d4ed8", textTransform: "uppercase", marginBottom: 4 }}>Detalle del trabajo realizado</label>
+                <textarea
+                  value={l.descripcionTrabajo}
+                  onChange={e => setEditForm(f => {
+                    if (!f) return f;
+                    const lineas = [...f.lineas];
+                    lineas[i] = { ...lineas[i], descripcionTrabajo: e.target.value };
+                    return { ...f, lineas };
+                  })}
+                  rows={2}
+                  placeholder="Lo que el técnico registró como trabajo ejecutado…"
+                  style={{ width: "100%", border: "1px solid #cbd5e1", borderRadius: 8, padding: "7px 10px", fontSize: 13, resize: "vertical", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div>
                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", marginBottom: 4 }}>Resolución aplicada</label>
                 <textarea
                   value={l.resolucionAplicada}
@@ -661,22 +695,6 @@ export default function TurneroPage() {
                   })}
                   rows={2}
                   style={{ width: "100%", border: "1px solid #cbd5e1", borderRadius: 8, padding: "7px 10px", fontSize: 13, resize: "vertical", boxSizing: "border-box" }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#7c3aed", textTransform: "uppercase", marginBottom: 4 }}>Observaciones generales</label>
-                <textarea
-                  value={l.observaciones}
-                  onChange={e => setEditForm(f => {
-                    if (!f) return f;
-                    const lineas = [...f.lineas];
-                    lineas[i] = { ...lineas[i], observaciones: e.target.value };
-                    return { ...f, lineas };
-                  })}
-                  rows={2}
-                  placeholder="Materiales usados, pendientes, notas adicionales…"
-                  style={{ width: "100%", border: "1px solid #ddd6fe", borderRadius: 8, padding: "7px 10px", fontSize: 13, resize: "vertical", boxSizing: "border-box" }}
                 />
               </div>
             </div>
