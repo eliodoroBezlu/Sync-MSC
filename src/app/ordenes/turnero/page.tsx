@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
+import TecnicosPanel from "@/components/TecnicosPanel";
 
 
 // ─── Helpers de semana ISO ────────────────────────────────────────────────────
@@ -158,7 +159,7 @@ const S = {
 
 type EditForm = {
   estado: string;
-  tecnicos: { usuarioId?: string; nombreCompleto: string }[];
+  tecnicos: { usuarioId: string; nombreCompleto: string }[];
   lineas: { tag: string; descripcionEquipo: string; tipoOT: string; sintoma: string; resolucionAplicada: string; tiempoRealHrs: string; descripcionTrabajo: string; observaciones: string }[];
 };
 
@@ -240,7 +241,7 @@ export default function TurneroPage() {
     setEditingOt(ot);
     setEditForm({
       estado: ot.estado,
-      tecnicos: ot.tecnicos.map(t => ({ usuarioId: t.usuarioId, nombreCompleto: t.nombreCompleto })),
+      tecnicos: ot.tecnicos.map(t => ({ usuarioId: t.usuarioId ?? "", nombreCompleto: t.nombreCompleto })),
       lineas: ot.lineas.map(l => ({
         tag: l.tag,
         descripcionEquipo: l.descripcionEquipo ?? "",
@@ -617,22 +618,11 @@ export default function TurneroPage() {
             Editar OT {editingOt.otJdeNumero ? `OPEPLANT ${editingOt.otJdeNumero}` : `#${editingOt.numeroOT}`}
           </div>
           {esAdmin ? (
-            <div style={{ marginBottom: 18 }}>
-              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: 6 }}>Técnicos</label>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {editForm.tecnicos.map((t, i) => (
-                  <input
-                    key={i}
-                    value={t.nombreCompleto}
-                    onChange={e => setEditForm(f => f ? {
-                      ...f,
-                      tecnicos: f.tecnicos.map((tt, ii) => ii === i ? { ...tt, nombreCompleto: e.target.value } : tt),
-                    } : f)}
-                    style={{ width: "100%", border: "1px solid #cbd5e1", borderRadius: 8, padding: "6px 10px", fontSize: 13, color: "#1e293b" }}
-                  />
-                ))}
-              </div>
-            </div>
+            <TecnicosPanel
+              areaCodigo={editingOt.areaCodigo}
+              tecnicos={editForm.tecnicos}
+              onChange={tecnicos => setEditForm(f => f ? { ...f, tecnicos } : f)}
+            />
           ) : (
             <p style={{ fontSize: 12, color: "#94a3b8", marginBottom: 18 }}>
               {editingOt.tecnicos.map(t => t.nombreCompleto).join(" · ")}

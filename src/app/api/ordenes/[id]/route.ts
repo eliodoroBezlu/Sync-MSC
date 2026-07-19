@@ -150,7 +150,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
         await prisma.otTecnico.createMany({
           data: tecnicos.map((t: { usuarioId?: string; nombreCompleto: string }) => ({
             ordenTrabajoId: id,
-            usuarioId: t.usuarioId ?? null,
+            usuarioId: t.usuarioId || null,
             nombreCompleto: t.nombreCompleto,
           })),
         });
