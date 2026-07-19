@@ -73,7 +73,7 @@ type OTReactiva = {
   turno: string;
   areaCodigo: string;
   otJdeNumero?: string;
-  tecnicos: { nombreCompleto: string }[];
+  tecnicos: { usuarioId?: string; nombreCompleto: string }[];
   lineas: Linea[];
   estado: string;
   registrosDiarios?: RegistroDiario[];
@@ -158,6 +158,7 @@ const S = {
 
 type EditForm = {
   estado: string;
+  tecnicos: { usuarioId?: string; nombreCompleto: string }[];
   lineas: { tag: string; descripcionEquipo: string; tipoOT: string; sintoma: string; resolucionAplicada: string; tiempoRealHrs: string; descripcionTrabajo: string; observaciones: string }[];
 };
 
@@ -239,6 +240,7 @@ export default function TurneroPage() {
     setEditingOt(ot);
     setEditForm({
       estado: ot.estado,
+      tecnicos: ot.tecnicos.map(t => ({ usuarioId: t.usuarioId, nombreCompleto: t.nombreCompleto })),
       lineas: ot.lineas.map(l => ({
         tag: l.tag,
         descripcionEquipo: l.descripcionEquipo ?? "",
@@ -262,6 +264,7 @@ export default function TurneroPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           estado: editForm.estado,
+          tecnicos: editForm.tecnicos,
           lineas: editForm.lineas.map(l => ({
             ...l,
             tiempoRealHrs: l.tiempoRealHrs ? parseFloat(l.tiempoRealHrs) : null,
@@ -281,6 +284,7 @@ export default function TurneroPage() {
         return {
           ...o,
           estado: editForm.estado,
+          tecnicos: editForm.tecnicos,
           lineas: editForm.lineas.map(l => ({
             ...l,
             tiempoRealHrs: l.tiempoRealHrs ? parseFloat(l.tiempoRealHrs) : undefined,
@@ -612,9 +616,28 @@ export default function TurneroPage() {
           <div style={{ fontWeight: 800, fontSize: 16, color: "#0f2847", marginBottom: 4 }}>
             Editar OT {editingOt.otJdeNumero ? `OPEPLANT ${editingOt.otJdeNumero}` : `#${editingOt.numeroOT}`}
           </div>
-          <p style={{ fontSize: 12, color: "#94a3b8", marginBottom: 18 }}>
-            {editingOt.tecnicos.map(t => t.nombreCompleto).join(" · ")}
-          </p>
+          {esAdmin ? (
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: 6 }}>Técnicos</label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {editForm.tecnicos.map((t, i) => (
+                  <input
+                    key={i}
+                    value={t.nombreCompleto}
+                    onChange={e => setEditForm(f => f ? {
+                      ...f,
+                      tecnicos: f.tecnicos.map((tt, ii) => ii === i ? { ...tt, nombreCompleto: e.target.value } : tt),
+                    } : f)}
+                    style={{ width: "100%", border: "1px solid #cbd5e1", borderRadius: 8, padding: "6px 10px", fontSize: 13, color: "#1e293b" }}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p style={{ fontSize: 12, color: "#94a3b8", marginBottom: 18 }}>
+              {editingOt.tecnicos.map(t => t.nombreCompleto).join(" · ")}
+            </p>
+          )}
 
           {/* Estado */}
           <div style={{ marginBottom: 16 }}>
