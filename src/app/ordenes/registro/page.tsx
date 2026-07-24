@@ -1618,6 +1618,7 @@ export default function RegistroOTPage() {
     if (!form.turno) e.turno = "Seleccione el turno";
     if (!form.areaCodigo) e.areaCodigo = "Seleccione el área";
     if (form.tecnicos.length === 0) e.tecnicos = "Seleccione al menos un técnico";
+    if (!form.origenPlan && !form.otJdeNumero.trim()) e.otJdeNumero = "Ingrese el N° de OT del JDE";
     setErrs(e);
     return Object.keys(e).length === 0;
   }
@@ -2189,7 +2190,7 @@ export default function RegistroOTPage() {
                     </div>
                     {!form.origenPlan && (
                       <div>
-                        <label style={S.label}>N° OT <span style={{ color: "#94a3b8", fontWeight: 400 }}>(opc.)</span></label>
+                        <label style={S.label}>N° OT JDE</label>
                         <input
                           type="text"
                           value={form.otJdeNumero}
@@ -2200,8 +2201,9 @@ export default function RegistroOTPage() {
                             detectarOtReactivaAbierta(val);
                           }}
                           placeholder="100234"
-                          style={{ ...S.input, fontFamily: "monospace", letterSpacing: "0.05em", width: "100%", borderColor: otMadreInfo ? "#d97706" : otReactivaAbierta ? "#2563eb" : undefined }}
+                          style={{ ...S.input, fontFamily: "monospace", letterSpacing: "0.05em", width: "100%", borderColor: errs.otJdeNumero ? "#dc2626" : otMadreInfo ? "#d97706" : otReactivaAbierta ? "#2563eb" : undefined }}
                         />
+                        {errs.otJdeNumero && <p style={S.err}>{errs.otJdeNumero}</p>}
                       </div>
                     )}
                   </div>

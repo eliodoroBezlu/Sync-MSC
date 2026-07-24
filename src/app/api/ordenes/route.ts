@@ -236,6 +236,13 @@ export async function POST(req: NextRequest) {
     const otJdeNumero = normalizeString(body.otJdeNumero);
     const otJdeDia = normalizeString(body.otJdeDia);
 
+    if (!esDePlan && !otJdeNumero) {
+      return NextResponse.json(
+        { ok: false, error: "Ingrese el N° de OT del JDE para registrar una OT reactiva." },
+        { status: 400 }
+      );
+    }
+
     if (areaCodigo) {
       await prisma.area.upsert({
         where: { codigo: areaCodigo },
