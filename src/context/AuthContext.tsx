@@ -1,7 +1,13 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { SessionPayload } from "@/lib/auth";
+
+// Rutas accesibles sin sesión — no deben disparar el redirect automático a /login.
+function esRutaPublica(pathname: string): boolean {
+  return pathname === "/login" || pathname.startsWith("/pub/");
+}
 
 interface AuthContextValue {
   user: SessionPayload | null;
@@ -20,13 +26,30 @@ const AuthContext = createContext<AuthContextValue>({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionPayload | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const pathname = usePathname();
+  // Ref en vez de leer `pathname` directo: los listeners de focus/visibilitychange
+  // se registran una sola vez (efecto con deps []), así que su closure quedaría
+  // congelada en la ruta de montaje si no se lee siempre el valor actual por ref.
+  const pathnameRef = useRef(pathname);
+  useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
 
   async function refetch() {
     try {
       const res = await fetch("/api/auth/me");
       const data = await res.json();
-      setUser(data.ok ? data.user : null);
+      if (data.ok) {
+        setUser(data.user);
+      } else {
+        setUser(null);
+        // Sesión expirada/inválida: sacar al usuario directo al login en vez de
+        // dejarlo atrapado dentro de una pantalla protegida sin datos.
+        if (!esRutaPublica(pathnameRef.current)) {
+          router.replace("/login");
+        }
+      }
     } catch {
+      // Error de red — no necesariamente significa sesión inválida, no redirigir.
       setUser(null);
     } finally {
       setLoading(false);

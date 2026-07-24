@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
 import { mapEstadoAlPlan } from "@/lib/otEstado";
+import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -132,10 +133,20 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 }
 
 export async function PATCH(req: NextRequest, { params }: Ctx) {
+  const token = req.cookies.get(COOKIE_NAME)?.value;
+  const session = token ? verifyToken(token) : null;
+  if (!session) {
+    return Response.json({ ok: false, error: "No autenticado" }, { status: 401 });
+  }
+
   try {
     const { id } = await params;
     const body = await req.json();
-    const { estado, datosSupervision, cambio, cambios, lineas, tecnicos, turno, fecha, registroDiario, usuarioId, nombreUsuario, otJdeNumero } = body;
+    const { estado, datosSupervision, cambio, cambios, lineas, tecnicos, turno, fecha, registroDiario, otJdeNumero } = body;
+    // usuarioId/nombreUsuario para historial y firma de supervisor vienen de la
+    // sesión verificada, no del body — evita que un cliente falsifique la autoría.
+    const usuarioId = session.id;
+    const nombreUsuario = session.nombre;
 
     const updateData: Record<string, unknown> = {};
     if (estado) updateData.estado = estado;
