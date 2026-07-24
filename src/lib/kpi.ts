@@ -58,7 +58,7 @@ export type ReactivoResult = {
 };
 
 type LineaHH = { tiempoRealHrs: number | null; tipoOT: string; tag: string; descripcionEquipo: string };
-type OtConLineas = { origenPlan: boolean; areaCodigo: string; lineas: LineaHH[] };
+type OtConLineas = { origenPlan: boolean; parentOtId: string | null; areaCodigo: string; lineas: LineaHH[] };
 
 async function fetchOtsConLineas(scope: AreaScope, periodo: Periodo): Promise<OtConLineas[]> {
   if (!scope.allAreas && scope.areas.length === 0) return [];
@@ -69,10 +69,20 @@ async function fetchOtsConLineas(scope: AreaScope, periodo: Periodo): Promise<Ot
     },
     select: {
       origenPlan: true,
+      parentOtId: true,
       areaCodigo: true,
       lineas: { select: { tiempoRealHrs: true, tipoOT: true, tag: true, descripcionEquipo: true } },
     },
   });
+}
+
+// Una OT es reactiva/no programada solo si no tiene ningún enlace al plan: ni
+// origenPlan directo, ni parentOtId hacia una OT madre planificada. Las OTs
+// hijas de una madre OPEPLANT (bitácora) o de una madre enganchada por N° OT
+// del programa semanal (ver /api/ordenes/route.ts) llevan origenPlan=false
+// pero SÍ están dentro del programa — no deben sumar como reactivas.
+function esReactiva(ot: Pick<OtConLineas, "origenPlan" | "parentOtId">): boolean {
+  return !ot.origenPlan && !ot.parentOtId;
 }
 
 export async function computeReactivoHH(scope: AreaScope, periodo: Periodo): Promise<ReactivoResult> {
@@ -83,7 +93,7 @@ export async function computeReactivoHH(scope: AreaScope, periodo: Periodo): Pro
     for (const linea of ot.lineas) {
       const hh = linea.tiempoRealHrs ?? 0;
       totalHH += hh;
-      if (!ot.origenPlan) reactivoHH += hh;
+      if (esReactiva(ot)) reactivoHH += hh;
     }
   }
   const pct = totalHH === 0 ? null : (reactivoHH / totalHH) * 100;
@@ -101,7 +111,7 @@ export async function computeParetoCorrectivas(
   const porTag = new Map<string, ParetoFila>();
   let totalCorrectivas = 0;
   for (const ot of ots) {
-    if (ot.origenPlan) continue;
+    if (!esReactiva(ot)) continue;
     for (const linea of ot.lineas) {
       if (!TIPOS_CORRECTIVO.includes(linea.tipoOT)) continue;
       totalCorrectivas += 1;
