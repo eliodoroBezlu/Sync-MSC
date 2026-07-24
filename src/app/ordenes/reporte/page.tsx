@@ -644,21 +644,22 @@ export default function ReporteOTPage() {
             </div>
           </div>
 
-          {/* Filtros (solo en lista) */}
-          {viewMode === "lista" && (
-            <div style={{ ...S.card, marginBottom: 14 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+          {/* Filtros */}
+          <div style={{ ...S.card, marginBottom: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: viewMode === "lista" ? "1fr 1fr 1fr" : "1fr 1fr", gap: 10 }}>
                 <div>
                   <label style={S.label}>Buscar</label>
                   <input value={filtroBuscar} onChange={(e) => setFiltroBuscar(e.target.value)} placeholder="# OT, técnico, TAG…" style={S.input} />
                 </div>
-                <div>
-                  <label style={S.label}>Estado</label>
-                  <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} style={S.select}>
-                    <option value="">Todos</option>
-                    {COLS_TABLERO.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-                  </select>
-                </div>
+                {viewMode === "lista" && (
+                  <div>
+                    <label style={S.label}>Estado</label>
+                    <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} style={S.select}>
+                      <option value="">Todos</option>
+                      {COLS_TABLERO.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label style={S.label}>Área</label>
                   <select value={filtroArea} onChange={(e) => setFiltroArea(e.target.value)} style={S.select}>
@@ -671,7 +672,8 @@ export default function ReporteOTPage() {
                 </div>
               </div>
 
-              {/* ─── Filtro de período (Capa 1 & 2) ─── */}
+              {/* ─── Filtro de período (Capa 1 & 2) — solo en lista ─── */}
+              {viewMode === "lista" && (
               <div style={{ marginTop: 12, borderTop: "1px solid #e2e8f0", paddingTop: 10 }}>
                 <label style={{ ...S.label, display: "block", marginBottom: 6 }}>Período</label>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
@@ -730,8 +732,8 @@ export default function ReporteOTPage() {
                   </p>
                 )}
               </div>
-            </div>
-          )}
+              )}
+          </div>
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <p style={{ fontSize: 12, color: "#64748b" }}>
@@ -818,7 +820,7 @@ export default function ReporteOTPage() {
             <div style={{ overflowX: "auto", paddingBottom: 12 }}>
               <div style={{ display: "flex", gap: 12, minWidth: 900 }}>
                 {COLS_TABLERO.map((col) => {
-                  const colOTs = ordenes.filter((o) => o.estado === col.key);
+                  const colOTs = ordenesFiltradas.filter((o) => o.estado === col.key);
                   return (
                     <div key={col.key} style={{ flex: "0 0 200px", display: "flex", flexDirection: "column", gap: 8 }}>
                       {/* Cabecera columna */}

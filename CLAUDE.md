@@ -1,5 +1,14 @@
 @AGENTS.md
 
+# Deploy y respaldo en git
+
+Cada vez que el usuario pida commitear/subir cambios, después de crear el commit hacer push automáticamente a **ambos** remotos, sin pedir confirmación adicional:
+
+- `externo` (`https://github.com/eliodoroBezlu/Sync-MSC.git`) — dispara el deploy automático en Railway ("eliodoro").
+- `origin` (`https://github.com/ovica16/sync-msc.git`) — copia de respaldo en GitHub de ovica.
+
+Comando: `git push externo <rama>` y `git push origin <rama>`.
+
 # Política de subagentes por modelo
 
 Cuando se necesite delegar trabajo a un subagente, usar el modelo según la naturaleza de la tarea:
