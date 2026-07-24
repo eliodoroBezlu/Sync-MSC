@@ -148,6 +148,12 @@ const migraciones = [
   "CREATE INDEX IF NOT EXISTS \"PlanBorradorOt_planBorradorId_idx\" ON \"PlanBorradorOt\" (\"planBorradorId\")",
   "CREATE INDEX IF NOT EXISTS \"PlanBorradorOt_numeroOT_idx\" ON \"PlanBorradorOt\" (\"numeroOT\")",
   "CREATE INDEX IF NOT EXISTS \"RosterSemanal_planBorradorId_idx\" ON \"RosterSemanal\" (\"planBorradorId\")",
+
+  // ── Importación PROGRAMA (JDE) en PlanBorradorOt (2026-07) ──────────────────
+  "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS \"estadoJDE\" TEXT",
+  "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS \"estadoDetalle\" TEXT",
+  "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS solicitante TEXT",
+  "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS observaciones TEXT",
 ];
 
 (async () => {

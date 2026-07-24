@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
-import { areaToDisciplina } from "@/lib/planificacion/areaToDisciplina";
 
 type AreaOpcion = { codigo: string; nombre: string };
+
+const EXCLUIR_AREAS = new Set(["3110", "3111"]);
 
 function getISO(date = new Date()) {
   const jan1  = new Date(date.getFullYear(), 0, 1);
@@ -50,8 +51,11 @@ export default function PlanificacionPage() {
     fetch("/api/areas")
       .then(res => res.json())
       .then((data: AreaOpcion[]) => {
-        setAreas(data);
-        setNuevoArea(prev => prev || data[0]?.codigo || "");
+        // "Mina" (3110) y "Planta de Proceso" (3111) son nodos generales de
+        // la jerarquía de equipos, no áreas mecánicas reales de planificación.
+        const areasPlanificacion = data.filter(a => !EXCLUIR_AREAS.has(a.codigo));
+        setAreas(areasPlanificacion);
+        setNuevoArea(prev => prev || areasPlanificacion[0]?.codigo || "");
       })
       .catch(() => setAreas([]));
   }, []);
@@ -151,7 +155,7 @@ export default function PlanificacionPage() {
                     onChange={e => setNuevoArea(e.target.value)}
                     style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 14 }}
                   >
-                    {areas.map(a => <option key={a.codigo} value={a.codigo}>{a.nombre} ({areaToDisciplina(a.codigo)})</option>)}
+                    {areas.map(a => <option key={a.codigo} value={a.codigo}>{a.nombre} ({a.codigo})</option>)}
                   </select>
                 </div>
                 {error && <div style={{ fontSize: 12, color: "#dc2626", background: "#fef2f2", padding: "8px 10px", borderRadius: 6 }}>{error}</div>}
