@@ -4,33 +4,14 @@ import { useState, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
+import TableroSemanal from "./TableroSemanal";
+import type { OtBorrador, Plan } from "./types";
 
 const GRUPOS = ["Diurno", "Nocturno", "G1", "G2", "G3", "G4"];
 const DIAS_SEMANA = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"];
 
 const ESTADO_COLOR: Record<string, string> = {
   borrador: "#f59e0b", revision: "#3b82f6", publicado: "#16a34a",
-};
-
-type OtBorrador = {
-  id: string; control: number | null; numeroOT: string; tipoOT: string;
-  tipoTrabajo: string; descripcion: string; tag: string; descripcionEquipo: string;
-  personas: number; hrsTrabajo: number; hhTotal: number;
-  fechaInicioOt: string | null; fechaFinOt: string | null;
-  diasTexto: string | null; dias: string[];
-  grupo: string; personalAsignado: string[]; esGuardia: boolean;
-};
-
-type RosterItem = {
-  id: string; nombre: string; grupo: string; disciplina: string;
-  asistencia: string[]; esContratista: boolean;
-};
-
-type Plan = {
-  id: string; semana: number; anio: number; areaCodigo: string; disciplina: string;
-  estado: string; creadoPor: string;
-  ots: OtBorrador[];
-  roster: RosterItem[];
 };
 
 type Alert = {
@@ -194,7 +175,7 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
   const router = useRouter();
   const [plan, setPlan] = useState<Plan | null>(null);
   const [cargando, setCargando] = useState(true);
-  const [tab, setTab] = useState<"ots" | "roster">("ots");
+  const [tab, setTab] = useState<"tablero" | "ots" | "roster">("tablero");
   const [importandoOts, setImportandoOts] = useState(false);
   const [importandoRoster, setImportandoRoster] = useState(false);
   const [publicando, setPublicando] = useState(false);
@@ -249,6 +230,22 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
       body: JSON.stringify(patch),
     });
     await loadPlan();
+  }
+
+  async function patchOtLocal(otId: string, patch: Partial<OtBorrador>) {
+    setPlan(prev => prev
+      ? { ...prev, ots: prev.ots.map(o => (o.id === otId ? { ...o, ...patch } : o)) }
+      : prev);
+    try {
+      const res = await fetch(`/api/planificacion/${id}/ots/${otId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error ?? "Error al guardar");
+    } catch {
+      await loadPlan();
+    }
   }
 
   async function deleteOt(otId: string) {
@@ -351,7 +348,7 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
     <div style={{ minHeight: "100vh", background: "#f1f5f9" }}>
       <AppHeader backHref="/planificacion" />
 
-      <main style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 16px" }}>
+      <main style={{ maxWidth: tab === "tablero" ? 1440 : 1100, margin: "0 auto", padding: "20px 16px" }}>
         {/* Header del plan */}
         <div style={{ background: "white", borderRadius: 14, padding: "18px 22px", marginBottom: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
@@ -441,18 +438,31 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: 2, marginBottom: 14 }}>
-          {(["ots", "roster"] as const).map(t => (
+          {(["tablero", "ots", "roster"] as const).map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
-              padding: "8px 18px", borderRadius: t === "ots" ? "8px 8px 0 0" : "8px 8px 0 0",
+              padding: "8px 18px", borderRadius: "8px 8px 0 0",
               border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700,
               background: tab === t ? "white" : "#e2e8f0",
               color: tab === t ? "#7c3aed" : "#64748b",
               borderBottom: tab === t ? "2px solid #7c3aed" : "2px solid transparent",
             }}>
-              {t === "ots" ? `OTs (${plan.ots.length})` : `Roster (${plan.roster.length})`}
+              {t === "tablero" ? "📌 Tablero" : t === "ots" ? `OTs (${plan.ots.length})` : `Roster (${plan.roster.length})`}
             </button>
           ))}
         </div>
+
+        {/* Tab Tablero */}
+        {tab === "tablero" && (
+          <div style={{ background: "white", borderRadius: "0 12px 12px 12px", padding: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
+            {plan.ots.length === 0 ? (
+              <div style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>
+                No hay OTs en este plan todavía. Ve a la pestaña &quot;OTs&quot; e importa el Excel JDE para empezar a armar la semana.
+              </div>
+            ) : (
+              <TableroSemanal plan={plan} onPatchOt={patchOtLocal} disabled={yaPublicado} />
+            )}
+          </div>
+        )}
 
         {/* Tab OTs */}
         {tab === "ots" && (
