@@ -246,6 +246,7 @@ export default function ReporteOTPage() {
   const esAdmin     = user?.rol === 1;
 
   const [ordenes, setOrdenes] = useState<OTDoc[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [areas, setAreas] = useState<AreaOpt[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<OTDoc | null>(null);
@@ -335,6 +336,7 @@ export default function ReporteOTPage() {
 
   const loadOrdenes = useCallback(async (buscarDirecto?: string) => {
     setLoading(true);
+    if (!buscarDirecto) setLoadError("");
     try {
       const params = new URLSearchParams({ limit: "200" });
       if (buscarDirecto) {
@@ -347,7 +349,9 @@ export default function ReporteOTPage() {
         if (filtroFechaHasta) params.set("fechaHasta", filtroFechaHasta);
         if (periodo === "todo") params.set("incluirArchivados", "true");
       }
-      const data = await fetch(`/api/ordenes?${params}`).then((r) => r.json());
+      const res = await fetch(`/api/ordenes?${params}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
       if (buscarDirecto) {
         // Fusionar resultado de búsqueda directa sin reemplazar toda la lista
         if (Array.isArray(data) && data.length > 0) {
@@ -360,7 +364,12 @@ export default function ReporteOTPage() {
       } else {
         setOrdenes(Array.isArray(data) ? data : []);
       }
-    } catch { if (!buscarDirecto) setOrdenes([]); }
+    } catch {
+      if (!buscarDirecto) {
+        setOrdenes([]);
+        setLoadError("No se pudo cargar la lista de OTs. Verifica tu conexión e intenta ↻ Actualizar.");
+      }
+    }
     finally { setLoading(false); }
   }, [filtroEstado, filtroArea, filtroFechaDesde, filtroFechaHasta, periodo]);
 
@@ -746,6 +755,12 @@ export default function ReporteOTPage() {
             </p>
             <button onClick={() => loadOrdenes()} style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12 }}>↻ Actualizar</button>
           </div>
+
+          {loadError && (
+            <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontSize: 12.5, padding: "8px 12px", borderRadius: 6, marginBottom: 10 }}>
+              ⚠ {loadError}
+            </div>
+          )}
 
           {loading ? (
             <div style={{ textAlign: "center", padding: 48, color: "#94a3b8", fontSize: 14 }}>Cargando…</div>

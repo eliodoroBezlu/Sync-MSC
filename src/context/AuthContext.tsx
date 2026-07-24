@@ -39,7 +39,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.href = "/login";
   }
 
-  useEffect(() => { refetch(); }, []);
+  useEffect(() => {
+    refetch();
+    // Revalidar al volver a la pestaña: si un admin cambió el rol/áreas de este
+    // usuario mientras la sesión seguía abierta, esto la refresca sin necesitar
+    // un logout/login manual (ver src/app/api/auth/me/route.ts).
+    function onFocus() { refetch(); }
+    function onVisibility() { if (document.visibilityState === "visible") refetch(); }
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, loading, refetch, logout }}>
