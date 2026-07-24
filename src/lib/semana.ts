@@ -37,3 +37,19 @@ export function semanaYaFinalizo(semana: number, anio: number, semanaActual: num
   if (anio !== anioActual) return anio < anioActual;
   return semana < semanaActual;
 }
+
+// Lunes 00:00 de la semana actual, hora Bolivia (UTC-4) — mismo cálculo que
+// usa src/app/ordenes/reporte/page.tsx en el cliente, reutilizable server-side.
+export function lunesEstaSemanaBolivia(referencia: Date = new Date()): Date {
+  const d = new Date(referencia);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  d.setUTCHours(4, 0, 0, 0); // medianoche Bolivia = 4 AM UTC
+  return d;
+}
+
+export function semanaActualBolivia(referencia: Date = new Date()): { semana: number; anio: number; fechaInicio: Date; fechaFin: Date } {
+  const lunes = lunesEstaSemanaBolivia(referencia);
+  const domingo = new Date(lunes);
+  domingo.setUTCDate(domingo.getUTCDate() + 6);
+  return { semana: getWeekNumber(lunes), anio: lunes.getUTCFullYear(), fechaInicio: lunes, fechaFin: domingo };
+}

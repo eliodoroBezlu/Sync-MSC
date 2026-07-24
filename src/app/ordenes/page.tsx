@@ -3,6 +3,7 @@
 import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
+import KpiStrip from "@/components/kpi/KpiStrip";
 
 type Modulo = {
   href: string; label: string; descripcion: string;
@@ -11,6 +12,7 @@ type Modulo = {
   soloSup?: boolean;    // true = solo roles 1–3
   soloAdmin?: boolean;  // true = solo rol 1 (Admin)
   soloElecInst?: boolean; // true = exclusivo áreas Eléctrico (3319/3311) / Instrumentación (3320)
+  soloGestion?: boolean; // true = solo Superintendente(2)/Supervisor(3)/Planificador(5) (+ admin)
 };
 
 // Únicas áreas con OPEPLANT / reporte de turno técnico. Ninguna otra área
@@ -55,6 +57,21 @@ const TODOS_MODULOS: Modulo[] = [
         <polyline points="14 2 14 8 20 8" />
         <line x1="16" y1="13" x2="8" y2="13" />
         <line x1="16" y1="17" x2="8" y2="17" />
+      </svg>
+    ),
+  },
+  {
+    href: "/ordenes/indicadores",
+    label: "Indicadores",
+    descripcion: "Cumplimiento, reactivo y Pareto de correctivas por semana",
+    badge: "Planificación",
+    color: "#7c3aed",
+    soloGestion: true,
+    icon: (
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="18" y1="20" x2="18" y2="10" />
+        <line x1="12" y1="20" x2="12" y2="4" />
+        <line x1="6" y1="20" x2="6" y2="14" />
       </svg>
     ),
   },
@@ -206,6 +223,7 @@ export default function OrdenesPage() {
   const puedeConf = user ? user.rol <= 3 : false;
   const esTESA    = user?.rol === 6 && user?.areas?.includes("3348");
   const esElecInst = (user?.areas ?? []).some((a) => AREAS_ELEC_INST.includes(a));
+  const esGestion = user ? [2, 3, 5].includes(user.rol) : false;
 
   const MODULOS_TESA = ["/ordenes/registro", "/ordenes/reporte", "/ordenes/tag", "/ordenes/semanales"];
 
@@ -216,6 +234,7 @@ export default function OrdenesPage() {
     if (m.soloInst && !esInst) return false;
     if (m.soloSup  && !puedeConf) return false;
     if (m.soloElecInst && !esElecInst) return false;
+    if (m.soloGestion && !esGestion) return false;
     return true;
   });
 
@@ -232,6 +251,8 @@ export default function OrdenesPage() {
           <h1 style={{ fontSize: 20, fontWeight: 800, color: "#0f2847" }}>Órdenes de Trabajo</h1>
           <p style={{ color: "#64748b", fontSize: 13 }}>Seleccione el módulo a utilizar</p>
         </div>
+
+        <KpiStrip />
 
         {/* Grilla siempre de 2 columnas */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
