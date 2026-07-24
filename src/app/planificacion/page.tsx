@@ -5,14 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
+import { areaToDisciplina } from "@/lib/planificacion/areaToDisciplina";
 
-const AREAS: { codigo: string; nombre: string; disciplina: string }[] = [
-  { codigo: "3320", nombre: "Instrumentación E&I", disciplina: "INST" },
-  { codigo: "3319", nombre: "Eléctrico E&I",       disciplina: "ELEC" },
-  { codigo: "3348", nombre: "TESA",                disciplina: "TESA" },
-  { codigo: "3351", nombre: "Contratistas Telecom", disciplina: "CON"  },
-  { codigo: "3322", nombre: "Vehículos y Equipos",  disciplina: "VE"   },
-];
+type AreaOpcion = { codigo: string; nombre: string };
 
 function getISO(date = new Date()) {
   const jan1  = new Date(date.getFullYear(), 0, 1);
@@ -43,12 +38,23 @@ export default function PlanificacionPage() {
   const [anio, setAnio] = useState(new Date().getFullYear());
   const [creandoPlan, setCreandoPlan] = useState(false);
   const [nuevoSemana, setNuevoSemana] = useState(getISO());
-  const [nuevoArea, setNuevoArea]     = useState(AREAS[0].codigo);
+  const [areas, setAreas]     = useState<AreaOpcion[]>([]);
+  const [nuevoArea, setNuevoArea]     = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
   }, [loading, user, router]);
+
+  useEffect(() => {
+    fetch("/api/areas")
+      .then(res => res.json())
+      .then((data: AreaOpcion[]) => {
+        setAreas(data);
+        setNuevoArea(prev => prev || data[0]?.codigo || "");
+      })
+      .catch(() => setAreas([]));
+  }, []);
 
   const loadPlanes = useCallback(async () => {
     setCargando(true);
@@ -145,7 +151,7 @@ export default function PlanificacionPage() {
                     onChange={e => setNuevoArea(e.target.value)}
                     style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 14 }}
                   >
-                    {AREAS.map(a => <option key={a.codigo} value={a.codigo}>{a.nombre} ({a.disciplina})</option>)}
+                    {areas.map(a => <option key={a.codigo} value={a.codigo}>{a.nombre} ({areaToDisciplina(a.codigo)})</option>)}
                   </select>
                 </div>
                 {error && <div style={{ fontSize: 12, color: "#dc2626", background: "#fef2f2", padding: "8px 10px", borderRadius: 6 }}>{error}</div>}
@@ -156,7 +162,8 @@ export default function PlanificacionPage() {
                   >Cancelar</button>
                   <button
                     onClick={crearPlan}
-                    style={{ flex: 2, padding: "9px 0", borderRadius: 8, border: "none", background: "#7c3aed", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+                    disabled={!nuevoArea}
+                    style={{ flex: 2, padding: "9px 0", borderRadius: 8, border: "none", background: nuevoArea ? "#7c3aed" : "#c4b5fd", color: "white", fontWeight: 700, fontSize: 13, cursor: nuevoArea ? "pointer" : "not-allowed" }}
                   >Crear plan</button>
                 </div>
               </div>
@@ -179,7 +186,7 @@ export default function PlanificacionPage() {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {planes.map(p => {
-              const area = AREAS.find(a => a.codigo === p.areaCodigo);
+              const area = areas.find(a => a.codigo === p.areaCodigo);
               return (
                 <Link key={p.id} href={`/planificacion/${p.id}`} style={{ textDecoration: "none" }}>
                   <div style={{

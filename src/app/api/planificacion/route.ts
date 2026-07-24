@@ -1,13 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
-
-const AREA_DISCIPLINA: Record<string, string> = {
-  "3320": "INST", "3319": "ELEC", "3348": "TESA",
-  "3351": "CON",  "3322": "VE",
-};
-function areaToDisciplina(areaCodigo: string) {
-  return AREA_DISCIPLINA[areaCodigo] ?? "MEC";
-}
+import { areaToDisciplina } from "@/lib/planificacion/areaToDisciplina";
 
 function serialize(p: Record<string, unknown>) {
   return { ...p, _id: p.id };
