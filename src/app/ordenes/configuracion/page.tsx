@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
@@ -1070,6 +1070,7 @@ function ArbolTab() {
 // ─── Tab: Usuarios ─────────────────────────────────────────────────────────────
 function UsuariosTab() {
   const [items, setItems] = useState<UsuarioItem[]>([]);
+  const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editItem, setEditItem] = useState<UsuarioItem | null>(null);
@@ -1220,6 +1221,22 @@ function UsuariosTab() {
     { nomina: "Capurata Flores Ovidio", area: "Superintendencia", jde: "62324", celular: "72475695", puesto: "Superintendente de Mantenimiento", superintendencia: "Sup. Mant. Electrico e Instrumentacion Planta", rol: "1" },
   ];
 
+  const filtered = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    if (!term) return items;
+    return items.filter((item) => {
+      const areaNombres = (item.areas ?? [])
+        .map((cod) => areas.find((a) => a.codigo === cod)?.nombre ?? cod)
+        .join(" ");
+      const haystack = [
+        item.nombre, item.email, item.jde, item.puesto,
+        item.superintendencia, item.areaTrabajo, item.disciplina,
+        ROL_LABEL[item.rol], areaNombres,
+      ].filter(Boolean).join(" ").toLowerCase();
+      return haystack.includes(term);
+    });
+  }, [items, q, areas]);
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
@@ -1234,6 +1251,13 @@ function UsuariosTab() {
           <BulkImportPanel entityName="Usuarios" fileName="plantilla_usuarios.csv" fields={USU_FIELDS} templateRows={USU_TEMPLATE} onImport={importarFilas} />
         </div>
       </div>
+
+      <input
+        style={{ ...C.input, width: 320, margin: "0 0 12px" }}
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Buscar por nombre, email, JDE, puesto, área o rol…"
+      />
 
       {showForm && (
         <div ref={formRef} style={C.formBox}>
@@ -1393,7 +1417,12 @@ function UsuariosTab() {
                   Sin usuarios. Use &quot;+ Agregar&quot; o &quot;↑ Carga Masiva&quot; con el CSV exportado de ListaGM.
                 </td></tr>
               )}
-              {items.map((item) => {
+              {items.length > 0 && filtered.length === 0 && (
+                <tr><td colSpan={7} style={{ ...C.td, color: "#94a3b8", textAlign: "center", padding: 28 }}>
+                  Ningún usuario coincide con &quot;{q}&quot;.
+                </td></tr>
+              )}
+              {filtered.map((item) => {
                 const rc = ROL_CLR[item.rol] ?? ROL_CLR[4];
                 return (
                   <tr key={item._id} style={{ opacity: item.activo ? 1 : 0.45 }}>
