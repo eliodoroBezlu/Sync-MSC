@@ -23,6 +23,29 @@ function tipoStyle(t: string) {
   return TIPO_STYLE[t] ?? { bg: "#f1f5f9", color: "#475569" };
 }
 
+// Mismo orden y colores que el Plan Semanal publicado (src/app/ordenes/semanales)
+// para que la agrupación por turno se vea consistente en ambas pantallas.
+const GRUPOS_ORDEN = ["G1", "G2", "G3", "G4", "Diurno", "Nocturno"];
+const GRUPO_COLOR: Record<string, { bg: string; color: string }> = {
+  G1: { bg: "#dbeafe", color: "#1d4ed8" },
+  G2: { bg: "#dcfce7", color: "#166534" },
+  G3: { bg: "#fef3c7", color: "#92400e" },
+  G4: { bg: "#ede9fe", color: "#5b21b6" },
+  Diurno: { bg: "#ffedd5", color: "#9a3412" },
+  Nocturno: { bg: "#1e293b", color: "#e2e8f0" },
+};
+function grupoColor(g: string) {
+  return GRUPO_COLOR[g] ?? { bg: "#f1f5f9", color: "#475569" };
+}
+function agruparPorGrupo(ots: OtBorrador[]): Array<{ grupo: string; ots: OtBorrador[] }> {
+  const presentes = new Set(ots.map(o => o.grupo));
+  const ordenados = GRUPOS_ORDEN.filter(g => presentes.has(g));
+  for (const g of presentes) {
+    if (!ordenados.includes(g)) ordenados.push(g);
+  }
+  return ordenados.map(grupo => ({ grupo, ots: ots.filter(o => o.grupo === grupo) }));
+}
+
 function getMondayOfIsoWeek(anio: number, semana: number): Date {
   const jan4 = new Date(anio, 0, 4);
   const dow = jan4.getDay() || 7;
@@ -164,23 +187,39 @@ function DiaColumn({
         <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 1 }}>{subtitulo}</div>
         <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 1 }}>{ots.length} OT{ots.length !== 1 ? "s" : ""} · {hh.toFixed(0)}HH</div>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 7, padding: 8, minHeight: 140, flex: 1 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 8, minHeight: 140, flex: 1 }}>
         {ots.length === 0 && (
           <p style={{ fontSize: 10, color: "#cbd5e1", textAlign: "center", padding: "18px 0", fontStyle: "italic" }}>
             {esBacklog ? "Sin OTs pendientes" : "Vacío"}
           </p>
         )}
-        {ots.map(ot => (
-          <OtCard
-            key={ot.id} ot={ot} enBacklog={esBacklog} disabled={disabled}
-            isDragging={draggingOtId === ot.id}
-            onDragStart={onDragStartOt} onDragEnd={onDragEndOt}
-            onDropTecnico={onDropTecnicoEnOt}
-            onQuitarTecnico={onQuitarTecnico}
-            onClickBacklog={onClickBacklog}
-            onDevolverABacklog={onDevolverABacklog}
-          />
-        ))}
+        {agruparPorGrupo(ots).map(({ grupo, ots: otsGrupo }) => {
+          const gc = grupoColor(grupo);
+          const hhGrupo = otsGrupo.reduce((s, o) => s + o.hhTotal, 0);
+          return (
+            <div key={grupo} style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              <div style={{
+                background: gc.bg, color: gc.color, borderRadius: 6,
+                padding: "3px 8px", fontSize: 10, fontWeight: 800, letterSpacing: "0.03em",
+                display: "flex", justifyContent: "space-between",
+              }}>
+                <span>{grupo.toUpperCase()}</span>
+                <span>{otsGrupo.length} · {hhGrupo.toFixed(0)}HH</span>
+              </div>
+              {otsGrupo.map(ot => (
+                <OtCard
+                  key={ot.id} ot={ot} enBacklog={esBacklog} disabled={disabled}
+                  isDragging={draggingOtId === ot.id}
+                  onDragStart={onDragStartOt} onDragEnd={onDragEndOt}
+                  onDropTecnico={onDropTecnicoEnOt}
+                  onQuitarTecnico={onQuitarTecnico}
+                  onClickBacklog={onClickBacklog}
+                  onDevolverABacklog={onDevolverABacklog}
+                />
+              ))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
