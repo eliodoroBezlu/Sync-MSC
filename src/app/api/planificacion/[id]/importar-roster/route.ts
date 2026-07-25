@@ -24,6 +24,24 @@ function esFondoGuardiaDiurna(cell: XLSX.CellObject | undefined): boolean {
   return !!fg && fg.theme !== 0;
 }
 
+const MESES_ES: Record<string, number> = {
+  enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5,
+  julio: 6, agosto: 7, septiembre: 8, octubre: 9, noviembre: 10, diciembre: 11,
+};
+
+// El roster es un archivo único con TODOS los meses del año puestos uno al
+// lado del otro en la misma fila (ej. "Enero 2026" en la columna 8, "Febrero
+// 2026" en la columna 39, etc). Detectar esos rótulos evita depender de "el
+// primer bloque de días que se encuentre", que siempre cae en el mes más a
+// la izquierda (enero) sin importar qué semana se esté importando.
+function parseEtiquetaMes(texto: unknown): { mes: number; anio: number } | null {
+  const m = String(texto ?? "").trim().match(/^([A-Za-zñÑ]+)\s+(\d{4})$/);
+  if (!m) return null;
+  const mes = MESES_ES[m[1].toLowerCase()];
+  if (mes === undefined) return null;
+  return { mes, anio: Number(m[2]) };
+}
+
 export async function POST(req: NextRequest, { params }: Ctx) {
   try {
     const { id } = await params;
@@ -50,77 +68,76 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
 
-    // ─── PASO 1: Encontrar la sección INST y el encabezado de días ───────
-    const INICIO_BUSQUEDA = 740; // Fila ~741 en Excel
-    let indiceDiaInicio = -1; // Índice de columna donde empieza el mes (día "1")
+    // ─── PASO 1: Ubicar la fila de rótulos de mes (ej. "Enero 2026") ──────
+    // Se toma la ÚLTIMA fila con varios rótulos de mes encontrada en toda la
+    // hoja: el archivo es un archivo histórico con bloques de años anteriores
+    // más arriba, y el bloque vigente siempre es el más reciente (más abajo).
+    let filaMeses = -1;
+    let columnasPorMes = new Map<string, number>();
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i] as unknown[];
+      const matches: { mes: number; anio: number; col: number }[] = [];
+      for (let c = 0; c < row.length; c++) {
+        const parsed = parseEtiquetaMes(row[c]);
+        if (parsed) matches.push({ ...parsed, col: c });
+      }
+      if (matches.length >= 6) {
+        filaMeses = i;
+        columnasPorMes = new Map(matches.map(m => [`${m.anio}-${m.mes}`, m.col]));
+      }
+    }
+    if (filaMeses < 0) {
+      return NextResponse.json(
+        { error: "No se encontró la fila de rótulos de mes (ej. 'Enero 2026') en el Excel" },
+        { status: 400 }
+      );
+    }
+
+    // ─── PASO 2: Ubicar la sección "Instrumentistas" bajo ese bloque ──────
     let filaEncabezado = -1;
     let filaInstrumentistas = -1;
-
-    for (let i = INICIO_BUSQUEDA; i < rows.length; i++) {
+    for (let i = filaMeses; i < rows.length; i++) {
       const row = rows[i] as unknown[];
       const col3 = String(row[3] ?? "").trim();
-
-      // Detectar "Instrumentistas"
       if (col3 === "Instrumentistas") {
         filaInstrumentistas = i;
         continue;
       }
-
-      // Detectar encabezado "NOMBRE" con números de días
       if (col3 === "NOMBRE" && filaInstrumentistas > 0) {
         filaEncabezado = i;
-        // Buscar SECUENCIA CONSECUTIVA de números 1, 2, 3, ..., 28+ (no solo números sueltos)
-        // Esto evita confundir con números de otras columnas (Estado, Tipo, etc.)
-        for (let c = 4; c < row.length - 27; c++) {
-          const v = Number(row[c]);
-          // Si encontramos "1", verificar que los siguientes sean 2, 3, 4, ..., 28
-          if (Number.isInteger(v) && v === 1) {
-            let esSecuencia = true;
-            for (let offset = 1; offset <= 27; offset++) {
-              const siguiente = Number(row[c + offset]);
-              if (!Number.isInteger(siguiente) || siguiente !== offset + 1) {
-                esSecuencia = false;
-                break;
-              }
-            }
-            if (esSecuencia) {
-              // Encontramos la secuencia correcta 1-30
-              indiceDiaInicio = c;
-              break;
-            }
-          }
-        }
-        break; // Ya encontramos el encabezado de INST
+        break;
       }
     }
-
-    if (indiceDiaInicio < 0) {
+    if (filaEncabezado < 0) {
       return NextResponse.json(
-        { error: "No se pudo encontrar la estructura de días en el Excel" },
+        { error: "No se pudo encontrar la sección 'Instrumentistas' en el Excel" },
         { status: 400 }
       );
     }
 
-    // ─── Días del mes (Lun-Dom) que corresponden a la semana del plan ────
-    // El Excel trae las columnas de un único mes; calculamos qué días de
-    // ese mes cubre plan.semana/plan.anio en vez de asumir un rango fijo.
+    // ─── PASO 3: Resolver, por cada día real de la semana del plan, la ────
+    // columna absoluta que le corresponde (puede caer en dos meses distintos
+    // si la semana cruza fin de mes; cada día se resuelve por separado).
     const fechasSemana = getWeekDates(plan.semana, plan.anio);
-    const mesesEnSemana = new Set(fechasSemana.map(f => f.getMonth()));
-    if (mesesEnSemana.size > 1) {
+    const columnasSemana = fechasSemana.map(f => columnasPorMes.get(`${f.getFullYear()}-${f.getMonth()}`));
+    const faltantes = fechasSemana
+      .map((f, idx) => ({ f, col: columnasSemana[idx] }))
+      .filter(x => x.col === undefined)
+      .map(x => `${x.f.getDate()}/${x.f.getMonth() + 1}/${x.f.getFullYear()}`);
+    if (faltantes.length > 0) {
       return NextResponse.json(
-        { error: `La semana ${plan.semana}/${plan.anio} cruza dos meses; esta importación no lo soporta.` },
+        { error: `El Excel no tiene datos para: ${faltantes.join(", ")}. Verifica que el roster tenga ese mes cargado.` },
         { status: 400 }
       );
     }
-    const diaInicio = fechasSemana[0].getDate();
-    const diaFin = fechasSemana[6].getDate();
+    const columnas = fechasSemana.map(f => (columnasPorMes.get(`${f.getFullYear()}-${f.getMonth()}`) as number) + (f.getDate() - 1));
 
-    // ─── PASO 2: Leer técnicos desde filaInstrumentistas+1 ───────────────
+    // ─── PASO 4: Leer técnicos desde filaEncabezado+1, solo los 7 días ────
     const personas: Array<{
       nombre: string;
       usuarioId: string;
-      asistencia: string[];
-      guardiaDiurna: boolean[];
+      asistenciaSemana: string[];
+      guardiaDiurnaSemana: boolean[];
     }> = [];
 
     for (let i = filaEncabezado + 1; i < rows.length; i++) {
@@ -138,27 +155,15 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       const usuarioId = usuariosPorNombre.get(col3.toLowerCase());
       if (!usuarioId) continue;
 
-      // Leer desde indiceDiaInicio hasta el final (max 31 días)
-      const asistencia: string[] = [];
-      const guardiaDiurna: boolean[] = [];
-      for (let c = indiceDiaInicio; c < row.length && asistencia.length < 31; c++) {
+      const asistenciaSemana = columnas.map(c => normalizarCodigo(row[c]));
+      const guardiaDiurnaSemana = columnas.map(c => {
         const codigo = normalizarCodigo(row[c]);
-        asistencia.push(codigo);
         const celda = ws[XLSX.utils.encode_cell({ r: i, c })];
-        guardiaDiurna.push(codigo === "T" && esFondoGuardiaDiurna(celda));
-      }
-
-      personas.push({
-        nombre: col3,
-        usuarioId,
-        asistencia,
-        guardiaDiurna,
+        return codigo === "T" && esFondoGuardiaDiurna(celda);
       });
-    }
 
-    // ─── PASO 3: Extraer solo los 7 días de la semana del plan ───────────
-    const colInicio = diaInicio - 1; // Índice relativo (día 1 = offset 0)
-    const colFin = diaFin - 1;
+      personas.push({ nombre: col3, usuarioId, asistenciaSemana, guardiaDiurnaSemana });
+    }
 
     // Borrar roster anterior
     await prisma.rosterSemanal.deleteMany({ where: { planBorradorId: id } });
@@ -170,14 +175,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
     for (const p of personas) {
       try {
-        const asistenciaSemana = p.asistencia.slice(colInicio, colFin + 1);
-        if (asistenciaSemana.length === 0) {
-          errores.push(`${p.nombre}: sin asistencia para semana (slice(${colInicio}, ${colFin + 1}) = vacío)`);
-          continue;
-        }
-        const guardiaDiurnaSemana = p.guardiaDiurna.slice(colInicio, colFin + 1);
-
-        const grupo = calcularGrupo(asistenciaSemana, guardiaDiurnaSemana);
+        const grupo = calcularGrupo(p.asistenciaSemana, p.guardiaDiurnaSemana);
         await prisma.rosterSemanal.create({
           data: {
             planBorradorId: id,
@@ -185,7 +183,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
             usuarioId: p.usuarioId,
             disciplina: "INST",
             grupo,
-            asistencia: asistenciaSemana as unknown as import("@prisma/client").Prisma.InputJsonValue,
+            asistencia: p.asistenciaSemana as unknown as import("@prisma/client").Prisma.InputJsonValue,
             esContratista: false,
           },
         });
@@ -194,8 +192,8 @@ export async function POST(req: NextRequest, { params }: Ctx) {
           ...seedMembresiaDesdeAsistencia({
             nombre: p.nombre,
             usuarioId: p.usuarioId,
-            asistencia: asistenciaSemana,
-            guardiaDiurna: guardiaDiurnaSemana,
+            asistencia: p.asistenciaSemana,
+            guardiaDiurna: p.guardiaDiurnaSemana,
           })
         );
       } catch (e) {
@@ -244,16 +242,10 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       ok: true,
       importados: guardados,
       encontrados: personas.length,
-      diasSemana: `${diaInicio}-${diaFin} (Semana ${plan.semana})`,
+      diasSemana: `${fechasSemana[0].getDate()}/${fechasSemana[0].getMonth() + 1} - ${fechasSemana[6].getDate()}/${fechasSemana[6].getMonth() + 1} (Semana ${plan.semana})`,
       mensaje: `${guardados}/${personas.length} técnicos importados`,
       ...(errores.length > 0 && { advertencias: errores }),
-      debug: {
-        indiceDiaInicio,
-        diaInicio,
-        diaFin,
-        colInicio,
-        colFin,
-      },
+      debug: { filaMeses, filaEncabezado, columnas },
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error importando roster";
