@@ -20,6 +20,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     for (const c of campos) {
       if (c in body) data[c] = body[c];
     }
+    // Un cambio de grupo hecho a mano (formulario de edición) queda fijo:
+    // Balancear ya no lo va a recalcular, ver balancear/route.ts.
+    if ("grupo" in body) data.grupoManual = true;
     // personalAsignadoIds no se acepta directo: se resuelve siempre a partir
     // de CuadrillaMiembro más abajo. personalAsignado sí se acepta (drag&drop
     // manual desde el Tablero) pero queda sujeto a reconciliación contra la

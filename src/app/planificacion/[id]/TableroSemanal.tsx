@@ -46,9 +46,14 @@ const GRUPO_COLOR: Record<string, { bg: string; color: string }> = {
 function grupoColor(g: string) {
   return GRUPO_COLOR[g] ?? { bg: "#f1f5f9", color: "#475569" };
 }
-function agruparPorGrupo(ots: OtBorrador[]): Array<{ grupo: string; ots: OtBorrador[] }> {
+// En los días (no en Sin programar) los 6 grupos siempre se muestran, aunque
+// no tengan ninguna OT ese día — así el planificador puede asignar
+// manualmente (vía el formulario de edición de la OT) a un grupo vacío,
+// igual que en la plantilla Excel "I-XX" (GRUPO 1-4 + TURNO DIURNO/NOCTURNO
+// fijos todos los días).
+function agruparPorGrupo(ots: OtBorrador[], incluirVacios: boolean): Array<{ grupo: string; ots: OtBorrador[] }> {
   const presentes = new Set(ots.map(o => o.grupo));
-  const ordenados = GRUPOS_ORDEN.filter(g => presentes.has(g));
+  const ordenados = incluirVacios ? [...GRUPOS_ORDEN] : GRUPOS_ORDEN.filter(g => presentes.has(g));
   for (const g of presentes) {
     if (!ordenados.includes(g)) ordenados.push(g);
   }
@@ -311,12 +316,12 @@ function DiaColumn({
         <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 1 }}>{ots.length} OT{ots.length !== 1 ? "s" : ""} · {hh.toFixed(0)}HH</div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 8, minHeight: 140, flex: 1 }}>
-        {ots.length === 0 && (
+        {esBacklog && ots.length === 0 && (
           <p style={{ fontSize: 10, color: "#cbd5e1", textAlign: "center", padding: "18px 0", fontStyle: "italic" }}>
-            {esBacklog ? "Sin OTs pendientes" : "Vacío"}
+            Sin OTs pendientes
           </p>
         )}
-        {agruparPorGrupo(ots).map(({ grupo, ots: otsGrupo }) => {
+        {agruparPorGrupo(ots, !esBacklog).map(({ grupo, ots: otsGrupo }) => {
           const gc = grupoColor(grupo);
           const hhGrupo = esBacklog ? otsGrupo.reduce((s, o) => s + o.hhTotal, 0) : otsGrupo.reduce((s, o) => s + hhPorDia(o), 0);
           const miembrosGrupo = cuadrilla[grupo]?.[diaCode] ?? [];

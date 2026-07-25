@@ -28,6 +28,7 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
           dias: [],
           diasTexto: null,
           grupo: "Diurno",
+          grupoManual: false,
         },
       }),
       prisma.planBorradorOt.updateMany({

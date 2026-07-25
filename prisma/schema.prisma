@@ -560,6 +560,7 @@ model PlanBorradorOt {
   solicitante         String?  // columna Q del Excel PROGRAMA
   observaciones       String?  // columna R del Excel PROGRAMA
   grupo               String   @default("Diurno")
+  grupoManual         Boolean  @default(false) // true si el planificador fijó el grupo a mano — Balancear no lo toca
   personalAsignado    String[] // cache derivado de CuadrillaMiembro — no editar directo, ver /api/planificacion/[id]/cuadrillas
   personalAsignadoIds String[]
   esGuardia           Boolean  @default(false)

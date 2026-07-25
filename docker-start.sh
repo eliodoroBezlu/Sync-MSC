@@ -181,6 +181,9 @@ const migraciones = [
 
   // ── Capacidad HH por grupo/día en el Tablero (2026-07) ──────────────────────
   "ALTER TABLE \"PlanBorrador\" ADD COLUMN IF NOT EXISTS \"capacidadOverride\" JSONB NOT NULL DEFAULT '{}'",
+
+  // ── Grupo asignado a mano: Balancear no lo sobrescribe (2026-07) ────────────
+  "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS \"grupoManual\" BOOLEAN NOT NULL DEFAULT false",
 ];
 
 (async () => {

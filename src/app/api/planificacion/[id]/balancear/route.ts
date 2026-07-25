@@ -35,6 +35,7 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
         grupo: o.grupo,
         dias: o.dias,
         esGuardia: o.esGuardia,
+        grupoManual: o.grupoManual,
       }));
 
     const rosterParaBal = plan.roster.map(r => ({
@@ -63,8 +64,11 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
       dias: asignacionesDias.get(o.id) ?? o.dias,
     }));
 
+    // Las OTs con grupoManual=true fueron puestas a mano por el planificador
+    // (Diurno, Nocturno o un G1-G4 específico) y no entran al reparto
+    // automático — Balancear no las toca.
     const asignacionesGrupo = agruparPorCapacidad(
-      otsConDiasFinales.filter(o => !o.esGuardia),
+      otsConDiasFinales.filter(o => !o.esGuardia && !o.grupoManual),
       miembrosCuadrilla,
       rosterParaBal
     );
