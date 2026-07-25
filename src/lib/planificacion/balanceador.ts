@@ -178,11 +178,18 @@ export const GRUPOS_ORDENADOS = ["G1", "G2", "G3", "G4"];
 
 /**
  * Agrupa OTs (no guardia) en G1→G2→G3→G4 según la capacidad de HH del día de
- * cada grupo (técnicos de la cuadrilla de ese grupo/día × 10 HH) — el mismo
- * criterio que aplica el planificador a mano en el Excel de referencia
- * (llena G1 hasta el tope del día, lo que sobra pasa a G2, luego G3, luego
- * G4). Turno Nocturno queda fuera de este reparto: es exclusivo de guardia
- * OPEPLANT y asignación manual.
+ * cada grupo — el mismo criterio que aplica el planificador a mano en el
+ * Excel de referencia (llena G1 hasta el tope del día, lo que sobra pasa a
+ * G2, luego G3, luego G4). Turno Nocturno queda fuera de este reparto: es
+ * exclusivo de guardia OPEPLANT y asignación manual.
+ *
+ * La capacidad del día NO sale de la cuadrilla de G1-G4 (esos grupos recién
+ * se arman a mano, arrastrando técnicos sobre las OTs una vez que quedan acá
+ * agrupadas — sería huevo-gallina pedirles cuadrilla previa). Sale del
+ * roster: técnicos en turno normal ("T") ese día, descontando a los que ya
+ * están tomados por la guardia Diurno (esos sí están sembrados de forma
+ * confiable desde la asistencia real, ver seedMembresiaDesdeAsistencia). El
+ * total de HH del día se reparte parejo entre los 4 grupos.
  *
  * Si una OT no entra en ningún grupo sin pasarse de capacidad, se coloca
  * igual en G4 (overflow) en vez de quedar sin grupo — el planificador de
@@ -190,13 +197,20 @@ export const GRUPOS_ORDENADOS = ["G1", "G2", "G3", "G4"];
  */
 export function agruparPorCapacidad(
   ots: Array<{ id: string; hhTotal: number; dias: string[] }>,
-  miembros: CuadrillaMiembroRow[]
+  miembros: CuadrillaMiembroRow[],
+  roster: Array<{ nombre: string; asistencia: string[] }>
 ): Map<string, string> {
   const capacidadPorGrupoDia = new Map<string, number>();
-  for (const grupo of GRUPOS_ORDENADOS) {
-    for (const dia of TODOS_LOS_DIAS) {
-      const tecnicos = new Set(tecnicosDeCuadrillaEnDia(miembros, grupo, dia).map(t => t.nombre));
-      capacidadPorGrupoDia.set(`${grupo}|${dia}`, tecnicos.size * horasPorDiaPersona(grupo));
+  for (const dia of TODOS_LOS_DIAS) {
+    const diaIdx = TODOS_LOS_DIAS.indexOf(dia);
+    const diurnoDelDia = new Set(tecnicosDeCuadrillaEnDia(miembros, "Diurno", dia).map(t => t.nombre));
+    const disponiblesTurnoNormal = roster.filter(
+      r => r.asistencia[diaIdx] === "T" && !diurnoDelDia.has(r.nombre)
+    ).length;
+    const capacidadTotalDia = disponiblesTurnoNormal * horasPorDiaPersona("G1");
+    const capacidadPorGrupo = capacidadTotalDia / GRUPOS_ORDENADOS.length;
+    for (const grupo of GRUPOS_ORDENADOS) {
+      capacidadPorGrupoDia.set(`${grupo}|${dia}`, capacidadPorGrupo);
     }
   }
 

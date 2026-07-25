@@ -3,9 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// Vacía el personal asignado de todas las OTs del plan para volver a armar
-// el Tablero desde cero, sin tocar qué OTs están seleccionadas ni en qué
-// día está programada cada una (eso se resuelve aparte, en Selección/Tablero).
+// Limpia el Tablero de verdad: las OTs comunes se sacan del tablero (vuelven
+// a la pestaña Selección, sin día ni grupo ni técnico) para armar todo de
+// cero desde ahí. La guardia OPEPLANT nunca se saca del tablero —es fija
+// toda la semana, en ambos turnos— así que a esas solo se les limpia el
+// técnico asignado.
 export async function POST(_req: NextRequest, { params }: Ctx) {
   try {
     const { id } = await params;
@@ -16,12 +18,25 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
       return NextResponse.json({ ok: false, error: "No se puede limpiar un plan publicado" }, { status: 400 });
     }
 
-    const resultado = await prisma.planBorradorOt.updateMany({
-      where: { planBorradorId: id },
-      data: { personalAsignado: [], personalAsignadoIds: [] },
-    });
+    const [otsNormales, otsGuardia] = await Promise.all([
+      prisma.planBorradorOt.updateMany({
+        where: { planBorradorId: id, esGuardia: false },
+        data: {
+          seleccionada: false,
+          personalAsignado: [],
+          personalAsignadoIds: [],
+          dias: [],
+          diasTexto: null,
+          grupo: "Diurno",
+        },
+      }),
+      prisma.planBorradorOt.updateMany({
+        where: { planBorradorId: id, esGuardia: true },
+        data: { personalAsignado: [], personalAsignadoIds: [] },
+      }),
+    ]);
 
-    return NextResponse.json({ ok: true, otsLimpiadas: resultado.count });
+    return NextResponse.json({ ok: true, otsLimpiadas: otsNormales.count + otsGuardia.count });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error limpiando el tablero";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

@@ -65,7 +65,8 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
 
     const asignacionesGrupo = agruparPorCapacidad(
       otsConDiasFinales.filter(o => !o.esGuardia),
-      miembrosCuadrilla
+      miembrosCuadrilla,
+      rosterParaBal
     );
     const otsConGrupoFinal = otsConDiasFinales.map(o => ({
       ...o,
