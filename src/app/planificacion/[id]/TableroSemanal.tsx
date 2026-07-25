@@ -4,6 +4,11 @@ import { useState } from "react";
 import type { DragEvent } from "react";
 import type { OtBorrador, Plan } from "./types";
 import { tipoOtDisplay } from "@/lib/tiposOt";
+import { calcularDiasNecesarios, distribuirEnDias, DIAS_LABORALES } from "@/lib/planificacion/balanceador";
+
+function hhPorDia(ot: Pick<OtBorrador, "hhTotal" | "dias">): number {
+  return ot.hhTotal / Math.max(1, ot.dias.length);
+}
 
 const DIAS_INFO = [
   { code: "Lu", largo: "Lunes" },
@@ -66,7 +71,7 @@ function iniciales(nombre: string): string {
 // ─── Tarjeta de OT ──────────────────────────────────────────────────────────
 function OtCard({
   ot, enBacklog, disabled, isDragging,
-  onDragStart, onDragEnd, onDropTecnico, onQuitarTecnico, onClickBacklog, onDevolverABacklog,
+  onDragStart, onDragEnd, onDropTecnico, onQuitarTecnico, onClickBacklog, onDevolverABacklog, onEditarHH,
 }: {
   ot: OtBorrador; enBacklog: boolean; disabled: boolean; isDragging: boolean;
   onDragStart: (e: DragEvent, otId: string) => void;
@@ -75,8 +80,19 @@ function OtCard({
   onQuitarTecnico: (otId: string, nombre: string) => void;
   onClickBacklog: (ot: OtBorrador) => void;
   onDevolverABacklog: (otId: string) => void;
+  onEditarHH: (otId: string, hhTotal: number) => void;
 }) {
   const s = tipoOtDisplay(ot.tipoOT);
+  const [editandoHH, setEditandoHH] = useState(false);
+  const [valorHH, setValorHH] = useState(String(ot.hhTotal));
+  const multiDia = ot.dias.length > 1;
+
+  function guardarHH() {
+    const n = Number(valorHH);
+    if (Number.isFinite(n) && n >= 0 && n !== ot.hhTotal) onEditarHH(ot.id, n);
+    setEditandoHH(false);
+  }
+
   return (
     <div
       draggable={!disabled}
@@ -116,8 +132,26 @@ function OtCard({
         overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const,
       }}>{ot.descripcion}</div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-        <span style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600 }}>{ot.grupo}</span>
-        <span style={{ fontSize: 10, color: "#374151", fontWeight: 700 }}>{ot.hhTotal}HH</span>
+        <span style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600 }}>{ot.grupo}{ot.personas > 1 ? ` · ${ot.personas}px` : ""}</span>
+        {editandoHH ? (
+          <input
+            type="number" min={0} step={1} autoFocus
+            value={valorHH}
+            onClick={e => e.stopPropagation()}
+            onChange={e => setValorHH(e.target.value)}
+            onBlur={guardarHH}
+            onKeyDown={e => { if (e.key === "Enter") guardarHH(); if (e.key === "Escape") { setValorHH(String(ot.hhTotal)); setEditandoHH(false); } }}
+            style={{ width: 46, fontSize: 10, fontWeight: 700, textAlign: "right", borderRadius: 4, border: "1.5px solid #7c3aed", padding: "1px 3px" }}
+          />
+        ) : (
+          <span
+            onClick={e => { if (disabled) return; e.stopPropagation(); setValorHH(String(ot.hhTotal)); setEditandoHH(true); }}
+            title={disabled ? undefined : multiDia ? `Total ${ot.hhTotal}HH repartidas en ${ot.dias.length} días — clic para editar` : "Clic para editar HH"}
+            style={{ fontSize: 10, color: "#374151", fontWeight: 700, cursor: disabled ? "default" : "pointer", borderBottom: disabled ? "none" : "1px dotted #cbd5e1" }}
+          >
+            {multiDia ? `${hhPorDia(ot).toFixed(0)}HH/día` : `${ot.hhTotal}HH`}
+          </span>
+        )}
       </div>
       {ot.personalAsignado.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 6, borderTop: "1px solid #f1f5f9", paddingTop: 5 }}>
@@ -149,7 +183,7 @@ function OtCard({
 function DiaColumn({
   titulo, subtitulo, ots, esBacklog, dragOverActivo, disabled,
   onDragOverColumna, onDragLeaveColumna, onDropColumna,
-  draggingOtId, onDragStartOt, onDragEndOt, onDropTecnicoEnOt, onQuitarTecnico, onClickBacklog, onDevolverABacklog,
+  draggingOtId, onDragStartOt, onDragEndOt, onDropTecnicoEnOt, onQuitarTecnico, onClickBacklog, onDevolverABacklog, onEditarHH,
 }: {
   titulo: string; subtitulo: string; ots: OtBorrador[]; esBacklog: boolean;
   dragOverActivo: boolean; disabled: boolean;
@@ -160,8 +194,9 @@ function DiaColumn({
   onQuitarTecnico: (otId: string, nombre: string) => void;
   onClickBacklog: (ot: OtBorrador) => void;
   onDevolverABacklog: (otId: string) => void;
+  onEditarHH: (otId: string, hhTotal: number) => void;
 }) {
-  const hh = ots.reduce((s, o) => s + o.hhTotal, 0);
+  const hh = esBacklog ? ots.reduce((s, o) => s + o.hhTotal, 0) : ots.reduce((s, o) => s + hhPorDia(o), 0);
   return (
     <div
       onDragOver={e => { e.preventDefault(); onDragOverColumna(); }}
@@ -187,7 +222,7 @@ function DiaColumn({
         )}
         {agruparPorGrupo(ots).map(({ grupo, ots: otsGrupo }) => {
           const gc = grupoColor(grupo);
-          const hhGrupo = otsGrupo.reduce((s, o) => s + o.hhTotal, 0);
+          const hhGrupo = esBacklog ? otsGrupo.reduce((s, o) => s + o.hhTotal, 0) : otsGrupo.reduce((s, o) => s + hhPorDia(o), 0);
           return (
             <div key={grupo} style={{ display: "flex", flexDirection: "column", gap: 7 }}>
               <div style={{
@@ -207,6 +242,7 @@ function DiaColumn({
                   onQuitarTecnico={onQuitarTecnico}
                   onClickBacklog={onClickBacklog}
                   onDevolverABacklog={onDevolverABacklog}
+                  onEditarHH={onEditarHH}
                 />
               ))}
             </div>
@@ -286,7 +322,21 @@ export default function TableroSemanal({
   }
 
   function moverADia(otId: string, dia: string) {
-    onPatchOt(otId, { dias: dia === "" ? [] : [dia] });
+    if (dia === "") { onPatchOt(otId, { dias: [] }); return; }
+    const ot = plan.ots.find(o => o.id === otId);
+    // OTs de guardia u OPEPLANT quedan en el día exacto donde se soltaron;
+    // el resto se reparte automáticamente en tantos días hábiles como haga
+    // falta según personas/hrsTrabajo y el turno (8h/10h por persona/día).
+    if (ot && !ot.esGuardia && DIAS_LABORALES.includes(dia)) {
+      const diasNecesarios = calcularDiasNecesarios(ot.hhTotal, ot.personas, ot.grupo);
+      onPatchOt(otId, { dias: distribuirEnDias(dia, diasNecesarios) });
+    } else {
+      onPatchOt(otId, { dias: [dia] });
+    }
+  }
+
+  function editarHH(otId: string, hhTotal: number) {
+    onPatchOt(otId, { hhTotal });
   }
 
   function asignarTecnico(otId: string, nombre: string) {
@@ -356,6 +406,7 @@ export default function TableroSemanal({
           onQuitarTecnico={quitarTecnico}
           onClickBacklog={clickAgregarBacklog}
           onDevolverABacklog={otId => moverADia(otId, "")}
+          onEditarHH={editarHH}
         />
         {DIAS_INFO.map((d, i) => {
           const date = new Date(monday);
@@ -377,6 +428,7 @@ export default function TableroSemanal({
               onQuitarTecnico={quitarTecnico}
               onClickBacklog={clickAgregarBacklog}
               onDevolverABacklog={otId => moverADia(otId, "")}
+              onEditarHH={editarHH}
             />
           );
         })}

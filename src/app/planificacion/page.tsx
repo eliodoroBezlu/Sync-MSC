@@ -42,6 +42,7 @@ export default function PlanificacionPage() {
   const [areas, setAreas]     = useState<AreaOpcion[]>([]);
   const [nuevoArea, setNuevoArea]     = useState("");
   const [error, setError] = useState("");
+  const [borrandoId, setBorrandoId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -90,6 +91,27 @@ export default function PlanificacionPage() {
       router.push(`/planificacion/${data.plan.id}`);
     } catch {
       setError("Error de red");
+    }
+  }
+
+  async function borrarPlan(e: React.MouseEvent, p: PlanItem) {
+    e.preventDefault();
+    e.stopPropagation();
+    const etiqueta = `Semana ${p.semana}/${p.anio}`;
+    if (!confirm(`¿Borrar el plan "${etiqueta}"? Se eliminarán sus OTs y roster asociados. Esta acción no se puede deshacer.`)) return;
+    setBorrandoId(p.id);
+    try {
+      const res = await fetch(`/api/planificacion/${p.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.ok) {
+        setError(data.error ?? "Error al borrar el plan");
+        return;
+      }
+      await loadPlanes();
+    } catch {
+      setError("Error de red al borrar el plan");
+    } finally {
+      setBorrandoId(null);
     }
   }
 
@@ -176,6 +198,11 @@ export default function PlanificacionPage() {
         )}
 
         {/* Lista de planes */}
+        {error && !creandoPlan && (
+          <div style={{ marginBottom: 14, fontSize: 12, color: "#dc2626", background: "#fef2f2", padding: "8px 12px", borderRadius: 8 }}>
+            {error}
+          </div>
+        )}
         {cargando ? (
           <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Cargando planes…</div>
         ) : planes.length === 0 ? (
@@ -224,6 +251,19 @@ export default function PlanificacionPage() {
                       color: ESTADO_COLOR[p.estado],
                       textTransform: "uppercase", letterSpacing: "0.05em",
                     }}>{p.estado}</div>
+
+                    <button
+                      onClick={e => borrarPlan(e, p)}
+                      disabled={borrandoId === p.id}
+                      title="Borrar plan"
+                      style={{
+                        width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+                        border: "1.5px solid #fecaca", background: "#fff5f5",
+                        color: "#dc2626", fontSize: 14, fontWeight: 700,
+                        cursor: borrandoId === p.id ? "default" : "pointer",
+                        opacity: borrandoId === p.id ? 0.5 : 1,
+                      }}
+                    >{borrandoId === p.id ? "…" : "🗑"}</button>
                   </div>
                 </Link>
               );

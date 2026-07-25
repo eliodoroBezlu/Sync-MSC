@@ -29,6 +29,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       data.hrsTrabajo = hrsTrabajo;
       data.hhTotal    = personas * hrsTrabajo;
     }
+    if ("hhTotal" in body && !("personas" in body) && !("hrsTrabajo" in body)) {
+      data.hhTotal = Number(body.hhTotal);
+    }
     if ("fechaInicioOt" in body) data.fechaInicioOt = body.fechaInicioOt ? new Date(body.fechaInicioOt) : null;
     if ("fechaFinOt"    in body) data.fechaFinOt    = body.fechaFinOt    ? new Date(body.fechaFinOt)    : null;
     if ("diasTexto"     in body) {

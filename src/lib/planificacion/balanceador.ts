@@ -23,13 +23,17 @@ export interface OtAsignacion {
 /**
  * Calcula disponibilidad de cada técnico en la semana
  */
+export function horasPorDiaPersona(grupo: string): number {
+  return grupo === "Nocturno" ? 10 : 8;
+}
+
 export function calcularDisponibilidad(
   nombre: string,
   asistencia: string[],
   grupo: string,
   hhActualProgramadas: number = 0
 ): TecnicoDisponibilidad {
-  const hrs_x_dia = grupo === "Nocturno" ? 10 : 8;
+  const hrs_x_dia = horasPorDiaPersona(grupo);
   const diasDisponibles = asistencia.filter(d => d === "D" || d === "N").length;
   const hhDisponibles = diasDisponibles * hrs_x_dia;
   return {
@@ -76,9 +80,38 @@ export function asignarOtAlMenosCargado(
 }
 
 /**
+ * Asigna una OT a hasta `personas` técnicos (los menos cargados del grupo
+ * compatible), repartiendo la carga entre ellos, para que una OT que
+ * requiere 2 personas quede con 2 técnicos del mismo grupo en vez de 1 solo.
+ */
+export function asignarOtAGrupo(
+  otId: string,
+  numeroOT: string,
+  hhOt: number,
+  personas: number,
+  grupo: string,
+  tecnicos: TecnicoDisponibilidad[]
+): string[] {
+  const cantidad = Math.max(1, personas);
+  const hhPorPersona = hhOt / cantidad;
+
+  const compatibles = tecnicos
+    .filter(t => (t.asistencia as string[]).some(d => d === (grupo === "Nocturno" ? "N" : "D")))
+    .filter(t => t.hhActualProgramadas + hhPorPersona <= t.hhDisponibles)
+    .sort((a, b) => a.hhActualProgramadas - b.hhActualProgramadas);
+
+  const elegidos = compatibles.slice(0, cantidad);
+  for (const t of elegidos) {
+    t.hhActualProgramadas += hhPorPersona;
+  }
+  return elegidos.map(t => t.nombre);
+}
+
+/**
  * Balancear múltiples OTs entre roster disponible. Se indexa por `id` de
  * fila (no por numeroOT) porque una misma OT OPEPLANT tiene una fila Diurno
- * y otra Nocturno que deben poder recibir técnicos distintos.
+ * y otra Nocturno que deben poder recibir técnicos distintos. Cada OT recibe
+ * hasta `personas` técnicos (ideal: parejas de 2) del mismo grupo/turno.
  */
 export function balancearOts(
   ots: Array<{ id: string; numeroOT: string; personas: number; hrsTrabajo: number; grupo: string }>,
@@ -102,14 +135,9 @@ export function balancearOts(
     const hhOt = ot.personas * ot.hrsTrabajo;
     const disponibles = Array.from(dispMap.values());
 
-    const asignacion = asignarOtAlMenosCargado(ot.id, ot.numeroOT, hhOt, ot.grupo, disponibles);
-    if (asignacion) {
-      asignaciones.set(ot.id, [asignacion.tecnico]);
-      // Actualizar disponibilidad
-      const disp = dispMap.get(asignacion.tecnico);
-      if (disp) {
-        disp.hhActualProgramadas += hhOt;
-      }
+    const tecnicos = asignarOtAGrupo(ot.id, ot.numeroOT, hhOt, ot.personas, ot.grupo, disponibles);
+    if (tecnicos.length > 0) {
+      asignaciones.set(ot.id, tecnicos);
     }
   }
 
@@ -117,6 +145,32 @@ export function balancearOts(
 }
 
 const DIAS_SEMANA = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"];
+export const DIAS_LABORALES = ["Lu", "Ma", "Mi", "Ju", "Vi"];
+
+/**
+ * Cuántos días hace falta para completar el total de HH de una OT, según la
+ * cantidad de personas asignadas y las horas/día/persona del grupo (8 en
+ * Diurno/G1-G4, 10 en Nocturno). Se limita a los 5 días hábiles: una OT que
+ * a ese ritmo tomaría más de 5 días simplemente reparte más HH por día.
+ */
+export function calcularDiasNecesarios(hhTotal: number, personas: number, grupo: string): number {
+  const capacidadDia = Math.max(1, personas) * horasPorDiaPersona(grupo);
+  return Math.min(DIAS_LABORALES.length, Math.max(1, Math.ceil(hhTotal / capacidadDia)));
+}
+
+/**
+ * Devuelve `diasNecesarios` días hábiles consecutivos a partir de `diaInicio`
+ * (dando la vuelta dentro de Lu-Vi si hace falta) para repartir una OT.
+ */
+export function distribuirEnDias(diaInicio: string, diasNecesarios: number): string[] {
+  const idx = DIAS_LABORALES.indexOf(diaInicio);
+  if (idx === -1) return [diaInicio];
+  const seleccion: string[] = [];
+  for (let i = 0; i < diasNecesarios; i++) {
+    seleccion.push(DIAS_LABORALES[(idx + i) % DIAS_LABORALES.length]);
+  }
+  return seleccion;
+}
 
 /**
  * Reparte las OTs sin día asignado a lo largo de la semana, colocando cada
