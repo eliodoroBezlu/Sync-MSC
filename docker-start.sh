@@ -178,6 +178,9 @@ const migraciones = [
   )`,
   "CREATE INDEX IF NOT EXISTS \"CuadrillaMiembro_planBorradorId_dia_idx\" ON \"CuadrillaMiembro\" (\"planBorradorId\", dia)",
   "CREATE INDEX IF NOT EXISTS \"CuadrillaMiembro_planBorradorId_grupo_idx\" ON \"CuadrillaMiembro\" (\"planBorradorId\", grupo)",
+
+  // ── Capacidad HH por grupo/día en el Tablero (2026-07) ──────────────────────
+  "ALTER TABLE \"PlanBorrador\" ADD COLUMN IF NOT EXISTS \"capacidadOverride\" JSONB NOT NULL DEFAULT '{}'",
 ];
 
 (async () => {
