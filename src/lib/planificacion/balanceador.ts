@@ -13,6 +13,7 @@ export interface TecnicoDisponibilidad {
 }
 
 export interface OtAsignacion {
+  otId: string;
   otNumero: string;
   tecnico: string;
   hhAsignadas: number;
@@ -45,6 +46,7 @@ export function calcularDisponibilidad(
  * Asigna OT al técnico menos cargado respetando grupo/turno
  */
 export function asignarOtAlMenosCargado(
+  otId: string,
   numeroOT: string,
   hhOt: number,
   grupo: string,
@@ -65,6 +67,7 @@ export function asignarOtAlMenosCargado(
   const porcentaje = ((tecnicoMenorCargado.hhActualProgramadas + hhOt) / tecnicoMenorCargado.hhDisponibles) * 100;
 
   return {
+    otId,
     otNumero: numeroOT,
     tecnico: tecnicoMenorCargado.nombre,
     hhAsignadas: hhOt,
@@ -73,13 +76,15 @@ export function asignarOtAlMenosCargado(
 }
 
 /**
- * Balancear múltiples OTs entre roster disponible
+ * Balancear múltiples OTs entre roster disponible. Se indexa por `id` de
+ * fila (no por numeroOT) porque una misma OT OPEPLANT tiene una fila Diurno
+ * y otra Nocturno que deben poder recibir técnicos distintos.
  */
 export function balancearOts(
-  ots: Array<{ numeroOT: string; personas: number; hrsTrabajo: number; grupo: string }>,
+  ots: Array<{ id: string; numeroOT: string; personas: number; hrsTrabajo: number; grupo: string }>,
   roster: Array<{ nombre: string; asistencia: string[]; grupo: string }>
 ): Map<string, string[]> {
-  // Mapeo: otNumero -> [técnicos asignados]
+  // Mapeo: id de fila -> [técnicos asignados]
   const asignaciones = new Map<string, string[]>();
 
   // Inicializar disponibilidad
@@ -97,9 +102,9 @@ export function balancearOts(
     const hhOt = ot.personas * ot.hrsTrabajo;
     const disponibles = Array.from(dispMap.values());
 
-    const asignacion = asignarOtAlMenosCargado(ot.numeroOT, hhOt, ot.grupo, disponibles);
+    const asignacion = asignarOtAlMenosCargado(ot.id, ot.numeroOT, hhOt, ot.grupo, disponibles);
     if (asignacion) {
-      asignaciones.set(ot.numeroOT, [asignacion.tecnico]);
+      asignaciones.set(ot.id, [asignacion.tecnico]);
       // Actualizar disponibilidad
       const disp = dispMap.get(asignacion.tecnico);
       if (disp) {
@@ -119,7 +124,7 @@ const DIAS_SEMANA = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"];
  * día definido —por ejemplo, un rango importado del Excel— quedan intactas).
  */
 export function balancearDias(
-  ots: Array<{ numeroOT: string; hhTotal: number; dias: string[]; esGuardia: boolean }>,
+  ots: Array<{ id: string; hhTotal: number; dias: string[]; esGuardia: boolean }>,
   dias: string[] = DIAS_SEMANA
 ): Map<string, string[]> {
   const asignaciones = new Map<string, string[]>();
@@ -138,7 +143,7 @@ export function balancearDias(
         mejorDia = d;
       }
     }
-    asignaciones.set(ot.numeroOT, [mejorDia]);
+    asignaciones.set(ot.id, [mejorDia]);
     cargaPorDia.set(mejorDia, menorCarga + ot.hhTotal);
   }
 

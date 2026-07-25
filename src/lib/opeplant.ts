@@ -1,5 +1,15 @@
 import { prisma } from "@/lib/prisma";
 
+export const DIAS_SEMANA_COMPLETA = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"];
+
+// Fuente única de verdad de qué hace que una OT sea OPEPLANT (guardia de
+// planta): esGuardia marcado explícitamente, o el tag la etiqueta como tal.
+// El importador no siempre setea ambos de forma consistente, así que hay
+// que aceptar cualquiera de los dos.
+export function esOpeplant(tag: string | null | undefined, esGuardia: boolean): boolean {
+  return esGuardia || !!tag?.toUpperCase().includes("OPEPLANT");
+}
+
 export function isoWeekInfo(date: Date): { semana: number; anio: number } {
   const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
