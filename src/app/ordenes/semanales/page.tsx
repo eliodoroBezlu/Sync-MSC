@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import { useUser, puedeVerSemanales } from "@/context/AuthContext";
 import { areaToDisciplina } from "@/lib/planificacion/areaToDisciplina";
+import { tipoOtDisplay } from "@/lib/tiposOt";
 import {
   IProgramacionSemanal, IOTProgramada, DiaSemana,
   GrupoTrabajo, EstadoOTProgramada, IArea,
@@ -49,12 +50,6 @@ const ESTADO_LABEL: Record<EstadoOTProgramada, string> = {
   pendiente: "Pendiente", atrasada: "Atrasada",
   bloqueada: "Bloqueada", cancelada: "Cancelada",
 };
-const TIPO_COLOR: Record<string, string> = {
-  P: "bg-blue-100 text-blue-800",
-  C: "bg-red-100 text-red-800",
-  S: "bg-purple-100 text-purple-800",
-};
-
 type BitacoraEntry = { turno: string; supervisor: string; nota: string; hhAtendidas: number; fecha?: string };
 
 type Vista = "tabla" | "kanban" | "tecnico";
@@ -673,6 +668,7 @@ function VistaTabla({
                   // Filas de OTs
                   ...otsGrupo.map((ot, i) => {
                     const rowBg = ot.estado === "atrasada" ? "#fff1f2" : ot.estado === "completada" ? "#f0fdf4" : i % 2 === 0 ? "white" : "#fafafa";
+                    const tipo = tipoOtDisplay(ot.tipoOT);
                     return (
                       <tr key={`${ot.numeroOT}-${grupo}-${i}`} style={{ background: rowBg, borderBottom: "1px solid #f1f5f9" }}>
                         <td style={{ padding: "10px 14px", maxWidth: 240 }}>
@@ -684,8 +680,8 @@ function VistaTabla({
                           {ot.descripcionEquipo && <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>{ot.descripcionEquipo}</div>}
                         </td>
                         <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
-                          <span style={{ ...tipoStyle(ot.tipoOT), padding: "3px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                            {ot.tipoOT}
+                          <span style={{ background: tipo.color.bg, color: tipo.color.color, padding: "3px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                            {tipo.texto}
                           </span>
                           {ot.prioridad && ot.prioridad.trim() && (
                             <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>P{ot.prioridad}</div>
@@ -768,21 +764,6 @@ function VistaTabla({
   );
 }
 
-function tipoStyle(tipoOT: string): React.CSSProperties {
-  const map: Record<string, React.CSSProperties> = {
-    CMP: { background: "#fee2e2", color: "#991b1b" },
-    CMR: { background: "#fef3c7", color: "#92400e" },
-    PMP: { background: "#dbeafe", color: "#1d4ed8" },
-    PMT: { background: "#dcfce7", color: "#166534" },
-    PTJ: { background: "#ede9fe", color: "#5b21b6" },
-    PdM: { background: "#e0f2fe", color: "#0369a1" },
-    P:   { background: "#dbeafe", color: "#1d4ed8" },
-    C:   { background: "#fee2e2", color: "#991b1b" },
-    S:   { background: "#ede9fe", color: "#5b21b6" },
-  };
-  return map[tipoOT] ?? { background: "#f1f5f9", color: "#475569" };
-}
-
 // ─── Vista Kanban ──────────────────────────────────────────────────────────────
 const KANBAN_COLS: { key: EstadoOTProgramada; label: string; headerBg: string; headerColor: string; colBg: string }[] = [
   { key: "no_iniciada", label: "No iniciada", headerBg: "#f1f5f9", headerColor: "#475569", colBg: "#f8fafc" },
@@ -819,11 +800,12 @@ function VistaKanban({
                 )}
                 {items.map((ot, i) => {
                   const gc = GRUPO_COLOR[ot.grupo] ?? { bg: "#f1f5f9", color: "#475569" };
+                  const tipo = tipoOtDisplay(ot.tipoOT);
                   return (
                     <div key={`${ot.numeroOT}-${i}`} style={{ background: "white", borderRadius: 10, border: "1px solid #f1f5f9", padding: 10, boxShadow: "0 1px 4px rgba(15,40,71,0.06)" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 4 }}>
                         <span style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 12, color: "#0f2847" }}>{ot.numeroOT}</span>
-                        <span style={{ ...tipoStyle(ot.tipoOT), padding: "1px 6px", borderRadius: 4, fontSize: 9, fontWeight: 700, flexShrink: 0 }}>{ot.tipoOT}</span>
+                        <span style={{ background: tipo.color.bg, color: tipo.color.color, padding: "1px 6px", borderRadius: 4, fontSize: 9, fontWeight: 700, flexShrink: 0 }}>{tipo.texto}</span>
                       </div>
                       <div style={{ fontSize: 11, fontWeight: 700, color: "#1d4ed8", marginTop: 3 }}>{ot.tag}</div>
                       <div style={{ fontSize: 10, color: "#64748b", marginTop: 2, lineHeight: 1.4, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const }}>{ot.descripcion}</div>
@@ -903,12 +885,13 @@ function VistaTecnico({
               {otsDia.map((ot, i) => {
                 const s = ESTADO_STYLE[ot.estado];
                 const gc = GRUPO_COLOR[ot.grupo] ?? { bg: "#f1f5f9", color: "#475569" };
+                const tipo = tipoOtDisplay(ot.tipoOT);
                 return (
                   <div key={`${ot.numeroOT}-${i}`} style={{ background: "white", borderRadius: 12, border: `1px solid ${s.background}`, padding: 14, boxShadow: "0 1px 4px rgba(15,40,71,0.05)", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         <span style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 14, color: "#0f2847" }}>{ot.numeroOT}</span>
-                        <span style={{ ...tipoStyle(ot.tipoOT), padding: "2px 7px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>{ot.tipoOT}</span>
+                        <span style={{ background: tipo.color.bg, color: tipo.color.color, padding: "2px 7px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>{tipo.texto}</span>
                         <span style={{ ...gc, padding: "2px 7px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>{ot.grupo}</span>
                       </div>
                       <div style={{ fontSize: 13, fontWeight: 700, color: "#1d4ed8", marginTop: 4 }}>{ot.tag}</div>

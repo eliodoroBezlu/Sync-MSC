@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
+import { tipoOtDisplay } from "@/lib/tiposOt";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -84,9 +85,9 @@ const ESTADO_LABEL: Record<string, string> = {
   borrador: "Borrador", pendiente_revision: "Pend. revisión",
   solicitar_correccion: "Corrección", revisado: "Revisado", concluido: "Concluido",
 };
-const TIPO_COLOR: Record<string, string> = {
-  CMP: "#dc2626", CMR: "#d97706", PMP: "#2563eb", PMT: "#0891b2", PTJ: "#7c3aed",
-};
+function tipoColor(tipoOT: string): string {
+  return tipoOtDisplay(tipoOT).color.color;
+}
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
@@ -768,7 +769,7 @@ export default function ReporteTurnoPage() {
                                           <span style={{ fontWeight: 700, fontSize: 13, fontFamily: "monospace" }}>{ot.otJdeNumero ?? ot.numeroOT}</span>
                                           {ot.areaCodigo && <span style={S.badge("#475569")}>{ot.areaCodigo}</span>}
                                           <span style={S.badge(estadoColor)}>{ESTADO_LABEL[ot.estado] ?? ot.estado}</span>
-                                          {ot.lineas.map((l, i) => <span key={i} style={S.badge(TIPO_COLOR[l.tipoOT] ?? "#64748b")}>{l.tipoOT}</span>)}
+                                          {ot.lineas.map((l, i) => <span key={i} style={S.badge(tipoColor(l.tipoOT))}>{tipoOtDisplay(l.tipoOT).texto}</span>)}
                                           {hhOT > 0 && <span style={{ fontSize: 11, color: "#d97706", fontWeight: 700 }}>{Math.round(hhOT * 10) / 10}HH</span>}
                                         </div>
                                         <p style={{ fontSize: 11, color: "#64748b", marginBottom: 1 }}>{ot.tecnicos.map(t => t.nombreCompleto).join(" / ")}</p>
@@ -884,7 +885,7 @@ export default function ReporteTurnoPage() {
                                 {!ot.disciplina && ot.areaCodigo && <span style={S.badge("#475569")}>{ot.areaCodigo}</span>}
                                 {ot.grupo && <span style={S.badge(ot.grupo === "Nocturno" ? "#7c3aed" : "#475569")}>{ot.grupo}</span>}
                                 <span style={S.badge(estadoColor)}>{esPlan ? (ot.estado === "no_iniciada" ? "Sin iniciar" : ot.estado) : (ESTADO_LABEL[ot.estado] ?? ot.estado)}</span>
-                                {ot.lineas.map((l, i) => <span key={i} style={S.badge(TIPO_COLOR[l.tipoOT] ?? "#64748b")}>{l.tipoOT}</span>)}
+                                {ot.lineas.map((l, i) => <span key={i} style={S.badge(tipoColor(l.tipoOT))}>{tipoOtDisplay(l.tipoOT).texto}</span>)}
                                 {esPlan && ot.hhTotal && <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>{ot.hhTotal}HH</span>}
                               </div>
                               <p style={{ fontSize: 11, color: "#64748b", marginBottom: 1 }}>{ot.tecnicos.map((t) => t.nombreCompleto).join(" / ")}</p>
@@ -1292,7 +1293,7 @@ export default function ReporteTurnoPage() {
                         <span style={{ fontWeight: 800, fontSize: 14 }}>{ot.otJdeNumero ?? ot.numeroOT}</span>
                         <span style={S.badge("#475569")}>{ot.areaCodigo}</span>
                         <span style={S.badge(estadoColor)}>{ESTADO_LABEL[ot.estado] ?? ot.estado}</span>
-                        {ot.lineas.map((l, i) => <span key={i} style={S.badge(TIPO_COLOR[l.tipoOT] ?? "#64748b")}>{l.tipoOT}</span>)}
+                        {ot.lineas.map((l, i) => <span key={i} style={S.badge(tipoColor(l.tipoOT))}>{tipoOtDisplay(l.tipoOT).texto}</span>)}
                         {crit && <span style={S.badge("#dc2626")}>⚠ Crítica</span>}
                         {pend && <span style={S.badge("#d97706")}>→ Sig. turno</span>}
                       </div>

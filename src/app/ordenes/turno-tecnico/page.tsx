@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
 import { getFechaTurno } from "@/lib/turno";
+import { tipoOtDisplay } from "@/lib/tiposOt";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -80,7 +81,6 @@ function disciplinaDeArea(areaCodigo: string): string {
 // ni debe registrar sus OTs en este reporte.
 const AREAS_ELEC_INST = new Set(["3320", "3319", "3311"]);
 
-const TIPO_COLOR: Record<string, string> = { CMP: "#dc2626", CMR: "#d97706", PMP: "#2563eb", PMT: "#0891b2", PTJ: "#7c3aed" };
 const PRIOR_COLOR: Record<string, string> = { URGENTE: "#dc2626", ATENCION: "#d97706", INFORMACION: "#2563eb" };
 const ESTADO_COLOR: Record<string, string> = { borrador: "#64748b", enviado: "#16a34a" };
 
@@ -717,7 +717,7 @@ export default function ReporteTurnoTecnicoPage() {
                         {planNormal.map(o => {
                           const selId = o.id;
                           const sel = form.otsPlanIds.includes(selId);
-                          const tipoColor = TIPO_COLOR[o.tipoOT] ?? "#64748b";
+                          const tipo = tipoOtDisplay(o.tipoOT);
                           return (
                             <div key={o.id} style={{ border: sel ? "2px solid #2563eb" : "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px", marginBottom: 8, background: sel ? "#f0f7ff" : "white", cursor: "pointer" }}
                               onClick={() => toggleOT(selId, true)}>
@@ -725,7 +725,7 @@ export default function ReporteTurnoTecnicoPage() {
                                 <input type="checkbox" checked={sel} onChange={() => toggleOT(selId, true)} style={{ marginTop: 3, accentColor: "#2563eb", width: 16, height: 16 }} onClick={e => e.stopPropagation()} />
                                 <div style={{ flex: 1 }}>
                                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const, alignItems: "center", marginBottom: 3 }}>
-                                    <span style={S.badge(tipoColor)}>{o.tipoOT}</span>
+                                    <span style={S.badge(tipo.color.color)}>{tipo.texto}</span>
                                     <span style={{ fontWeight: 700, fontSize: 13, fontFamily: "monospace" }}>{o.numeroOT}</span>
                                     <span style={{ fontFamily: "monospace", fontSize: 12, color: "#1d4ed8" }}>{o.tag}</span>
                                     {o.hhTotal > 0 && <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 700 }}>{o.hhTotal}h</span>}
@@ -847,7 +847,7 @@ export default function ReporteTurnoTecnicoPage() {
                         {otsRegFiltradas.map(o => {
                           const sel = form.otIds.includes(o._id);
                           const linea = o.lineas[0];
-                          const tipoColor = TIPO_COLOR[linea?.tipoOT ?? ""] ?? "#64748b";
+                          const tipo = linea?.tipoOT ? tipoOtDisplay(linea.tipoOT) : null;
                           return (
                             <div key={o._id} style={{ border: sel ? "2px solid #16a34a" : "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px", marginBottom: 8, background: sel ? "#f0fdf4" : "white", cursor: "pointer" }}
                               onClick={() => toggleOT(o._id, false)}>
@@ -855,7 +855,7 @@ export default function ReporteTurnoTecnicoPage() {
                                 <input type="checkbox" checked={sel} onChange={() => toggleOT(o._id, false)} style={{ marginTop: 3, accentColor: "#16a34a", width: 16, height: 16 }} onClick={e => e.stopPropagation()} />
                                 <div style={{ flex: 1 }}>
                                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const, alignItems: "center", marginBottom: 3 }}>
-                                    <span style={S.badge(tipoColor)}>{linea?.tipoOT ?? "—"}</span>
+                                    <span style={S.badge(tipo?.color.color ?? "#64748b")}>{tipo?.texto ?? "—"}</span>
                                     <span style={{ fontWeight: 700, fontSize: 13, fontFamily: "monospace" }}>{o.otJdeNumero ?? `#${o.numeroOT}`}</span>
                                     {o.otJdeNumero && <span style={{ fontSize: 11, color: "#94a3b8" }}>#{o.numeroOT}</span>}
                                     <span style={{ fontFamily: "monospace", fontSize: 12, color: "#1d4ed8" }}>{linea?.tag}</span>
@@ -905,7 +905,7 @@ export default function ReporteTurnoTecnicoPage() {
                         {otsContinuacionFiltradas.map(o => {
                           const sel = form.otIds.includes(o._id);
                           const linea = o.lineas[0];
-                          const tipoColor = TIPO_COLOR[linea?.tipoOT ?? ""] ?? "#64748b";
+                          const tipo = linea?.tipoOT ? tipoOtDisplay(linea.tipoOT) : null;
                           const fechaOT = new Date(o.fecha).toLocaleDateString("es-BO", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
                           return (
                             <div key={o._id} style={{ border: sel ? "2px solid #7c3aed" : "1px solid #ddd6fe", borderRadius: 10, padding: "10px 12px", marginBottom: 8, background: sel ? "#faf5ff" : "#fefcff", cursor: "pointer" }}
@@ -915,7 +915,7 @@ export default function ReporteTurnoTecnicoPage() {
                                 <div style={{ flex: 1 }}>
                                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const, alignItems: "center", marginBottom: 3 }}>
                                     <span style={{ fontSize: 10, fontWeight: 700, background: "#ede9fe", color: "#7c3aed", borderRadius: 4, padding: "1px 6px" }}>Desde {fechaOT}</span>
-                                    <span style={S.badge(tipoColor)}>{linea?.tipoOT ?? "—"}</span>
+                                    <span style={S.badge(tipo?.color.color ?? "#64748b")}>{tipo?.texto ?? "—"}</span>
                                     <span style={{ fontWeight: 700, fontSize: 13, fontFamily: "monospace" }}>{o.otJdeNumero ?? `#${o.numeroOT}`}</span>
                                     {o.otJdeNumero && <span style={{ fontSize: 11, color: "#94a3b8" }}>#{o.numeroOT}</span>}
                                     <span style={{ fontFamily: "monospace", fontSize: 12, color: "#1d4ed8" }}>{linea?.tag}</span>

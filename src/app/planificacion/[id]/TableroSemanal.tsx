@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { DragEvent } from "react";
 import type { OtBorrador, Plan } from "./types";
+import { tipoOtDisplay } from "@/lib/tiposOt";
 
 const DIAS_INFO = [
   { code: "Lu", largo: "Lunes" },
@@ -13,15 +14,6 @@ const DIAS_INFO = [
   { code: "Sa", largo: "Sábado" },
   { code: "Do", largo: "Domingo" },
 ] as const;
-
-const TIPO_STYLE: Record<string, { bg: string; color: string }> = {
-  C: { bg: "#fee2e2", color: "#dc2626" },
-  P: { bg: "#dbeafe", color: "#1d4ed8" },
-  T: { bg: "#ede9fe", color: "#7c3aed" },
-};
-function tipoStyle(t: string) {
-  return TIPO_STYLE[t] ?? { bg: "#f1f5f9", color: "#475569" };
-}
 
 // Mismo orden y colores que el Plan Semanal publicado (src/app/ordenes/semanales)
 // para que la agrupación por turno se vea consistente en ambas pantallas.
@@ -84,7 +76,7 @@ function OtCard({
   onClickBacklog: (ot: OtBorrador) => void;
   onDevolverABacklog: (otId: string) => void;
 }) {
-  const s = tipoStyle(ot.tipoOT);
+  const s = tipoOtDisplay(ot.tipoOT);
   return (
     <div
       draggable={!disabled}
@@ -116,7 +108,7 @@ function OtCard({
       )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 4, paddingRight: enBacklog ? 0 : 18 }}>
         <span style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 11, color: "#0f2847" }}>{ot.numeroOT}</span>
-        <span style={{ background: s.bg, color: s.color, padding: "1px 6px", borderRadius: 4, fontSize: 9, fontWeight: 700, flexShrink: 0 }}>{ot.tipoOT}</span>
+        <span style={{ background: s.color.bg, color: s.color.color, padding: "1px 6px", borderRadius: 4, fontSize: 9, fontWeight: 700, flexShrink: 0 }}>{s.texto}</span>
       </div>
       <div style={{ fontSize: 10, fontWeight: 700, color: "#1d4ed8", marginTop: 3 }}>{ot.tag}</div>
       <div style={{

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
 import TecnicosPanel from "@/components/TecnicosPanel";
+import { tipoOtDisplay } from "@/lib/tiposOt";
 
 
 // ─── Helpers de semana ISO ────────────────────────────────────────────────────
@@ -139,9 +140,9 @@ const ESTADO_LABEL: Record<string, string> = {
   borrador: "Borrador", pendiente_revision: "Pend. revisión",
   solicitar_correccion: "Corrección", revisado: "Revisado", concluido: "Concluido",
 };
-const TIPO_COLOR: Record<string, string> = {
-  CMP: "#dc2626", CMR: "#d97706", PMP: "#2563eb", PMT: "#0891b2", PTJ: "#7c3aed",
-};
+function tipoColor(tipoOT: string): string {
+  return tipoOtDisplay(tipoOT).color.color;
+}
 
 // ─── Estilos ──────────────────────────────────────────────────────────────────
 
@@ -510,7 +511,7 @@ export default function TurneroPage() {
                                       <span style={{ fontWeight: 800, fontSize: 13, fontFamily: "monospace", color: "#0f2847" }}>{ot.otJdeNumero ? `OT ${ot.otJdeNumero}` : `#${ot.numeroOT}`}</span>
                                       <span style={S.badge(estadoColor)}>{ESTADO_LABEL[ot.estado] ?? ot.estado}</span>
                                       {ot.lineas.map((l, i) => (
-                                        <span key={i} style={S.badge(TIPO_COLOR[l.tipoOT] ?? "#64748b")}>{l.tag} · {l.tipoOT}</span>
+                                        <span key={i} style={S.badge(tipoColor(l.tipoOT))}>{l.tag} · {tipoOtDisplay(l.tipoOT).texto}</span>
                                       ))}
                                       {a.hhTrabajadas > 0 && (
                                         <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: "#d97706" }}>{Math.round(a.hhTrabajadas * 10) / 10}HH</span>
@@ -647,7 +648,7 @@ export default function TurneroPage() {
           {editForm.lineas.map((l, i) => (
             <div key={i} style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px", marginBottom: 12, border: "1px solid #e2e8f0" }}>
               <div style={{ fontWeight: 700, fontSize: 12, color: "#1d4ed8", fontFamily: "monospace", marginBottom: 10 }}>
-                {l.tag} · <span style={{ color: TIPO_COLOR[l.tipoOT] ?? "#64748b" }}>{l.tipoOT}</span>
+                {l.tag} · <span style={{ color: tipoColor(l.tipoOT) }}>{tipoOtDisplay(l.tipoOT).texto}</span>
               </div>
 
               <div style={{ marginBottom: 10 }}>

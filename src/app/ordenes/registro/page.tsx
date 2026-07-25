@@ -7,6 +7,7 @@ import TecnicosPanel from "@/components/TecnicosPanel";
 import { useUser } from "@/context/AuthContext";
 import { getFechaTurno, localDateStr, autoTurno, estaEnVentanaCierreSemanal } from "@/lib/turno";
 import { getWeekNumber, getWeekDates, getSemanaAnioOffset } from "@/lib/semana";
+import { tipoOtDisplay, normalizarACodigoCompleto } from "@/lib/tiposOt";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -195,19 +196,26 @@ function nombreCoincide(planNombre: string, userNombre: string): boolean {
 }
 
 const TIPOS_OT: { value: TipoOT; label: string; desc: string; color: string }[] = [
-  { value: "CMP", label: "CMP", desc: "Correctivo Mayor Programado", color: "#dc2626" },
-  { value: "CMR", label: "CMR", desc: "Correctivo Menor Rutinario", color: "#d97706" },
-  { value: "PMP", label: "PMP", desc: "Preventivo Mayor Programado", color: "#2563eb" },
-  { value: "PMT", label: "PMT", desc: "Preventivo Menor de Turno", color: "#0891b2" },
-  { value: "PDM", label: "PDM", desc: "Mantenimiento Predictivo", color: "#059669" },
-  { value: "PTJ", label: "PTJ", desc: "Proyecto / Trab. de Ingeniería", color: "#7c3aed" },
+  { value: "CMP", label: "CMP", desc: "Correctivo Mayor Programado", color: tipoOtDisplay("CMP").color.color },
+  { value: "CMR", label: "CMR", desc: "Correctivo Menor Rutinario", color: tipoOtDisplay("CMR").color.color },
+  { value: "PMP", label: "PMP", desc: "Preventivo Mayor Programado", color: tipoOtDisplay("PMP").color.color },
+  { value: "PMT", label: "PMT", desc: "Preventivo Menor de Turno", color: tipoOtDisplay("PMT").color.color },
+  { value: "PDM", label: "PDM", desc: "Mantenimiento Predictivo", color: tipoOtDisplay("PDM").color.color },
+  { value: "PTJ", label: "PTJ", desc: "Proyecto / Trab. de Ingeniería", color: tipoOtDisplay("PTJ").color.color },
 ];
 
 const TURNOS: TurnoTipo[] = ["Diurno", "Nocturno", "Parada de Planta", "Planta", "Otro"];
 const isCorrectivo = (t: TipoOT | "") => t === "CMP" || t === "CMR";
 const isPreventivo = (t: TipoOT | "") => t === "PMP" || t === "PMT" || t === "PDM" || t === "PTJ";
 
-const TIPO_COLOR: Record<TipoOT, string> = { CMP: "#dc2626", CMR: "#d97706", PMP: "#2563eb", PMT: "#0891b2", PDM: "#059669", PTJ: "#7c3aed" };
+const TIPO_COLOR: Record<TipoOT, string> = {
+  CMP: tipoOtDisplay("CMP").color.color,
+  CMR: tipoOtDisplay("CMR").color.color,
+  PMP: tipoOtDisplay("PMP").color.color,
+  PMT: tipoOtDisplay("PMT").color.color,
+  PDM: tipoOtDisplay("PDM").color.color,
+  PTJ: tipoOtDisplay("PTJ").color.color,
+};
 const CRIT_COLOR: Record<string, string> = { A: "#dc2626", B: "#d97706", C: "#16a34a" };
 const ESTADO_BG: Record<string, string> = {
   no_iniciada: "#f1f5f9", en_proceso: "#eff6ff", en_revision: "#fffbeb",
@@ -259,7 +267,9 @@ async function leerDocumento(file: File): Promise<string> {
 }
 
 function lineaFromPlan(ot: OTPlan): LineaForm {
-  const tipoOT = (["CMP","CMR","PMP","PMT","PDM","PTJ"].includes(ot.tipoOT) ? ot.tipoOT : "") as TipoOT | "";
+  // El plan puede traer letra sola del JDE (P/T/C/R) o ya el código completo;
+  // ambos se normalizan al código completo que espera este formulario.
+  const tipoOT = (normalizarACodigoCompleto(ot.tipoOT) || "") as TipoOT | "";
   return {
     ...newLinea(),
     tag: ot.tag,

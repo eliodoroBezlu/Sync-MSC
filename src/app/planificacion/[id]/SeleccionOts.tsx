@@ -2,15 +2,7 @@
 
 import { useState } from "react";
 import type { OtBorrador, Plan } from "./types";
-
-const TIPO_STYLE: Record<string, { bg: string; color: string }> = {
-  C: { bg: "#fee2e2", color: "#dc2626" },
-  P: { bg: "#dbeafe", color: "#1d4ed8" },
-  T: { bg: "#ede9fe", color: "#7c3aed" },
-};
-function tipoStyle(t: string) {
-  return TIPO_STYLE[t] ?? { bg: "#f1f5f9", color: "#475569" };
-}
+import { tipoOtDisplay } from "@/lib/tiposOt";
 
 function MotivoForm({ ot, onPatch }: {
   ot: OtBorrador;
@@ -50,7 +42,7 @@ function SeleccionCard({ ot, onToggle, onPatch }: {
   onToggle: (ot: OtBorrador) => void;
   onPatch: (otId: string, patch: Partial<OtBorrador>) => void;
 }) {
-  const s = tipoStyle(ot.tipoOT);
+  const s = tipoOtDisplay(ot.tipoOT);
   const bloqueada = ot.esGuardia;
   return (
     <div style={{
@@ -75,7 +67,7 @@ function SeleccionCard({ ot, onToggle, onPatch }: {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
             <span style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 12, color: "#0f2847" }}>{ot.numeroOT}</span>
-            <span style={{ background: s.bg, color: s.color, padding: "1px 6px", borderRadius: 4, fontSize: 9, fontWeight: 700 }}>{ot.tipoOT}</span>
+            <span style={{ background: s.color.bg, color: s.color.color, padding: "1px 6px", borderRadius: 4, fontSize: 9, fontWeight: 700 }}>{s.texto}</span>
             {bloqueada && (
               <span style={{ background: "#1e1b4b", color: "white", padding: "1px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700 }}>🛡️ OPEPLANT · toda la semana</span>
             )}

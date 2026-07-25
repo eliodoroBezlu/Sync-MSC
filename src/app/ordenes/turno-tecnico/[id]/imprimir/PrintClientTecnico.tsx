@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { tipoOtDisplay } from "@/lib/tiposOt";
 
 type BitacoraEntry = { turno: string; supervisor: string; nota: string; resolucion?: string; estadoFinal?: string; hhAtendidas: number; fecha?: string };
 type LineaDisplay  = { tag: string; tipoOT: string; descripcion: string; resolucion: string; estadoFinal?: string; hh: number; observaciones?: string; tareasEjecutadas?: string[]; descripcionTrabajo?: string };
@@ -62,9 +63,9 @@ type ReporteData = {
 const PRIOR_COLOR: Record<string, string> = {
   URGENTE: "#dc2626", ATENCION: "#d97706", INFORMACION: "#2563eb",
 };
-const TIPO_COLOR: Record<string, string> = {
-  CMP: "#dc2626", CMR: "#d97706", PMP: "#2563eb", PMT: "#0891b2", PTJ: "#7c3aed", PDM: "#7c3aed",
-};
+function tipoColor(tipoOT: string): string {
+  return tipoOtDisplay(tipoOT).color.color;
+}
 
 export default function PrintClientTecnico({
   reporte, ots,
@@ -249,8 +250,8 @@ export default function PrintClientTecnico({
                   ...planLineas.map((l, li) => (
                     <tr key={`${ot.id}-pl${li}`} style={{ background: bgPlan }}>
                       <td style={{ textAlign: "center", fontSize: 8, color: "#94a3b8" }}>{idx + 1}.{li + 1}</td>
-                      <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold", color: TIPO_COLOR[l.tipoOT] ?? "#000" }}>
-                        {l.tipoOT || ot.tipoOT || "—"}
+                      <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold", color: (l.tipoOT || ot.tipoOT) ? tipoColor(l.tipoOT || ot.tipoOT) : "#000" }}>
+                        {(l.tipoOT || ot.tipoOT) ? tipoOtDisplay(l.tipoOT || ot.tipoOT).texto : "—"}
                         <div style={{ fontSize: 7, marginTop: 1 }}><span className="plan-badge">PLAN</span></div>
                       </td>
                       <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 9 }}>{l.tag}</td>
@@ -269,8 +270,8 @@ export default function PrintClientTecnico({
               return (
                 <tr key={ot.id} className="plan-row" style={{ background: ot.critica ? "#fff1f2" : ot.esGuardia ? "#fffbeb" : "#f8fafc" }}>
                   <td style={{ textAlign: "center", fontSize: 9 }}>{idx + 1}</td>
-                  <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold", color: TIPO_COLOR[ot.tipoOT] ?? "#000" }}>
-                    {ot.tipoOT || "—"}
+                  <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold", color: ot.tipoOT ? tipoColor(ot.tipoOT) : "#000" }}>
+                    {ot.tipoOT ? tipoOtDisplay(ot.tipoOT).texto : "—"}
                     <div style={{ fontSize: 7, marginTop: 1 }}>
                       <span className={ot.esGuardia ? "opeplant-badge" : "plan-badge"}>{ot.esGuardia ? "OPEPLANT" : "PLAN"}</span>
                     </div>
@@ -312,8 +313,8 @@ export default function PrintClientTecnico({
               return entradas.map((b, bi) => (
                 <tr key={`${ot.id}-b${bi}`} className="plan-row" style={{ background: "#fffbeb" }}>
                   <td style={{ textAlign: "center", fontSize: 9 }}>{otsPlanResto.length + idx + 1}.{bi + 1}</td>
-                  <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold", color: TIPO_COLOR[ot.tipoOT] ?? "#d97706" }}>
-                    {ot.tipoOT || "PDM"}
+                  <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold", color: tipoColor(ot.tipoOT || "PDM") }}>
+                    {tipoOtDisplay(ot.tipoOT || "PDM").texto}
                     <div style={{ fontSize: 7, marginTop: 1 }}><span className="opeplant-badge">OPEPLANT</span></div>
                   </td>
                   <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 9 }}>OPEPLANT</td>
@@ -359,7 +360,7 @@ export default function PrintClientTecnico({
                   ...lineas.map((l, li) => (
                     <tr key={`${ot.id}-l${li}`} style={{ background: bgRow }}>
                       <td style={{ textAlign: "center", fontSize: 8, color: "#94a3b8" }}>{baseIdx}.{li + 1}</td>
-                      <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold", color: TIPO_COLOR[l.tipoOT] ?? "#000" }}>{l.tipoOT}</td>
+                      <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold", color: tipoColor(l.tipoOT) }}>{tipoOtDisplay(l.tipoOT).texto}</td>
                       <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 9 }}>{l.tag}</td>
                       <td style={{ textAlign: "center", fontSize: 9 }}>{l.hh || "—"}</td>
                       <td style={{ fontFamily: "monospace", fontSize: 8, color: "#64748b" }}>{otNum(ot)}</td>
@@ -379,7 +380,7 @@ export default function PrintClientTecnico({
               return (
                 <tr key={ot.id} style={{ background: bgRow }}>
                   <td style={{ textAlign: "center", fontSize: 9 }}>{baseIdx}</td>
-                  <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold", color: TIPO_COLOR[ot.tipoOT] ?? "#000" }}>{ot.tipoOT}</td>
+                  <td style={{ textAlign: "center", fontSize: 9, fontWeight: "bold", color: tipoColor(ot.tipoOT) }}>{tipoOtDisplay(ot.tipoOT).texto}</td>
                   <td style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: 9 }}>{ot.tag}</td>
                   <td style={{ textAlign: "center", fontSize: 9 }}>{ot.hhTotal || "—"}</td>
                   <td style={{ fontFamily: "monospace", fontSize: 9 }}>{otNum(ot)}</td>

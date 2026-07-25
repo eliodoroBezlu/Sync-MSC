@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useCallback } from "react";
 import AppHeader from "@/components/AppHeader";
+import { tipoOtDisplay } from "@/lib/tiposOt";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -65,12 +66,16 @@ type Equipo = {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const TIPO_COLOR: Record<string, string> = {
-  CMP: "#dc2626", CMR: "#d97706", PMP: "#2563eb", PMT: "#0891b2", PTJ: "#7c3aed",
-};
+function tipoColor(tipoOT: string): string {
+  return tipoOtDisplay(tipoOT).color.color;
+}
 
+// PDM=Predictivo real; PTJ (proyecto/ingeniería) se agrupa con Correctivo,
+// igual que en el resto de la app (familia "C" de src/lib/tiposOt.ts).
 const TIPO_GRUPO: Record<string, string> = {
-  CMP: "Correctivo", CMR: "Correctivo", PMP: "Preventivo", PMT: "Preventivo", PTJ: "Predictivo",
+  CMP: "Correctivo", CMR: "Correctivo", PTJ: "Correctivo",
+  PMP: "Preventivo", PMT: "Preventivo",
+  PDM: "Predictivo",
 };
 
 const CRITICIDAD_COLOR: Record<string, string> = { A: "#dc2626", B: "#d97706", C: "#16a34a" };
@@ -577,7 +582,7 @@ export default function ReporteTAGPage() {
                     .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
                     .map((ot) => {
                       const linea = ot.lineas.find((l) => l.tag === searchedTag)!;
-                      const color = TIPO_COLOR[linea.tipoOT] ?? "#64748b";
+                      const color = tipoColor(linea.tipoOT);
                       return (
                         <div key={ot._id} style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
                           <div style={{
@@ -590,7 +595,7 @@ export default function ReporteTAGPage() {
                               <span style={{ fontWeight: 700, fontSize: 12, color: "#0f2847" }}>
                                 {new Date(ot.fecha).toLocaleDateString("es-BO", { timeZone: "UTC" })}
                               </span>
-                              <span style={S.badge(color)}>{linea.tipoOT}</span>
+                              <span style={S.badge(color)}>{tipoOtDisplay(linea.tipoOT).texto}</span>
                               <span style={{ fontSize: 11, color: "#94a3b8" }}>OT #{ot.numeroOT}</span>
                             </div>
                             <p style={{ fontSize: 12, color: "#475569", lineHeight: 1.4 }}>
@@ -621,7 +626,7 @@ export default function ReporteTAGPage() {
                 .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
                 .map((ot, idx) => {
                   const linea = ot.lineas.find((l) => l.tag === searchedTag)!;
-                  const color = TIPO_COLOR[linea.tipoOT] ?? "#64748b";
+                  const color = tipoColor(linea.tipoOT);
                   const isOpen = expanded.has(ot._id);
                   const isCorrectivo = ["CMP", "CMR"].includes(linea.tipoOT);
                   const ds = ot.datosSupervision;

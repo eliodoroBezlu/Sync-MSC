@@ -6,6 +6,7 @@ import { useUser } from "@/context/AuthContext";
 import { generarInformeOT } from "@/lib/generarInformeOT";
 import { estaEnVentanaCierreSemanal } from "@/lib/turno";
 import { getWeekNumber } from "@/lib/semana";
+import { tipoOtDisplay } from "@/lib/tiposOt";
 
 // ─── Utilidades de imagen ─────────────────────────────────────────────────────
 
@@ -130,9 +131,9 @@ const ESTADO_LABEL: Record<string, string> = {
   concluido: "Concluido",
 };
 
-const TIPO_COLOR: Record<string, string> = {
-  CMP: "#dc2626", CMR: "#d97706", PMP: "#2563eb", PMT: "#0891b2", PDM: "#059669", PTJ: "#7c3aed",
-};
+function tipoColor(tipoOT: string): string {
+  return tipoOtDisplay(tipoOT).color.color;
+}
 
 const CLASIFICACIONES_RCM = [
   "Correctivo No Planificado",
@@ -799,7 +800,7 @@ export default function ReporteOTPage() {
                               ⏳ Sem. ant.
                             </span>
                           )}
-                          {ot.lineas.map((l, i) => <span key={i} style={S.badge(TIPO_COLOR[l.tipoOT] ?? "#64748b")}>{l.tipoOT}</span>)}
+                          {ot.lineas.map((l, i) => <span key={i} style={S.badge(tipoColor(l.tipoOT))}>{tipoOtDisplay(l.tipoOT).texto}</span>)}
                         </div>
                         <p style={{ fontSize: 12, color: "#64748b", marginBottom: 2 }}>
                           {new Date(ot.fecha).toLocaleDateString("es-BO", { timeZone: "UTC" })} · {ot.turno} · {areaNombre(ot.areaCodigo)}
@@ -879,8 +880,8 @@ export default function ReporteOTPage() {
                               </span>
                             )}
                             {ot.lineas.map((l, i) => (
-                              <span key={i} style={{ fontSize: 9, fontWeight: 700, background: (TIPO_COLOR[l.tipoOT] ?? "#64748b") + "20", color: TIPO_COLOR[l.tipoOT] ?? "#64748b", borderRadius: 4, padding: "1px 5px" }}>
-                                {l.tipoOT}
+                              <span key={i} style={{ fontSize: 9, fontWeight: 700, background: tipoColor(l.tipoOT) + "20", color: tipoColor(l.tipoOT), borderRadius: 4, padding: "1px 5px" }}>
+                                {tipoOtDisplay(l.tipoOT).texto}
                               </span>
                             ))}
                           </div>
@@ -1164,10 +1165,10 @@ export default function ReporteOTPage() {
               Equipos intervenidos ({ot.lineas.length})
             </div>
             {ot.lineas.map((l, i) => (
-              <div key={i} style={{ borderLeft: `3px solid ${TIPO_COLOR[l.tipoOT] ?? "#e2e8f0"}`, paddingLeft: 12, marginBottom: i < ot.lineas.length - 1 ? 14 : 0, paddingBottom: i < ot.lineas.length - 1 ? 14 : 0, borderBottom: i < ot.lineas.length - 1 ? "1px solid #f1f5f9" : "none" }}>
+              <div key={i} style={{ borderLeft: `3px solid ${l.tipoOT ? tipoColor(l.tipoOT) : "#e2e8f0"}`, paddingLeft: 12, marginBottom: i < ot.lineas.length - 1 ? 14 : 0, paddingBottom: i < ot.lineas.length - 1 ? 14 : 0, borderBottom: i < ot.lineas.length - 1 ? "1px solid #f1f5f9" : "none" }}>
                 <div style={{ display: "flex", gap: 7, alignItems: "center", marginBottom: 3 }}>
                   <span style={{ fontWeight: 800, fontSize: 14 }}>{l.tag}</span>
-                  <span style={S.badge(TIPO_COLOR[l.tipoOT] ?? "#64748b")}>{l.tipoOT}</span>
+                  <span style={S.badge(tipoColor(l.tipoOT))}>{tipoOtDisplay(l.tipoOT).texto}</span>
                 </div>
                 <p style={{ fontSize: 12, color: "#64748b", marginBottom: 3 }}>{l.descripcionEquipo}</p>
                 {l.sintoma && <p style={{ fontSize: 12, color: "#475569" }}>Síntoma: {l.sintoma}</p>}
@@ -1258,10 +1259,10 @@ export default function ReporteOTPage() {
               const isCorrectivo = ["CMP", "CMR"].includes(l.tipoOT);
               const insp = l.inspeccion ?? (hasChecklist ? { checklistId: "", checklistNombre: "Checklist supervisión", items: [] } : null);
               return (
-                <div key={i} style={{ borderLeft: `3px solid ${TIPO_COLOR[l.tipoOT] ?? "#e2e8f0"}`, paddingLeft: 12, marginBottom: i < editLineas.length - 1 ? 20 : 0, paddingBottom: i < editLineas.length - 1 ? 20 : 0, borderBottom: i < editLineas.length - 1 ? "1px solid #fde68a" : "none" }}>
+                <div key={i} style={{ borderLeft: `3px solid ${l.tipoOT ? tipoColor(l.tipoOT) : "#e2e8f0"}`, paddingLeft: 12, marginBottom: i < editLineas.length - 1 ? 20 : 0, paddingBottom: i < editLineas.length - 1 ? 20 : 0, borderBottom: i < editLineas.length - 1 ? "1px solid #fde68a" : "none" }}>
                   <div style={{ display: "flex", gap: 7, alignItems: "center", marginBottom: 10 }}>
                     <span style={{ fontWeight: 800, fontSize: 14 }}>{l.tag}</span>
-                    <span style={S.badge(TIPO_COLOR[l.tipoOT] ?? "#64748b")}>{l.tipoOT}</span>
+                    <span style={S.badge(tipoColor(l.tipoOT))}>{tipoOtDisplay(l.tipoOT).texto}</span>
                     <span style={{ fontSize: 11, color: "#64748b" }}>{l.descripcionEquipo}</span>
                   </div>
 
