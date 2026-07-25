@@ -15,9 +15,16 @@ export async function GET() {
       .map(f => ({ valor: f.tipoOT, cantidad: f._count.tipoOT }))
       .sort((a, b) => b.cantidad - a.cantidad);
 
+  const muestraS = await prisma.otProgramada.findMany({
+    where: { tipoOT: { in: ["S", "J"] } },
+    select: { tipoOT: true, tipoTrabajo: true, numeroOT: true, descripcion: true },
+    take: 15,
+  });
+
   return Response.json({
     otLinea: formatear(lineas),
     otProgramada: formatear(programadas),
     planBorradorOt: formatear(borrador),
+    muestraS,
   });
 }
