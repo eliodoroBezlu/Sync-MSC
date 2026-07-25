@@ -15,6 +15,15 @@ function normalizarCodigo(v: unknown): string {
   return TURNO_CODIGO[s] ?? s;
 }
 
+// Distingue "turno diurno" de "turno normal" en celdas con código "T": ambas
+// tienen el mismo texto, solo el fondo cambia (gris = guardia diurna, según
+// la codificación de RRHH que no se puede alterar). theme 0 = blanco/sin
+// relleno = turno normal; cualquier otro relleno sólido = turno diurno.
+function esFondoGuardiaDiurna(cell: XLSX.CellObject | undefined): boolean {
+  const fg = (cell?.s as { fgColor?: { theme?: number } } | undefined)?.fgColor;
+  return !!fg && fg.theme !== 0;
+}
+
 export async function POST(req: NextRequest, { params }: Ctx) {
   try {
     const { id } = await params;
@@ -37,7 +46,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     if (!file) return NextResponse.json({ error: "Archivo requerido" }, { status: 400 });
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const wb = XLSX.read(buffer, { type: "buffer" });
+    const wb = XLSX.read(buffer, { type: "buffer", cellStyles: true });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
 
@@ -111,6 +120,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       nombre: string;
       usuarioId: string;
       asistencia: string[];
+      guardiaDiurna: boolean[];
     }> = [];
 
     for (let i = filaEncabezado + 1; i < rows.length; i++) {
@@ -130,14 +140,19 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
       // Leer desde indiceDiaInicio hasta el final (max 31 días)
       const asistencia: string[] = [];
+      const guardiaDiurna: boolean[] = [];
       for (let c = indiceDiaInicio; c < row.length && asistencia.length < 31; c++) {
-        asistencia.push(normalizarCodigo(row[c]));
+        const codigo = normalizarCodigo(row[c]);
+        asistencia.push(codigo);
+        const celda = ws[XLSX.utils.encode_cell({ r: i, c })];
+        guardiaDiurna.push(codigo === "T" && esFondoGuardiaDiurna(celda));
       }
 
       personas.push({
         nombre: col3,
         usuarioId,
         asistencia,
+        guardiaDiurna,
       });
     }
 
@@ -160,8 +175,9 @@ export async function POST(req: NextRequest, { params }: Ctx) {
           errores.push(`${p.nombre}: sin asistencia para semana (slice(${colInicio}, ${colFin + 1}) = vacío)`);
           continue;
         }
+        const guardiaDiurnaSemana = p.guardiaDiurna.slice(colInicio, colFin + 1);
 
-        const grupo = calcularGrupo(asistenciaSemana);
+        const grupo = calcularGrupo(asistenciaSemana, guardiaDiurnaSemana);
         await prisma.rosterSemanal.create({
           data: {
             planBorradorId: id,
@@ -175,7 +191,12 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         });
         guardados++;
         seedsCuadrilla.push(
-          ...seedMembresiaDesdeAsistencia({ nombre: p.nombre, usuarioId: p.usuarioId, asistencia: asistenciaSemana })
+          ...seedMembresiaDesdeAsistencia({
+            nombre: p.nombre,
+            usuarioId: p.usuarioId,
+            asistencia: asistenciaSemana,
+            guardiaDiurna: guardiaDiurnaSemana,
+          })
         );
       } catch (e) {
         errores.push(`${p.nombre}: ${e instanceof Error ? e.message : String(e)}`);

@@ -14,12 +14,18 @@ const DIA_INDEX: Record<string, number> = { Lu: 0, Ma: 1, Mi: 2, Ju: 3, Vi: 4, S
 export const CODIGOS_ASISTENCIA = ["D", "N", "T", "V", "CS", "L", ""] as const;
 export type CodigoAsistencia = typeof CODIGOS_ASISTENCIA[number];
 
-/** Resumen semanal (mayoría D/N) para RosterSemanal.grupo — solo display, ver CuadrillaMiembro para asignación real. */
-export function calcularGrupo(asistencia: string[]): string {
-  const dias = asistencia.filter(a => a === "D" || a === "N");
-  if (dias.length === 0) return "Diurno";
-  const nocturno = dias.filter(a => a === "N").length;
-  return nocturno > dias.length / 2 ? "Nocturno" : "Diurno";
+/**
+ * Resumen semanal (mayoría turno nocturno/diurno) para RosterSemanal.grupo —
+ * solo display, ver CuadrillaMiembro para asignación real.
+ *
+ * "D" es código de descanso (RRHH), no de turno diurno — no cuenta aquí. El
+ * turno diurno real lo marca guardiaDiurna (T con fondo gris en el Excel).
+ */
+export function calcularGrupo(asistencia: string[], guardiaDiurna: boolean[] = []): string {
+  const nocturno = asistencia.filter(a => a === "N").length;
+  const diurno = guardiaDiurna.filter(Boolean).length;
+  if (nocturno === 0 && diurno === 0) return "Diurno";
+  return nocturno > diurno ? "Nocturno" : "Diurno";
 }
 
 export interface CuadrillaMiembroRow {
@@ -102,22 +108,28 @@ export function cachePersonalAsignado(
 
 /**
  * Semilla de membresía Diurno/Nocturno a partir de la asistencia real
- * (día por día) de un técnico del roster. Ignora códigos que no son D/N
- * (T, V, CS, L, "").
+ * (día por día) de un técnico del roster.
+ *
+ * Nocturno se siembra desde el código "N". Diurno NO se siembra desde "D"
+ * (ese código es descanso/día libre en la codificación de RRHH, no turno
+ * diurno) sino desde guardiaDiurna[dia] — la señal de fondo gris sobre una
+ * celda "T" que en el Excel distingue "turno diurno" (guardia) de "turno
+ * normal" (mismo texto "T", sin ese fondo). El resto de códigos (D, V, CS,
+ * L, T sin fondo, "") no siembran nada.
  */
 export function seedMembresiaDesdeAsistencia(
-  tecnico: { nombre: string; usuarioId: string | null; asistencia: string[] }
+  tecnico: { nombre: string; usuarioId: string | null; asistencia: string[]; guardiaDiurna?: boolean[] }
 ): { grupo: string; dia: string; tecnicoNombre: string; tecnicoUsuarioId: string | null }[] {
   const seeds: { grupo: string; dia: string; tecnicoNombre: string; tecnicoUsuarioId: string | null }[] = [];
   for (const dia of DIAS_SEMANA) {
-    const codigo = tecnico.asistencia[DIA_INDEX[dia]];
-    if (codigo !== "D" && codigo !== "N") continue;
-    seeds.push({
-      grupo: codigo === "N" ? "Nocturno" : "Diurno",
-      dia,
-      tecnicoNombre: tecnico.nombre,
-      tecnicoUsuarioId: tecnico.usuarioId,
-    });
+    const idx = DIA_INDEX[dia];
+    const codigo = tecnico.asistencia[idx];
+    const esGuardiaDiurna = tecnico.guardiaDiurna?.[idx] === true;
+    let grupo: string | null = null;
+    if (codigo === "N") grupo = "Nocturno";
+    else if (esGuardiaDiurna) grupo = "Diurno";
+    if (!grupo) continue;
+    seeds.push({ grupo, dia, tecnicoNombre: tecnico.nombre, tecnicoUsuarioId: tecnico.usuarioId });
   }
   return seeds;
 }

@@ -283,7 +283,7 @@ function DiaColumn({
   draggingOtId: string | null;
   onDragStartOt: (e: DragEvent, otId: string) => void; onDragEndOt: () => void;
   onDropTecnicoEnOt: (e: DragEvent, otId: string) => void;
-  onQuitarTecnico: (otId: string, nombre: string) => void;
+  onQuitarTecnico: (otId: string, nombre: string, diaCode: string) => void;
   onClickBacklog: (ot: OtBorrador) => void;
   onDevolverABacklog: (otId: string) => void;
   onEditarHH: (otId: string, hhTotal: number) => void;
@@ -381,7 +381,7 @@ function DiaColumn({
                     .map(n => miembrosGrupo.find(t => t.nombre === n)!)}
                   onDragStart={onDragStartOt} onDragEnd={onDragEndOt}
                   onDropTecnico={onDropTecnicoEnOt}
-                  onQuitarTecnico={onQuitarTecnico}
+                  onQuitarTecnico={(otId, nombre) => onQuitarTecnico(otId, nombre, diaCode)}
                   onClickBacklog={onClickBacklog}
                   onDevolverABacklog={onDevolverABacklog}
                   onEditarHH={onEditarHH}
@@ -555,9 +555,19 @@ export default function TableroSemanal({
     }
   }
 
-  function quitarTecnico(otId: string, nombre: string) {
+  async function quitarTecnico(otId: string, nombre: string, diaCode: string) {
     const ot = plan.ots.find(o => o.id === otId);
     if (!ot) return;
+    if (ot.esGuardia && diaCode) {
+      // OT de guardia (OPEPLANT): abarca toda la semana en un solo registro
+      // (dias = Lu-Do), así que sacar a alguien de un día puntual debe tocar
+      // solo la membresía de cuadrilla de ESE día — nunca personalAsignado
+      // directo, que lo sacaría de la OT los 7 días a la vez. El PATCH de
+      // cuadrillas ya reconcilia personalAsignado en el servidor dejándolo
+      // solo si sigue siendo elegible en algún otro día de la semana.
+      await onEditCuadrilla(ot.grupo, [diaCode], undefined, [nombre]);
+      return;
+    }
     onPatchOt(otId, { personalAsignado: ot.personalAsignado.filter(n => n !== nombre) });
   }
 
