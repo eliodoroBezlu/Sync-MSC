@@ -3,6 +3,30 @@
  * según disponibilidad en el roster.
  */
 
+import type { CuadrillaMiembroRow } from "./cuadrillas";
+import { DIAS_SEMANA as TODOS_LOS_DIAS, tecnicosDeCuadrillaEnDia } from "./cuadrillas";
+
+/**
+ * Técnicos elegibles para `grupo` en cualquiera de `dias` (miembros de la
+ * cuadrilla, no asistencia D/N cruda). Si la OT todavía no tiene día
+ * asignado (dias=[]), se usa toda la semana como fallback para no bloquear
+ * el primer balanceo de personal antes del reparto por día.
+ */
+function tecnicosElegiblesGrupo(
+  grupo: string,
+  dias: string[],
+  miembros: CuadrillaMiembroRow[]
+): Set<string> {
+  const diasAConsiderar = dias.length > 0 ? dias : TODOS_LOS_DIAS;
+  const elegibles = new Set<string>();
+  for (const dia of diasAConsiderar) {
+    for (const t of tecnicosDeCuadrillaEnDia(miembros, grupo, dia)) {
+      elegibles.add(t.nombre);
+    }
+  }
+  return elegibles;
+}
+
 export interface TecnicoDisponibilidad {
   nombre: string;
   diasDisponibles: number; // días laborales disponibles
@@ -90,13 +114,16 @@ export function asignarOtAGrupo(
   hhOt: number,
   personas: number,
   grupo: string,
-  tecnicos: TecnicoDisponibilidad[]
+  dias: string[],
+  tecnicos: TecnicoDisponibilidad[],
+  miembros: CuadrillaMiembroRow[]
 ): string[] {
   const cantidad = Math.max(1, personas);
   const hhPorPersona = hhOt / cantidad;
+  const elegibles = tecnicosElegiblesGrupo(grupo, dias, miembros);
 
   const compatibles = tecnicos
-    .filter(t => (t.asistencia as string[]).some(d => d === (grupo === "Nocturno" ? "N" : "D")))
+    .filter(t => elegibles.has(t.nombre))
     .filter(t => t.hhActualProgramadas + hhPorPersona <= t.hhDisponibles)
     .sort((a, b) => a.hhActualProgramadas - b.hhActualProgramadas);
 
@@ -114,8 +141,9 @@ export function asignarOtAGrupo(
  * hasta `personas` técnicos (ideal: parejas de 2) del mismo grupo/turno.
  */
 export function balancearOts(
-  ots: Array<{ id: string; numeroOT: string; personas: number; hrsTrabajo: number; grupo: string }>,
-  roster: Array<{ nombre: string; asistencia: string[]; grupo: string }>
+  ots: Array<{ id: string; numeroOT: string; personas: number; hrsTrabajo: number; grupo: string; dias: string[] }>,
+  roster: Array<{ nombre: string; asistencia: string[]; grupo: string }>,
+  miembros: CuadrillaMiembroRow[]
 ): Map<string, string[]> {
   // Mapeo: id de fila -> [técnicos asignados]
   const asignaciones = new Map<string, string[]>();
@@ -135,7 +163,7 @@ export function balancearOts(
     const hhOt = ot.personas * ot.hrsTrabajo;
     const disponibles = Array.from(dispMap.values());
 
-    const tecnicos = asignarOtAGrupo(ot.id, ot.numeroOT, hhOt, ot.personas, ot.grupo, disponibles);
+    const tecnicos = asignarOtAGrupo(ot.id, ot.numeroOT, hhOt, ot.personas, ot.grupo, ot.dias, disponibles, miembros);
     if (tecnicos.length > 0) {
       asignaciones.set(ot.id, tecnicos);
     }

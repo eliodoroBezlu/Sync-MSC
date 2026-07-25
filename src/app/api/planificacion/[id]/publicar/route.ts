@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { validarPlan } from "@/lib/planificacion/validarPlan";
 import { mapEstadoAlPlan } from "@/lib/otEstado";
+import { tecnicosDeCuadrillaEnDia } from "@/lib/planificacion/cuadrillas";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -41,6 +42,11 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
   // que siempre se programa). Las no elegidas quedan en el borrador como backlog.
   const otsAProgramar = borrador.ots.filter(o => o.seleccionada || o.esGuardia);
   const totalHH   = otsAProgramar.reduce((s, o) => s + o.hhTotal, 0);
+
+  // Cuadrilla vigente: cada OtProgramada debe llevar el personal que
+  // realmente cubre su grupo ESE día puntual, no el cache plano de la OT
+  // (que puede incluir gente que solo cubre otros días de la semana).
+  const miembrosCuadrilla = await prisma.cuadrillaMiembro.findMany({ where: { planBorradorId: id } });
 
   try {
     // Validar plan ANTES de publicar
@@ -121,6 +127,16 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
         for (const dia of diasOt) {
           const offset = DIA_OFFSET[dia] ?? 0;
           const fechaDiaOt = fechaDia(lunes, offset);
+
+          // Intersección con la cuadrilla vigente de ese día puntual: un
+          // técnico que cambió de turno a mitad de semana solo aparece en
+          // los días donde realmente cubre este grupo (ver TableroSemanal).
+          const miembrosDia = tecnicosDeCuadrillaEnDia(miembrosCuadrilla, ot.grupo, dia);
+          const nombresDia = ot.personalAsignado.filter(n => miembrosDia.some(t => t.nombre === n));
+          const idsDia = nombresDia
+            .map(n => miembrosDia.find(t => t.nombre === n)?.usuarioId)
+            .filter((uid): uid is string => !!uid);
+
           await tx.otProgramada.create({
             data: {
               programacionSemanalId: ps.id,
@@ -134,8 +150,8 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
               personas:         ot.personas,
               hrsTrabajo:       ot.hrsTrabajo,
               hhTotal:          ot.personas * ot.hrsTrabajo,
-              personalAsignado:    ot.personalAsignado,
-              personalAsignadoIds: ot.personalAsignadoIds,
+              personalAsignado:    nombresDia,
+              personalAsignadoIds: idsDia,
               grupo:            ot.grupo,
               dia,
               esGuardia:        ot.esGuardia,

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
+import { seedMembresiaDesdeAsistencia, cachePersonalAsignado } from "@/lib/planificacion/cuadrillas";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -148,6 +149,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     // Guardar técnicos con sus 7 días
     let guardados = 0;
     const errores: string[] = [];
+    const seedsCuadrilla: ReturnType<typeof seedMembresiaDesdeAsistencia> = [];
 
     for (const p of personas) {
       try {
@@ -170,8 +172,48 @@ export async function POST(req: NextRequest, { params }: Ctx) {
           },
         });
         guardados++;
+        seedsCuadrilla.push(
+          ...seedMembresiaDesdeAsistencia({ nombre: p.nombre, usuarioId: p.usuarioId, asistencia: asistenciaSemana })
+        );
       } catch (e) {
         errores.push(`${p.nombre}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
+    // Resembrar membresía Diurno/Nocturno desde la asistencia real recién
+    // importada. Solo se tocan filas origen="roster": las curadas a mano
+    // (origen="manual", incluida toda la membresía de G1-G4) se preservan —
+    // skipDuplicates hace que una edición manual sobre el mismo grupo/día/
+    // técnico gane sobre el valor recién sembrado.
+    await prisma.cuadrillaMiembro.deleteMany({
+      where: { planBorradorId: id, grupo: { in: ["Diurno", "Nocturno"] }, origen: "roster" },
+    });
+    if (seedsCuadrilla.length > 0) {
+      await prisma.cuadrillaMiembro.createMany({
+        data: seedsCuadrilla.map(s => ({ planBorradorId: id, ...s, origen: "roster" })),
+        skipDuplicates: true,
+      });
+    }
+
+    // Un técnico puede haber cambiado de turno (o dejado de aparecer) en el
+    // nuevo Excel: reconciliar el cache personalAsignado de las OTs Diurno/
+    // Nocturno para que ninguna quede con gente que ya no cubre ese grupo/día.
+    const otsAfectadas = await prisma.planBorradorOt.findMany({
+      where: { planBorradorId: id, grupo: { in: ["Diurno", "Nocturno"] } },
+    });
+    if (otsAfectadas.length > 0) {
+      const miembrosVigentes = await prisma.cuadrillaMiembro.findMany({
+        where: { planBorradorId: id, grupo: { in: ["Diurno", "Nocturno"] } },
+      });
+      for (const ot of otsAfectadas) {
+        const propios = miembrosVigentes.filter(m => m.grupo === ot.grupo);
+        const cache = cachePersonalAsignado(ot, propios);
+        if (
+          cache.personalAsignado.length !== ot.personalAsignado.length ||
+          cache.personalAsignado.some(n => !ot.personalAsignado.includes(n))
+        ) {
+          await prisma.planBorradorOt.update({ where: { id: ot.id }, data: cache });
+        }
       }
     }
 

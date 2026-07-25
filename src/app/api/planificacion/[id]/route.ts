@@ -7,6 +7,9 @@ function serialize(p: Record<string, unknown>) {
   return { ...p, _id: p.id };
 }
 
+// La matriz de cuadrilla (técnico×grupo×día) se carga aparte vía
+// GET /api/planificacion/[id]/cuadrillas — esa ruta también se encarga del
+// sembrado inicial la primera vez que se visita un plan.
 export async function GET(_req: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const plan = await prisma.planBorrador.findUnique({

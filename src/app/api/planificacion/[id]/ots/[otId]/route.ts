@@ -1,12 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { expandirDias } from "@/lib/planificacion/expandirDias";
+import { cachePersonalAsignado, type CuadrillaMiembroRow } from "@/lib/planificacion/cuadrillas";
 
 type Ctx = { params: Promise<{ id: string; otId: string }> };
 
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   try {
-    const { otId } = await params;
+    const { id, otId } = await params;
     const body = await req.json();
 
     const data: Record<string, unknown> = {};
@@ -14,12 +15,17 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     const campos = [
       "numeroOT", "tipoOT", "tipoTrabajo", "prioridad", "descripcion",
       "tag", "descripcionEquipo", "grupo", "esGuardia",
-      "personalAsignado", "personalAsignadoIds",
       "seleccionada", "motivoNoProgramada", "comentarioNoProgramada",
     ];
     for (const c of campos) {
       if (c in body) data[c] = body[c];
     }
+    // personalAsignadoIds no se acepta directo: se resuelve siempre a partir
+    // de CuadrillaMiembro más abajo. personalAsignado sí se acepta (drag&drop
+    // manual desde el Tablero) pero queda sujeto a reconciliación contra la
+    // cuadrilla vigente del grupo/día — un nombre que no es miembro de la
+    // cuadrilla de ese grupo en ninguno de los días de la OT no persiste.
+    if ("personalAsignado" in body) data.personalAsignado = body.personalAsignado;
     if ("personas" in body || "hrsTrabajo" in body) {
       const ot = await prisma.planBorradorOt.findUnique({ where: { id: otId } });
       if (!ot) return NextResponse.json({ error: "OT no encontrada" }, { status: 404 });
@@ -40,7 +46,19 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     }
     if ("dias" in body) data.dias = body.dias;
 
-    const ot = await prisma.planBorradorOt.update({ where: { id: otId }, data });
+    let ot = await prisma.planBorradorOt.update({ where: { id: otId }, data });
+
+    // Grupo/días/personalAsignado cambiaron: reconciliar contra la cuadrilla
+    // vigente (filtra nombres que ya no son miembros del grupo/día — nunca
+    // agrega miembros nuevos que el usuario no pidió, ver cachePersonalAsignado).
+    if ("grupo" in data || "dias" in data || "personalAsignado" in data) {
+      const miembros = await prisma.cuadrillaMiembro.findMany({
+        where: { planBorradorId: id, grupo: ot.grupo },
+      });
+      const cache = cachePersonalAsignado(ot, miembros as CuadrillaMiembroRow[]);
+      ot = await prisma.planBorradorOt.update({ where: { id: otId }, data: cache });
+    }
+
     return NextResponse.json({ ok: true, ot: { ...ot, _id: ot.id } });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error interno";

@@ -160,6 +160,24 @@ const migraciones = [
   "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS \"motivoNoProgramada\" TEXT",
   "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS \"comentarioNoProgramada\" TEXT",
   "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS \"esBacklog\" BOOLEAN NOT NULL DEFAULT false",
+
+  // ── Cuadrillas fijas: membresía técnico×grupo×día (2026-07) ─────────────────
+  `CREATE TABLE IF NOT EXISTS "CuadrillaMiembro" (
+    id TEXT NOT NULL PRIMARY KEY,
+    "planBorradorId" TEXT NOT NULL,
+    grupo TEXT NOT NULL,
+    dia TEXT NOT NULL,
+    "tecnicoNombre" TEXT NOT NULL,
+    "tecnicoUsuarioId" TEXT,
+    origen TEXT NOT NULL DEFAULT 'manual',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "CuadrillaMiembro_planBorradorId_grupo_dia_tecnicoNombre_key" UNIQUE ("planBorradorId", grupo, dia, "tecnicoNombre"),
+    CONSTRAINT "CuadrillaMiembro_planBorradorId_fkey"
+      FOREIGN KEY ("planBorradorId") REFERENCES "PlanBorrador"(id) ON DELETE CASCADE
+  )`,
+  "CREATE INDEX IF NOT EXISTS \"CuadrillaMiembro_planBorradorId_dia_idx\" ON \"CuadrillaMiembro\" (\"planBorradorId\", dia)",
+  "CREATE INDEX IF NOT EXISTS \"CuadrillaMiembro_planBorradorId_grupo_idx\" ON \"CuadrillaMiembro\" (\"planBorradorId\", grupo)",
 ];
 
 (async () => {

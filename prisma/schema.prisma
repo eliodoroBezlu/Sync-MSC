@@ -528,6 +528,7 @@ model PlanBorrador {
 
   ots                   PlanBorradorOt[]
   roster                RosterSemanal[]
+  cuadrilla             CuadrillaMiembro[]
 
   @@unique([semana, anio, areaCodigo])
   @@index([anio, semana, estado])
@@ -556,7 +557,7 @@ model PlanBorradorOt {
   solicitante         String?  // columna Q del Excel PROGRAMA
   observaciones       String?  // columna R del Excel PROGRAMA
   grupo               String   @default("Diurno")
-  personalAsignado    String[]
+  personalAsignado    String[] // cache derivado de CuadrillaMiembro — no editar directo, ver /api/planificacion/[id]/cuadrillas
   personalAsignadoIds String[]
   esGuardia           Boolean  @default(false)
   seleccionada          Boolean  @default(false) // elegida por el planificador para programarse esta semana
@@ -578,10 +579,10 @@ model RosterSemanal {
   nombre        String
   jde           String?
   usuarioId     String?
-  grupo         String   @default("Diurno")
+  grupo         String   @default("Diurno") // resumen semanal (mayoría D/N) — solo display, no usar para asignación; ver CuadrillaMiembro
   esContratista Boolean  @default(false)
   disciplina    String   // INST|ELEC|MEC|TESA|CON|VE
-  asistencia    Json     @default("[]")
+  asistencia    Json     @default("[]") // 7 códigos por día [Lu..Do]: D|N|T|V|CS|L|""
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -589,4 +590,26 @@ model RosterSemanal {
 
   @@unique([planBorradorId, nombre])
   @@index([planBorradorId])
+}
+
+// Membresía de cuadrilla por día: quién cubre cada grupo (G1-G4|Diurno|Nocturno)
+// en cada día de la semana. Fuente de verdad para asignación de técnicos —
+// desacoplada de PlanBorradorOt.dias, así un cambio de técnico desde un día
+// puntual nunca toca las OTs ni el resto de la semana.
+model CuadrillaMiembro {
+  id               String   @id @default(cuid())
+  planBorradorId   String
+  grupo            String   // G1|G2|G3|G4|Diurno|Nocturno
+  dia              String   // Lu|Ma|Mi|Ju|Vi|Sa|Do
+  tecnicoNombre    String
+  tecnicoUsuarioId String?
+  origen           String   @default("manual") // roster|balanceador|manual
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  plan             PlanBorrador @relation(fields: [planBorradorId], references: [id], onDelete: Cascade)
+
+  @@unique([planBorradorId, grupo, dia, tecnicoNombre])
+  @@index([planBorradorId, dia])
+  @@index([planBorradorId, grupo])
 }

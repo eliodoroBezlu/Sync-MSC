@@ -14,9 +14,14 @@ export type OtBorrador = {
 };
 
 export type RosterItem = {
-  id: string; nombre: string; grupo: string; disciplina: string;
+  id: string; nombre: string; usuarioId: string | null; grupo: string; disciplina: string;
   asistencia: string[]; esContratista: boolean;
 };
+
+export type TecnicoRef = { nombre: string; usuarioId: string | null };
+
+// {grupo: {dia: [técnicos]}} — quién cubre cada cuadrilla cada día.
+export type CuadrillaMatriz = Record<string, Record<string, TecnicoRef[]>>;
 
 export type Plan = {
   id: string; semana: number; anio: number; areaCodigo: string; disciplina: string;

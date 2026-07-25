@@ -6,7 +6,7 @@ import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
 import TableroSemanal from "./TableroSemanal";
 import SeleccionOts from "./SeleccionOts";
-import type { OtBorrador, Plan } from "./types";
+import type { OtBorrador, Plan, CuadrillaMatriz } from "./types";
 
 const GRUPOS = ["Diurno", "Nocturno", "G1", "G2", "G3", "G4"];
 const DIAS_SEMANA = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"];
@@ -29,11 +29,10 @@ function formatFecha(iso: string | null): string {
   return `${d.getDate().toString().padStart(2, "0")}/${(d.getMonth() + 1).toString().padStart(2, "0")}`;
 }
 
-function OtRow({ ot, onSave, onDelete, rosterNombres }: {
+function OtRow({ ot, onSave, onDelete }: {
   ot: OtBorrador;
   onSave: (id: string, patch: Partial<OtBorrador>) => Promise<void>;
   onDelete: (id: string) => void;
-  rosterNombres: string[];
 }) {
   const [editando, setEditando] = useState(false);
   const [form, setForm] = useState({ ...ot });
@@ -50,7 +49,6 @@ function OtRow({ ot, onSave, onDelete, rosterNombres }: {
       fechaInicioOt: form.fechaInicioOt,
       fechaFinOt: form.fechaFinOt,
       diasTexto: form.diasTexto,
-      personalAsignado: form.personalAsignado,
     };
     await onSave(ot.id, patch);
     setEditando(false);
@@ -144,11 +142,13 @@ function OtRow({ ot, onSave, onDelete, rosterNombres }: {
           </div>
           <div style={{ minWidth: 180 }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: "#64748b", marginBottom: 3 }}>Personal asignado</div>
-            <select multiple value={form.personalAsignado}
-              onChange={e => set("personalAsignado", Array.from(e.target.selectedOptions, o => o.value))}
-              style={{ width: "100%", height: 60, borderRadius: 6, border: "1.5px solid #e2e8f0", fontSize: 11, padding: "2px 4px" }}>
-              {rosterNombres.map(n => <option key={n}>{n}</option>)}
-            </select>
+            <div style={{
+              width: "100%", minHeight: 60, borderRadius: 6, border: "1.5px solid #e2e8f0",
+              fontSize: 11, padding: "6px 8px", color: "#475569", background: "#f8fafc",
+            }}>
+              {ot.personalAsignado.length > 0 ? ot.personalAsignado.join(", ") : <span style={{ color: "#cbd5e1" }}>Sin asignar</span>}
+              <div style={{ marginTop: 4, fontSize: 10, color: "#94a3b8" }}>Editar en la pestaña Tablero (cuadrilla de {form.grupo})</div>
+            </div>
           </div>
           <div style={{ display: "flex", gap: 6, alignSelf: "flex-end" }}>
             <button onClick={guardar} style={{
@@ -183,6 +183,7 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
   const [msg, setMsg] = useState("");
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [balanceando, setBalanceando] = useState(false);
+  const [cuadrilla, setCuadrilla] = useState<CuadrillaMatriz>({});
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -205,6 +206,31 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
   }
 
   useEffect(() => { cargarAlertas(); }, [id]);
+
+  const loadCuadrilla = useCallback(async () => {
+    const res = await fetch(`/api/planificacion/${id}/cuadrillas`);
+    const data = await res.json();
+    if (data.ok) setCuadrilla(data.matriz);
+  }, [id]);
+
+  useEffect(() => { loadCuadrilla(); }, [loadCuadrilla]);
+
+  async function patchCuadrilla(
+    grupo: string,
+    dias: string[],
+    agregar?: { nombre: string; usuarioId?: string | null }[],
+    quitar?: string[],
+  ) {
+    const res = await fetch(`/api/planificacion/${id}/cuadrillas`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ grupo, dias, agregar, quitar }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      setCuadrilla(data.matriz);
+      await loadPlan();
+    }
+  }
 
   async function exportar(formato: "excel" | "json" | "ical") {
     const url = `/api/planificacion/${id}/exportar?formato=${formato}`;
@@ -318,7 +344,6 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
 
   const otsSeleccionadas = plan.ots.filter(o => o.seleccionada || o.esGuardia);
   const totalHH = plan.ots.reduce((s, o) => s + o.hhTotal, 0);
-  const rosterNombres = plan.roster.map(r => r.nombre);
   const yaPublicado = plan.estado === "publicado";
 
   // Calcular fechas de la semana ISO para mostrar
@@ -479,6 +504,8 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
               <TableroSemanal
                 plan={{ ...plan, ots: plan.ots.filter(o => o.seleccionada || o.esGuardia) }}
                 onPatchOt={patchOtLocal}
+                cuadrilla={cuadrilla}
+                onEditCuadrilla={patchCuadrilla}
                 disabled={yaPublicado}
               />
             )}
@@ -522,7 +549,7 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
                   </thead>
                   <tbody>
                     {plan.ots.map(ot => (
-                      <OtRow key={ot.id} ot={ot} onSave={patchOt} onDelete={deleteOt} rosterNombres={rosterNombres} />
+                      <OtRow key={ot.id} ot={ot} onSave={patchOt} onDelete={deleteOt} />
                     ))}
                   </tbody>
                 </table>

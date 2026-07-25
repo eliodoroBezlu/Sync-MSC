@@ -2,9 +2,17 @@
 
 import { useState } from "react";
 import type { DragEvent } from "react";
-import type { OtBorrador, Plan } from "./types";
+import type { OtBorrador, Plan, RosterItem, CuadrillaMatriz, TecnicoRef } from "./types";
 import { tipoOtDisplay } from "@/lib/tiposOt";
 import { calcularDiasNecesarios, distribuirEnDias, DIAS_LABORALES } from "@/lib/planificacion/balanceador";
+import CuadrillaEditor from "./CuadrillaEditor";
+
+type EditCuadrillaFn = (
+  grupo: string,
+  dias: string[],
+  agregar?: { nombre: string; usuarioId?: string | null }[],
+  quitar?: string[],
+) => Promise<void>;
 
 function hhPorDia(ot: Pick<OtBorrador, "hhTotal" | "dias">): number {
   return ot.hhTotal / Math.max(1, ot.dias.length);
@@ -70,10 +78,11 @@ function iniciales(nombre: string): string {
 
 // ─── Tarjeta de OT ──────────────────────────────────────────────────────────
 function OtCard({
-  ot, enBacklog, disabled, isDragging,
+  ot, enBacklog, disabled, isDragging, tecnicosDia,
   onDragStart, onDragEnd, onDropTecnico, onQuitarTecnico, onClickBacklog, onDevolverABacklog, onEditarHH,
 }: {
   ot: OtBorrador; enBacklog: boolean; disabled: boolean; isDragging: boolean;
+  tecnicosDia: TecnicoRef[];
   onDragStart: (e: DragEvent, otId: string) => void;
   onDragEnd: () => void;
   onDropTecnico: (e: DragEvent, otId: string) => void;
@@ -153,18 +162,21 @@ function OtCard({
           </span>
         )}
       </div>
-      {ot.personalAsignado.length > 0 && (
+      {!enBacklog && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 6, borderTop: "1px solid #f1f5f9", paddingTop: 5 }}>
-          {ot.personalAsignado.map(nombre => (
-            <span key={nombre} style={{
+          {tecnicosDia.length === 0 && (
+            <span style={{ fontSize: 9, color: "#cbd5e1", fontStyle: "italic" }}>Sin cuadrilla este día</span>
+          )}
+          {tecnicosDia.map(t => (
+            <span key={t.nombre} style={{
               display: "inline-flex", alignItems: "center", gap: 3,
               background: "#ecfdf5", color: "#047857", borderRadius: 10,
               padding: "1px 5px 1px 7px", fontSize: 9, fontWeight: 700,
             }}>
-              {nombre}
+              {t.nombre}
               {!disabled && (
                 <button
-                  onClick={e => { e.stopPropagation(); onQuitarTecnico(ot.id, nombre); }}
+                  onClick={e => { e.stopPropagation(); onQuitarTecnico(ot.id, t.nombre); }}
                   style={{ border: "none", background: "none", color: "#047857", cursor: "pointer", fontSize: 10, padding: 0, lineHeight: 1 }}
                 >×</button>
               )}
@@ -181,11 +193,12 @@ function OtCard({
 
 // ─── Columna de día ─────────────────────────────────────────────────────────
 function DiaColumn({
-  titulo, subtitulo, ots, esBacklog, dragOverActivo, disabled,
+  titulo, subtitulo, ots, esBacklog, diaCode, cuadrilla, roster, dragOverActivo, disabled,
   onDragOverColumna, onDragLeaveColumna, onDropColumna,
-  draggingOtId, onDragStartOt, onDragEndOt, onDropTecnicoEnOt, onQuitarTecnico, onClickBacklog, onDevolverABacklog, onEditarHH,
+  draggingOtId, onDragStartOt, onDragEndOt, onDropTecnicoEnOt, onQuitarTecnico, onClickBacklog, onDevolverABacklog, onEditarHH, onEditCuadrilla,
 }: {
   titulo: string; subtitulo: string; ots: OtBorrador[]; esBacklog: boolean;
+  diaCode: string; cuadrilla: CuadrillaMatriz; roster: RosterItem[];
   dragOverActivo: boolean; disabled: boolean;
   onDragOverColumna: () => void; onDragLeaveColumna: () => void; onDropColumna: (e: DragEvent) => void;
   draggingOtId: string | null;
@@ -195,7 +208,9 @@ function DiaColumn({
   onClickBacklog: (ot: OtBorrador) => void;
   onDevolverABacklog: (otId: string) => void;
   onEditarHH: (otId: string, hhTotal: number) => void;
+  onEditCuadrilla: EditCuadrillaFn;
 }) {
+  const [editandoGrupo, setEditandoGrupo] = useState<string | null>(null);
   const hh = esBacklog ? ots.reduce((s, o) => s + o.hhTotal, 0) : ots.reduce((s, o) => s + hhPorDia(o), 0);
   return (
     <div
@@ -223,20 +238,39 @@ function DiaColumn({
         {agruparPorGrupo(ots).map(({ grupo, ots: otsGrupo }) => {
           const gc = grupoColor(grupo);
           const hhGrupo = esBacklog ? otsGrupo.reduce((s, o) => s + o.hhTotal, 0) : otsGrupo.reduce((s, o) => s + hhPorDia(o), 0);
+          const miembrosGrupo = cuadrilla[grupo]?.[diaCode] ?? [];
           return (
             <div key={grupo} style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              <div style={{
-                background: gc.bg, color: gc.color, borderRadius: 6,
-                padding: "3px 8px", fontSize: 10, fontWeight: 800, letterSpacing: "0.03em",
-                display: "flex", justifyContent: "space-between",
-              }}>
-                <span>{grupo.toUpperCase()}</span>
-                <span>{otsGrupo.length} · {hhGrupo.toFixed(0)}HH</span>
+              <div style={{ position: "relative" }}>
+                <div
+                  onClick={() => { if (!esBacklog) setEditandoGrupo(editandoGrupo === grupo ? null : grupo); }}
+                  style={{
+                    background: gc.bg, color: gc.color, borderRadius: 6,
+                    padding: "3px 8px", fontSize: 10, fontWeight: 800, letterSpacing: "0.03em",
+                    display: "flex", justifyContent: "space-between",
+                    cursor: esBacklog ? "default" : "pointer",
+                  }}
+                  title={esBacklog ? undefined : `Editar cuadrilla ${grupo} · ${titulo}`}
+                >
+                  <span>{grupo.toUpperCase()}</span>
+                  <span>{otsGrupo.length} · {hhGrupo.toFixed(0)}HH</span>
+                </div>
+                {editandoGrupo === grupo && !esBacklog && (
+                  <CuadrillaEditor
+                    grupo={grupo} dia={diaCode} miembros={miembrosGrupo} roster={roster}
+                    disabled={disabled}
+                    onClose={() => setEditandoGrupo(null)}
+                    onEdit={onEditCuadrilla}
+                  />
+                )}
               </div>
               {otsGrupo.map(ot => (
                 <OtCard
                   key={ot.id} ot={ot} enBacklog={esBacklog} disabled={disabled}
                   isDragging={draggingOtId === ot.id}
+                  tecnicosDia={esBacklog ? [] : ot.personalAsignado
+                    .filter(n => miembrosGrupo.some(t => t.nombre === n))
+                    .map(n => miembrosGrupo.find(t => t.nombre === n)!)}
                   onDragStart={onDragStartOt} onDragEnd={onDragEndOt}
                   onDropTecnico={onDropTecnicoEnOt}
                   onQuitarTecnico={onQuitarTecnico}
@@ -305,10 +339,12 @@ function PersonalRail({ plan, disabled }: { plan: Plan; disabled: boolean }) {
 
 // ─── Tablero principal ──────────────────────────────────────────────────────
 export default function TableroSemanal({
-  plan, onPatchOt, disabled,
+  plan, onPatchOt, cuadrilla, onEditCuadrilla, disabled,
 }: {
   plan: Plan;
   onPatchOt: (otId: string, patch: Partial<OtBorrador>) => void;
+  cuadrilla: CuadrillaMatriz;
+  onEditCuadrilla: EditCuadrillaFn;
   disabled: boolean;
 }) {
   const [draggingOtId, setDraggingOtId] = useState<string | null>(null);
@@ -339,9 +375,14 @@ export default function TableroSemanal({
     onPatchOt(otId, { hhTotal });
   }
 
-  function asignarTecnico(otId: string, nombre: string) {
+  async function asignarTecnico(otId: string, nombre: string, diaCode: string) {
     const ot = plan.ots.find(o => o.id === otId);
     if (!ot || ot.personalAsignado.includes(nombre)) return;
+    const yaEnCrew = (cuadrilla[ot.grupo]?.[diaCode] ?? []).some(t => t.nombre === nombre);
+    if (diaCode && !yaEnCrew) {
+      const r = plan.roster.find(x => x.nombre === nombre);
+      await onEditCuadrilla(ot.grupo, [diaCode], [{ nombre, usuarioId: r?.usuarioId ?? null }]);
+    }
     onPatchOt(otId, { personalAsignado: [...ot.personalAsignado, nombre] });
   }
 
@@ -364,12 +405,12 @@ export default function TableroSemanal({
     if (payload?.tipo === "ot") moverADia(payload.id, dia);
   }
 
-  function handleDropTecnicoEnOt(e: DragEvent, otId: string) {
+  function handleDropTecnicoEnOt(e: DragEvent, otId: string, diaCode: string) {
     const payload = leerPayload(e);
     if (payload?.tipo === "tecnico") {
       e.preventDefault();
       e.stopPropagation();
-      asignarTecnico(otId, payload.nombre);
+      asignarTecnico(otId, payload.nombre, diaCode);
     }
     // Si es una OT arrastrada sobre otra tarjeta, dejar que el evento burbujee
     // hasta la columna para que se procese como un cambio de día.
@@ -394,7 +435,7 @@ export default function TableroSemanal({
       <div style={{ display: "flex", gap: 10, overflowX: "auto", flex: 1, minWidth: 0, paddingBottom: 10 }}>
         <DiaColumn
           titulo="Sin programar" subtitulo="OTs importadas sin día"
-          ots={otsDelDia("")} esBacklog disabled={disabled}
+          ots={otsDelDia("")} esBacklog diaCode="" cuadrilla={cuadrilla} roster={plan.roster} disabled={disabled}
           dragOverActivo={dragOverDia === ""}
           onDragOverColumna={() => setDragOverDia("")}
           onDragLeaveColumna={() => setDragOverDia(null)}
@@ -402,11 +443,12 @@ export default function TableroSemanal({
           draggingOtId={draggingOtId}
           onDragStartOt={handleDragStartOt}
           onDragEndOt={() => setDraggingOtId(null)}
-          onDropTecnicoEnOt={handleDropTecnicoEnOt}
+          onDropTecnicoEnOt={(e, otId) => handleDropTecnicoEnOt(e, otId, "")}
           onQuitarTecnico={quitarTecnico}
           onClickBacklog={clickAgregarBacklog}
           onDevolverABacklog={otId => moverADia(otId, "")}
           onEditarHH={editarHH}
+          onEditCuadrilla={onEditCuadrilla}
         />
         {DIAS_INFO.map((d, i) => {
           const date = new Date(monday);
@@ -416,7 +458,7 @@ export default function TableroSemanal({
               key={d.code}
               titulo={d.largo}
               subtitulo={date.toLocaleDateString("es-BO", { day: "2-digit", month: "short" })}
-              ots={otsDelDia(d.code)} esBacklog={false} disabled={disabled}
+              ots={otsDelDia(d.code)} esBacklog={false} diaCode={d.code} cuadrilla={cuadrilla} roster={plan.roster} disabled={disabled}
               dragOverActivo={dragOverDia === d.code}
               onDragOverColumna={() => setDragOverDia(d.code)}
               onDragLeaveColumna={() => setDragOverDia(null)}
@@ -424,11 +466,12 @@ export default function TableroSemanal({
               draggingOtId={draggingOtId}
               onDragStartOt={handleDragStartOt}
               onDragEndOt={() => setDraggingOtId(null)}
-              onDropTecnicoEnOt={handleDropTecnicoEnOt}
+              onDropTecnicoEnOt={(e, otId) => handleDropTecnicoEnOt(e, otId, d.code)}
               onQuitarTecnico={quitarTecnico}
               onClickBacklog={clickAgregarBacklog}
               onDevolverABacklog={otId => moverADia(otId, "")}
               onEditarHH={editarHH}
+              onEditCuadrilla={onEditCuadrilla}
             />
           );
         })}

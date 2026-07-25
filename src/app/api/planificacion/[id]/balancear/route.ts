@@ -42,12 +42,18 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
       asistencia: Array.isArray(r.asistencia) ? (r.asistencia as string[]) : [],
       grupo: r.grupo,
     }));
+    const usuarioIdPorNombre = new Map(plan.roster.map(r => [r.nombre, r.usuarioId]));
+
+    // Cuadrilla vigente: el balanceador solo puede repartir OTs entre
+    // técnicos que efectivamente son miembros del grupo/día de la OT, nunca
+    // entre cualquiera con asistencia D/N cruda (ver balanceador.ts).
+    const miembrosCuadrilla = await prisma.cuadrillaMiembro.findMany({ where: { planBorradorId: id } });
 
     // Ejecutar balanceador: asigna técnicos y, por separado, reparte en la
     // semana las OTs que todavía no tienen día asignado. Ambos se indexan
     // por id de fila para no confundir la fila Diurno con la Nocturno de
     // una misma OT OPEPLANT.
-    const asignaciones = balancearOts(otsParaBal, rosterParaBal);
+    const asignaciones = balancearOts(otsParaBal, rosterParaBal, miembrosCuadrilla);
     const asignacionesDias = balancearDias(otsParaBal);
 
     // Actualizar OTs con nuevas asignaciones de personal y/o día
@@ -60,7 +66,14 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
       await prisma.planBorradorOt.update({
         where: { id: ot.id },
         data: {
-          ...(tecnicos ? { personalAsignado: tecnicos } : {}),
+          ...(tecnicos
+            ? {
+                personalAsignado: tecnicos,
+                personalAsignadoIds: tecnicos
+                  .map(n => usuarioIdPorNombre.get(n))
+                  .filter((uid): uid is string => !!uid),
+              }
+            : {}),
           ...(diasNuevos ? { dias: diasNuevos, diasTexto: diasNuevos.join(", ") } : {}),
         },
       });
