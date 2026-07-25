@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
-import { seedMembresiaDesdeAsistencia, cachePersonalAsignado } from "@/lib/planificacion/cuadrillas";
+import { seedMembresiaDesdeAsistencia, cachePersonalAsignado, calcularGrupo } from "@/lib/planificacion/cuadrillas";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -12,13 +12,6 @@ const TURNO_CODIGO: Record<string, string> = {
 function normalizarCodigo(v: unknown): string {
   const s = String(v ?? "").trim().toUpperCase();
   return TURNO_CODIGO[s] ?? s;
-}
-
-function calcularGrupo(asistencia: string[]): string {
-  const dias = asistencia.filter(a => a === "D" || a === "N");
-  if (dias.length === 0) return "Diurno";
-  const nocturno = dias.filter(a => a === "N").length;
-  return nocturno > dias.length / 2 ? "Nocturno" : "Diurno";
 }
 
 export async function POST(req: NextRequest, { params }: Ctx) {

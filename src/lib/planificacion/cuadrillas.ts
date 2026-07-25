@@ -11,6 +11,17 @@
 export const DIAS_SEMANA = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"];
 const DIA_INDEX: Record<string, number> = { Lu: 0, Ma: 1, Mi: 2, Ju: 3, Vi: 4, Sa: 5, Do: 6 };
 
+export const CODIGOS_ASISTENCIA = ["D", "N", "T", "V", "CS", "L", ""] as const;
+export type CodigoAsistencia = typeof CODIGOS_ASISTENCIA[number];
+
+/** Resumen semanal (mayoría D/N) para RosterSemanal.grupo — solo display, ver CuadrillaMiembro para asignación real. */
+export function calcularGrupo(asistencia: string[]): string {
+  const dias = asistencia.filter(a => a === "D" || a === "N");
+  if (dias.length === 0) return "Diurno";
+  const nocturno = dias.filter(a => a === "N").length;
+  return nocturno > dias.length / 2 ? "Nocturno" : "Diurno";
+}
+
 export interface CuadrillaMiembroRow {
   grupo: string;
   dia: string;

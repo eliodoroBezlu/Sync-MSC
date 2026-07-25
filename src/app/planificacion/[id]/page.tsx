@@ -7,6 +7,7 @@ import { useUser } from "@/context/AuthContext";
 import TableroSemanal from "./TableroSemanal";
 import SeleccionOts from "./SeleccionOts";
 import type { OtBorrador, Plan, CuadrillaMatriz } from "./types";
+import { CODIGOS_ASISTENCIA } from "@/lib/planificacion/cuadrillas";
 
 const GRUPOS = ["Diurno", "Nocturno", "G1", "G2", "G3", "G4"];
 const DIAS_SEMANA = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"];
@@ -229,6 +230,19 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
     if (data.ok) {
       setCuadrilla(data.matriz);
       await loadPlan();
+    }
+  }
+
+  async function patchAsistencia(rosterId: string, indice: number, codigo: string) {
+    const res = await fetch(`/api/planificacion/${id}/roster/${rosterId}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ indice, codigo }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      await Promise.all([loadPlan(), loadCuadrilla()]);
+    } else {
+      setMsg(`Error: ${data.error}`);
     }
   }
 
@@ -608,12 +622,31 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
                       </td>
                       {(r.asistencia as string[]).slice(0, 7).map((a, i) => (
                         <td key={i} style={{ padding: "4px", textAlign: "center" }}>
-                          <span style={{
-                            display: "inline-block", width: 22, height: 22, borderRadius: 4, fontSize: 9, fontWeight: 700,
-                            lineHeight: "22px", textAlign: "center",
-                            background: a === "D" ? "#d1fae5" : a === "N" ? "#1e1b4b" : a === "V" ? "#fef3c7" : "#f1f5f9",
-                            color: a === "D" ? "#065f46" : a === "N" ? "white" : a === "V" ? "#92400e" : "#94a3b8",
-                          }}>{a || "—"}</span>
+                          {yaPublicado ? (
+                            <span style={{
+                              display: "inline-block", width: 22, height: 22, borderRadius: 4, fontSize: 9, fontWeight: 700,
+                              lineHeight: "22px", textAlign: "center",
+                              background: a === "D" ? "#d1fae5" : a === "N" ? "#1e1b4b" : a === "V" ? "#fef3c7" : "#f1f5f9",
+                              color: a === "D" ? "#065f46" : a === "N" ? "white" : a === "V" ? "#92400e" : "#94a3b8",
+                            }}>{a || "—"}</span>
+                          ) : (
+                            <select
+                              value={a}
+                              onChange={e => patchAsistencia(r.id, i, e.target.value)}
+                              title={`${r.nombre} · ${["Lu","Ma","Mi","Ju","Vi","Sa","Do"][i]}`}
+                              style={{
+                                width: 30, height: 22, borderRadius: 4, fontSize: 9, fontWeight: 700,
+                                textAlign: "center", textAlignLast: "center", cursor: "pointer",
+                                border: "1px solid transparent",
+                                background: a === "D" ? "#d1fae5" : a === "N" ? "#1e1b4b" : a === "V" ? "#fef3c7" : "#f1f5f9",
+                                color: a === "D" ? "#065f46" : a === "N" ? "white" : a === "V" ? "#92400e" : "#94a3b8",
+                              }}
+                            >
+                              {CODIGOS_ASISTENCIA.map(c => (
+                                <option key={c} value={c}>{c || "—"}</option>
+                              ))}
+                            </select>
+                          )}
                         </td>
                       ))}
                     </tr>
