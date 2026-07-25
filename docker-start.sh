@@ -154,6 +154,12 @@ const migraciones = [
   "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS \"estadoDetalle\" TEXT",
   "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS solicitante TEXT",
   "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS observaciones TEXT",
+
+  // ── Selección semanal + backlog en PlanBorradorOt (2026-07) ──────────────────
+  "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS seleccionada BOOLEAN NOT NULL DEFAULT false",
+  "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS \"motivoNoProgramada\" TEXT",
+  "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS \"comentarioNoProgramada\" TEXT",
+  "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS \"esBacklog\" BOOLEAN NOT NULL DEFAULT false",
 ];
 
 (async () => {

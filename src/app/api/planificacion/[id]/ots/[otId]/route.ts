@@ -15,6 +15,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       "numeroOT", "tipoOT", "tipoTrabajo", "prioridad", "descripcion",
       "tag", "descripcionEquipo", "grupo", "esGuardia",
       "personalAsignado", "personalAsignadoIds",
+      "seleccionada", "motivoNoProgramada", "comentarioNoProgramada",
     ];
     for (const c of campos) {
       if (c in body) data[c] = body[c];

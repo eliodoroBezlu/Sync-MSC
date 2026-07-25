@@ -5,6 +5,12 @@ export type OtBorrador = {
   fechaInicioOt: string | null; fechaFinOt: string | null;
   diasTexto: string | null; dias: string[];
   grupo: string; personalAsignado: string[]; esGuardia: boolean;
+  seleccionada: boolean;
+  motivoNoProgramada: string | null;
+  comentarioNoProgramada: string | null;
+  esBacklog: boolean;
+  solicitante: string | null;
+  observaciones: string | null;
 };
 
 export type RosterItem = {

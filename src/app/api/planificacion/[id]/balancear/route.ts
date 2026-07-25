@@ -16,16 +16,20 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
     if (!plan) return NextResponse.json({ error: "Plan no encontrado" }, { status: 404 });
     if (plan.estado === "publicado") return NextResponse.json({ error: "No se puede balancear un plan publicado" }, { status: 400 });
 
-    // Preparar datos para el balanceador
-    const otsParaBal = (plan.ots as unknown[]).map((o: unknown) => {
-      const ot = o as { numeroOT: string; personas: number; hrsTrabajo: number; grupo: string };
-      return {
-        numeroOT: ot.numeroOT,
-        personas: ot.personas,
-        hrsTrabajo: ot.hrsTrabajo,
-        grupo: ot.grupo,
-      };
-    });
+    // Preparar datos para el balanceador — solo OTs elegidas para esta semana
+    // (o guardia OPEPLANT, que siempre se programa) entran al balanceo.
+    const otsParaBal = (plan.ots as unknown[])
+      .filter((o: unknown) => (o as { seleccionada: boolean; esGuardia: boolean }).seleccionada
+        || (o as { seleccionada: boolean; esGuardia: boolean }).esGuardia)
+      .map((o: unknown) => {
+        const ot = o as { numeroOT: string; personas: number; hrsTrabajo: number; grupo: string };
+        return {
+          numeroOT: ot.numeroOT,
+          personas: ot.personas,
+          hrsTrabajo: ot.hrsTrabajo,
+          grupo: ot.grupo,
+        };
+      });
 
     const rosterParaBal = (plan.roster as unknown[]).map((r: unknown) => {
       const rs = r as { nombre: string; asistencia: string[]; grupo: string };

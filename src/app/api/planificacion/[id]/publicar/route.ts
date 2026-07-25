@@ -37,13 +37,16 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
   const lunes  = lunesDeSemana(borrador.semana, borrador.anio);
   const sabado = fechaDia(lunes, 5);
 
-  const totalHH   = borrador.ots.reduce((s, o) => s + o.hhTotal, 0);
+  // Solo se publican las OTs elegidas por el planificador (o guardia OPEPLANT,
+  // que siempre se programa). Las no elegidas quedan en el borrador como backlog.
+  const otsAProgramar = borrador.ots.filter(o => o.seleccionada || o.esGuardia);
+  const totalHH   = otsAProgramar.reduce((s, o) => s + o.hhTotal, 0);
 
   try {
     // Validar plan ANTES de publicar
     const alerts = await validarPlan(
       id,
-      borrador.ots as unknown as Parameters<typeof validarPlan>[1],
+      otsAProgramar as unknown as Parameters<typeof validarPlan>[1],
       borrador.roster as unknown as Parameters<typeof validarPlan>[2],
       borrador.semana,
       borrador.anio,
@@ -104,15 +107,15 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
       // su propio historial de avances. Si no las enlazamos aquí, Registro
       // las muestra como "no iniciada" / "Registrar 1er día" y el técnico no
       // puede continuar (crear una OT nueva choca con el numeroOT único).
-      const numerosOT = Array.from(new Set(borrador.ots.map(o => o.numeroOT)));
+      const numerosOT = Array.from(new Set(otsAProgramar.map(o => o.numeroOT)));
       const otsExistentes = await tx.ordenTrabajo.findMany({
         where: { numeroOT: { in: numerosOT }, estado: { not: "concluido" } },
         select: { id: true, numeroOT: true, estado: true },
       });
       const existentePorNumero = new Map(otsExistentes.map(o => [o.numeroOT, o]));
 
-      // Crear OtProgramada por cada día de cada OtBorrador
-      for (const ot of borrador.ots) {
+      // Crear OtProgramada por cada día de cada OtBorrador elegida
+      for (const ot of otsAProgramar) {
         const diasOt: string[] = ot.dias.length > 0 ? ot.dias : ["Lu", "Ma", "Mi", "Ju", "Vi"];
         const continuacion = existentePorNumero.get(ot.numeroOT);
         for (const dia of diasOt) {

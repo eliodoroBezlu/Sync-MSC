@@ -18,6 +18,8 @@ const COL = {
   semana: 15, solicitante: 16, observaciones: 17,
 } as const;
 
+const TODOS_LOS_DIAS = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"];
+
 function parseFecha(v: unknown): Date | null {
   if (!v && v !== 0) return null;
   if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
@@ -62,36 +64,48 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       const personas = Number(row[COL.personas]) || 1;
       const hrsTrabajo = Number(row[COL.hrsTrabajo]) || 0;
       const hhTotal = Number(row[COL.hhEstimada]) || personas * hrsTrabajo;
-      const diasTexto = String(row[COL.dias] ?? "").trim();
-      const dias = expandirDias(diasTexto);
+      const tag = String(row[COL.tag] ?? "").trim().toUpperCase();
+      // OPEPLANT es guardia de planta: se programa toda la semana, en ambos
+      // turnos (Diurno y Nocturno), sin pasar por la selección semanal.
+      const esOpeplant = tag.includes("OPEPLANT");
+      const diasTexto = esOpeplant ? "Lu a Do" : String(row[COL.dias] ?? "").trim();
+      const dias = esOpeplant ? TODOS_LOS_DIAS : expandirDias(diasTexto);
+
+      const datosBase = {
+        planBorradorId: id,
+        numeroOT,
+        tipoOT: tipoOT.toUpperCase(),
+        tipoTrabajo: String(row[COL.tipoTrabajo] ?? "").trim(),
+        prioridad: String(row[COL.prioridad] ?? "").trim() || null,
+        descripcion: String(row[COL.descripcion] ?? "").trim() || `OT ${numeroOT}`,
+        tag,
+        descripcionEquipo: String(row[COL.descripcionEquipo] ?? "").trim(),
+        personas, hrsTrabajo, hhTotal,
+        fechaInicioOt: parseFecha(row[COL.fechaInicio]),
+        fechaFinOt: parseFecha(row[COL.fechaFin]),
+        diasTexto: diasTexto || null,
+        dias,
+        estadoJDE: String(row[COL.estadoJDE] ?? "").trim() || null,
+        estadoDetalle: String(row[COL.estadoDetalle] ?? "").trim() || null,
+        solicitante: String(row[COL.solicitante] ?? "").trim() || null,
+        observaciones: String(row[COL.observaciones] ?? "").trim() || null,
+        personalAsignado: [] as string[],
+        personalAsignadoIds: [] as string[],
+        esGuardia: esOpeplant,
+        seleccionada: esOpeplant,
+      };
 
       const ot = await prisma.planBorradorOt.create({
-        data: {
-          planBorradorId: id,
-          control: siguienteControl++,
-          numeroOT,
-          tipoOT: tipoOT.toUpperCase(),
-          tipoTrabajo: String(row[COL.tipoTrabajo] ?? "").trim(),
-          prioridad: String(row[COL.prioridad] ?? "").trim() || null,
-          descripcion: String(row[COL.descripcion] ?? "").trim() || `OT ${numeroOT}`,
-          tag: String(row[COL.tag] ?? "").trim().toUpperCase(),
-          descripcionEquipo: String(row[COL.descripcionEquipo] ?? "").trim(),
-          personas, hrsTrabajo, hhTotal,
-          fechaInicioOt: parseFecha(row[COL.fechaInicio]),
-          fechaFinOt: parseFecha(row[COL.fechaFin]),
-          diasTexto: diasTexto || null,
-          dias,
-          grupo: "Diurno",
-          estadoJDE: String(row[COL.estadoJDE] ?? "").trim() || null,
-          estadoDetalle: String(row[COL.estadoDetalle] ?? "").trim() || null,
-          solicitante: String(row[COL.solicitante] ?? "").trim() || null,
-          observaciones: String(row[COL.observaciones] ?? "").trim() || null,
-          personalAsignado: [],
-          personalAsignadoIds: [],
-          esGuardia: false,
-        },
+        data: { ...datosBase, control: siguienteControl++, grupo: "Diurno" },
       });
       resultados.push(ot);
+
+      if (esOpeplant) {
+        const otNocturno = await prisma.planBorradorOt.create({
+          data: { ...datosBase, control: siguienteControl++, grupo: "Nocturno" },
+        });
+        resultados.push(otNocturno);
+      }
     }
 
     if (vistasSemana > 0 && resultados.length === 0) {

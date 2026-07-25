@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
 import TableroSemanal from "./TableroSemanal";
+import SeleccionOts from "./SeleccionOts";
 import type { OtBorrador, Plan } from "./types";
 
 const GRUPOS = ["Diurno", "Nocturno", "G1", "G2", "G3", "G4"];
@@ -175,7 +176,7 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
   const router = useRouter();
   const [plan, setPlan] = useState<Plan | null>(null);
   const [cargando, setCargando] = useState(true);
-  const [tab, setTab] = useState<"tablero" | "ots" | "roster">("tablero");
+  const [tab, setTab] = useState<"seleccion" | "tablero" | "ots" | "roster">("seleccion");
   const [importandoOts, setImportandoOts] = useState(false);
   const [importandoRoster, setImportandoRoster] = useState(false);
   const [publicando, setPublicando] = useState(false);
@@ -315,6 +316,7 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
     </div>
   );
 
+  const otsSeleccionadas = plan.ots.filter(o => o.seleccionada || o.esGuardia);
   const totalHH = plan.ots.reduce((s, o) => s + o.hhTotal, 0);
   const rosterNombres = plan.roster.map(r => r.nombre);
   const yaPublicado = plan.estado === "publicado";
@@ -367,7 +369,7 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
                 📅 <strong>{rangofecha} de {plan.anio}</strong>
               </div>
               <div style={{ fontSize: 13, color: "#64748b" }}>
-                {plan.ots.length} OTs · {totalHH.toFixed(0)} HH totales · {plan.roster.length} técnicos en roster
+                {otsSeleccionadas.length} de {plan.ots.length} OTs elegidas · {totalHH.toFixed(0)} HH totales · {plan.roster.length} técnicos en roster
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -375,7 +377,7 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
                 <>
                   <button
                     onClick={balancearCarga}
-                    disabled={balanceando || plan.ots.length === 0}
+                    disabled={balanceando || otsSeleccionadas.length === 0}
                     style={{
                       padding: "8px 14px", borderRadius: 8, border: "1.5px solid #0891b2",
                       background: "white", color: "#0891b2",
@@ -384,12 +386,12 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
                   >{balanceando ? "Balanceando…" : "⚖️ Balancear"}</button>
                   <button
                     onClick={publicarPlan}
-                    disabled={publicando || plan.ots.length === 0}
+                    disabled={publicando || otsSeleccionadas.length === 0}
                     style={{
                       padding: "8px 16px", borderRadius: 8, border: "none",
-                      background: plan.ots.length === 0 ? "#e2e8f0" : "#16a34a",
-                      color: plan.ots.length === 0 ? "#94a3b8" : "white",
-                      fontWeight: 700, fontSize: 13, cursor: plan.ots.length === 0 ? "not-allowed" : "pointer",
+                      background: otsSeleccionadas.length === 0 ? "#e2e8f0" : "#16a34a",
+                      color: otsSeleccionadas.length === 0 ? "#94a3b8" : "white",
+                      fontWeight: 700, fontSize: 13, cursor: otsSeleccionadas.length === 0 ? "not-allowed" : "pointer",
                     }}
                   >{publicando ? "Publicando…" : "📤 Publicar plan"}</button>
                 </>
@@ -438,7 +440,7 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: 2, marginBottom: 14 }}>
-          {(["tablero", "ots", "roster"] as const).map(t => (
+          {(["seleccion", "tablero", "ots", "roster"] as const).map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: "8px 18px", borderRadius: "8px 8px 0 0",
               border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700,
@@ -446,20 +448,39 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
               color: tab === t ? "#7c3aed" : "#64748b",
               borderBottom: tab === t ? "2px solid #7c3aed" : "2px solid transparent",
             }}>
-              {t === "tablero" ? "📌 Tablero" : t === "ots" ? `OTs (${plan.ots.length})` : `Roster (${plan.roster.length})`}
+              {t === "seleccion" ? `✅ Selección (${plan.ots.filter(o => o.seleccionada).length})`
+                : t === "tablero" ? "📌 Tablero"
+                : t === "ots" ? `OTs (${plan.ots.length})` : `Roster (${plan.roster.length})`}
             </button>
           ))}
         </div>
 
-        {/* Tab Tablero */}
-        {tab === "tablero" && (
+        {/* Tab Selección */}
+        {tab === "seleccion" && (
           <div style={{ background: "white", borderRadius: "0 12px 12px 12px", padding: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
             {plan.ots.length === 0 ? (
               <div style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>
                 No hay OTs en este plan todavía. Ve a la pestaña &quot;OTs&quot; e importa el Excel JDE para empezar a armar la semana.
               </div>
             ) : (
-              <TableroSemanal plan={plan} onPatchOt={patchOtLocal} disabled={yaPublicado} />
+              <SeleccionOts plan={plan} onPatchOt={patchOtLocal} disabled={yaPublicado} />
+            )}
+          </div>
+        )}
+
+        {/* Tab Tablero */}
+        {tab === "tablero" && (
+          <div style={{ background: "white", borderRadius: "0 12px 12px 12px", padding: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
+            {plan.ots.filter(o => o.seleccionada || o.esGuardia).length === 0 ? (
+              <div style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>
+                Todavía no elegiste ninguna OT para esta semana. Ve a la pestaña &quot;Selección&quot; y marca las que se programarán.
+              </div>
+            ) : (
+              <TableroSemanal
+                plan={{ ...plan, ots: plan.ots.filter(o => o.seleccionada || o.esGuardia) }}
+                onPatchOt={patchOtLocal}
+                disabled={yaPublicado}
+              />
             )}
           </div>
         )}
