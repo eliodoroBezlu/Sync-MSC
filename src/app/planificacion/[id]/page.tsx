@@ -239,7 +239,11 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
     const data = await res.json();
     if (data.ok) {
       setCuadrilla(data.matriz);
-      await loadPlan();
+      // Edición puntual de cuadrilla (ej. drag-drop de un técnico a un día):
+      // no debe tapar el tablero con el spinner de loadPlan(). setCuadrilla
+      // ya refleja el cambio al instante; refreshPlanQuiet solo reconcilia
+      // el cache personalAsignado de las OTs en segundo plano.
+      await refreshPlanQuiet();
     }
   }
 

@@ -540,13 +540,19 @@ export default function TableroSemanal({
 
   async function asignarTecnico(otId: string, nombre: string, diaCode: string) {
     const ot = plan.ots.find(o => o.id === otId);
-    if (!ot || ot.personalAsignado.includes(nombre)) return;
+    if (!ot) return;
+    // No usar early-return por "ya está en personalAsignado": una OT de
+    // guardia (OPEPLANT) abarca toda la semana en un solo registro, así que
+    // dropear al mismo técnico en un día distinto debe seguir registrando su
+    // membresía de cuadrilla para ESE día aunque ya figure en la OT.
     const yaEnCrew = (cuadrilla[ot.grupo]?.[diaCode] ?? []).some(t => t.nombre === nombre);
     if (diaCode && !yaEnCrew) {
       const r = plan.roster.find(x => x.nombre === nombre);
       await onEditCuadrilla(ot.grupo, [diaCode], [{ nombre, usuarioId: r?.usuarioId ?? null }]);
     }
-    onPatchOt(otId, { personalAsignado: [...ot.personalAsignado, nombre] });
+    if (!ot.personalAsignado.includes(nombre)) {
+      onPatchOt(otId, { personalAsignado: [...ot.personalAsignado, nombre] });
+    }
   }
 
   function quitarTecnico(otId: string, nombre: string) {
