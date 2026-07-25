@@ -60,7 +60,9 @@ export function calcularDisponibilidad(
   hhActualProgramadas: number = 0
 ): TecnicoDisponibilidad {
   const hrs_x_dia = horasPorDiaPersona(grupo);
-  const diasDisponibles = asistencia.filter(d => d === "D" || d === "N").length;
+  // "D" es descanso (código de RRHH), no "turno diurno" pese a la letra —
+  // solo "T" (turno normal/guardia diurna) y "N" (nocturno) son presencia real.
+  const diasDisponibles = asistencia.filter(d => d === "T" || d === "N").length;
   const hhDisponibles = diasDisponibles * hrs_x_dia;
   return {
     nombre,
@@ -84,7 +86,7 @@ export function asignarOtAlMenosCargado(
 ): OtAsignacion | null {
   // Filtrar técnicos compatibles (mismo grupo o sin restricción)
   const compatibles = tecnicos.filter(t => {
-    const tieneGrupo = (t.asistencia as string[]).some(d => d === (grupo === "Nocturno" ? "N" : "D"));
+    const tieneGrupo = (t.asistencia as string[]).some(d => d === (grupo === "Nocturno" ? "N" : "T"));
     return tieneGrupo && t.hhActualProgramadas + hhOt <= t.hhDisponibles;
   });
 

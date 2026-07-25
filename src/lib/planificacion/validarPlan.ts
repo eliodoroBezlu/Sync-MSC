@@ -28,7 +28,9 @@ export async function validarPlan(
   // 1. CAPACIDAD: HH disponibles vs programadas
   const horas_x_dia = 8;
   const diasSemana = 5; // Lu-Vi por defecto
-  const activos = roster.filter(r => r.asistencia.some(a => a === "D" || a === "N"));
+  // "D" es descanso (RRHH), no "turno diurno" pese a la letra — solo "T" y
+  // "N" son presencia real en sitio.
+  const activos = roster.filter(r => r.asistencia.some(a => a === "T" || a === "N"));
   const hhDisponibles = activos.length * diasSemana * horas_x_dia;
   const hhProgramadas = ots.reduce((s, o) => s + o.personas * o.hrsTrabajo * o.dias.length, 0);
 
@@ -55,8 +57,8 @@ export async function validarPlan(
       const tecnico = roster.find(r => r.nombre === nomTecnico);
       if (!tecnico) continue;
 
-      const tiposTurno = new Set(tecnico.asistencia.filter(a => a === "D" || a === "N"));
-      const otTurno = ot.grupo === "Diurno" ? "D" : "N";
+      const tiposTurno = new Set(tecnico.asistencia.filter(a => a === "T" || a === "N"));
+      const otTurno = ot.grupo === "Diurno" ? "T" : "N";
       if (!tiposTurno.has(otTurno)) {
         alerts.push({
           tipo: "turno",
