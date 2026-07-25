@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
-import { balancearOts } from "@/lib/planificacion/balanceador";
+import { balancearOts, balancearDias } from "@/lib/planificacion/balanceador";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -22,12 +22,15 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
       .filter((o: unknown) => (o as { seleccionada: boolean; esGuardia: boolean }).seleccionada
         || (o as { seleccionada: boolean; esGuardia: boolean }).esGuardia)
       .map((o: unknown) => {
-        const ot = o as { numeroOT: string; personas: number; hrsTrabajo: number; grupo: string };
+        const ot = o as { numeroOT: string; personas: number; hrsTrabajo: number; hhTotal: number; grupo: string; dias: string[]; esGuardia: boolean };
         return {
           numeroOT: ot.numeroOT,
           personas: ot.personas,
           hrsTrabajo: ot.hrsTrabajo,
+          hhTotal: ot.hhTotal,
           grupo: ot.grupo,
+          dias: ot.dias,
+          esGuardia: ot.esGuardia,
         };
       });
 
@@ -40,26 +43,35 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
       };
     });
 
-    // Ejecutar balanceador
+    // Ejecutar balanceador: asigna técnicos y, por separado, reparte en la
+    // semana las OTs que todavía no tienen día asignado.
     const asignaciones = balancearOts(otsParaBal, rosterParaBal);
+    const asignacionesDias = balancearDias(otsParaBal);
 
-    // Actualizar OTs con nuevas asignaciones
+    // Actualizar OTs con nuevas asignaciones de personal y/o día
     let actualizadas = 0;
-    for (const [otNumero, tecnicos] of asignaciones) {
-      const ot = plan.ots.find((o: unknown) => (o as { numeroOT: string }).numeroOT === otNumero);
-      if (ot) {
-        await prisma.planBorradorOt.update({
-          where: { id: (ot as { id: string }).id },
-          data: { personalAsignado: tecnicos },
-        });
-        actualizadas++;
-      }
+    for (const ot of otsParaBal) {
+      const tecnicos = asignaciones.get(ot.numeroOT);
+      const diasNuevos = asignacionesDias.get(ot.numeroOT);
+      if (!tecnicos && !diasNuevos) continue;
+
+      const otDb = plan.ots.find((o: unknown) => (o as { numeroOT: string }).numeroOT === ot.numeroOT);
+      if (!otDb) continue;
+
+      await prisma.planBorradorOt.update({
+        where: { id: (otDb as { id: string }).id },
+        data: {
+          ...(tecnicos ? { personalAsignado: tecnicos } : {}),
+          ...(diasNuevos ? { dias: diasNuevos, diasTexto: diasNuevos.join(", ") } : {}),
+        },
+      });
+      actualizadas++;
     }
 
     return NextResponse.json({
       ok: true,
       actualizadas,
-      mensaje: `${actualizadas} OTs balanceadas automáticamente entre ${rosterParaBal.length} técnicos`,
+      mensaje: `${actualizadas} OTs balanceadas y repartidas en la semana entre ${rosterParaBal.length} técnicos`,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error interno";

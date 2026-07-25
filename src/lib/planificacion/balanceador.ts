@@ -111,6 +111,40 @@ export function balancearOts(
   return asignaciones;
 }
 
+const DIAS_SEMANA = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"];
+
+/**
+ * Reparte las OTs sin día asignado a lo largo de la semana, colocando cada
+ * una en el día con menor carga acumulada (OPEPLANT y OTs que ya traen un
+ * día definido —por ejemplo, un rango importado del Excel— quedan intactas).
+ */
+export function balancearDias(
+  ots: Array<{ numeroOT: string; hhTotal: number; dias: string[]; esGuardia: boolean }>,
+  dias: string[] = DIAS_SEMANA
+): Map<string, string[]> {
+  const asignaciones = new Map<string, string[]>();
+  const cargaPorDia = new Map(dias.map(d => [d, 0]));
+
+  const pendientes = ots.filter(o => !o.esGuardia && o.dias.length === 0);
+  const ordenadas = [...pendientes].sort((a, b) => b.hhTotal - a.hhTotal);
+
+  for (const ot of ordenadas) {
+    let mejorDia = dias[0];
+    let menorCarga = Infinity;
+    for (const d of dias) {
+      const carga = cargaPorDia.get(d) ?? 0;
+      if (carga < menorCarga) {
+        menorCarga = carga;
+        mejorDia = d;
+      }
+    }
+    asignaciones.set(ot.numeroOT, [mejorDia]);
+    cargaPorDia.set(mejorDia, menorCarga + ot.hhTotal);
+  }
+
+  return asignaciones;
+}
+
 /**
  * Genera reporte de carga por técnico
  */
