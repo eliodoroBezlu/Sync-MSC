@@ -76,6 +76,13 @@ function iniciales(nombre: string): string {
   return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase();
 }
 
+// Un técnico está "en sitio" esta semana si tiene T (trabajo), D (diurno) o
+// N (nocturno) al menos un día — V/CS/L/"" son ausencias (vacación, comisión
+// de servicio, licencia). Los ausentes toda la semana no se pueden arrastrar.
+function estaEnSitio(asistencia: string[]): boolean {
+  return asistencia.some(a => a === "T" || a === "D" || a === "N");
+}
+
 // ─── Tarjeta de OT ──────────────────────────────────────────────────────────
 function OtCard({
   ot, enBacklog, disabled, isDragging, tecnicosDia,
@@ -301,10 +308,12 @@ function PersonalRail({ plan, disabled }: { plan: Plan; disabled: boolean }) {
         )}
         {plan.roster.map(r => {
           const asignaciones = plan.ots.filter(o => o.personalAsignado.includes(r.nombre)).length;
+          const enSitio = estaEnSitio(r.asistencia);
+          const bloqueado = disabled || !enSitio;
           return (
             <div
               key={r.id}
-              draggable={!disabled}
+              draggable={!bloqueado}
               onDragStart={e => {
                 setDraggingNombre(r.nombre);
                 e.dataTransfer.effectAllowed = "copy";
@@ -314,10 +323,14 @@ function PersonalRail({ plan, disabled }: { plan: Plan; disabled: boolean }) {
               style={{
                 display: "flex", alignItems: "center", gap: 7,
                 background: "white", border: "1px solid #f1f5f9", borderRadius: 8, padding: "6px 8px",
-                opacity: draggingNombre === r.nombre ? 0.35 : 1,
-                cursor: disabled ? "default" : "grab",
+                opacity: draggingNombre === r.nombre ? 0.35 : enSitio ? 1 : 0.45,
+                filter: enSitio ? undefined : "grayscale(1)",
+                cursor: bloqueado ? "default" : "grab",
               }}
-              title={disabled ? undefined : "Arrastra sobre una OT para asignar"}
+              title={
+                !enSitio ? `${r.nombre} no está en sitio esta semana (vacación, comisión o licencia)`
+                : disabled ? undefined : "Arrastra sobre una OT para asignar"
+              }
             >
               <span style={{
                 width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
@@ -327,7 +340,9 @@ function PersonalRail({ plan, disabled }: { plan: Plan; disabled: boolean }) {
               }}>{iniciales(r.nombre)}</span>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#0f2847", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.nombre}</div>
-                <div style={{ fontSize: 9, color: "#94a3b8" }}>{r.grupo} · {asignaciones} OT{asignaciones !== 1 ? "s" : ""}</div>
+                <div style={{ fontSize: 9, color: enSitio ? "#94a3b8" : "#dc2626" }}>
+                  {enSitio ? `${r.grupo} · ${asignaciones} OT${asignaciones !== 1 ? "s" : ""}` : "Ausente esta semana"}
+                </div>
               </div>
             </div>
           );

@@ -184,6 +184,7 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
   const [msg, setMsg] = useState("");
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [balanceando, setBalanceando] = useState(false);
+  const [limpiando, setLimpiando] = useState(false);
   const [cuadrilla, setCuadrilla] = useState<CuadrillaMatriz>({});
 
   useEffect(() => {
@@ -287,6 +288,21 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
       setMsg("Error de red");
     }
     setBalanceando(false);
+  }
+
+  async function limpiarTablero() {
+    if (!confirm("¿Limpiar el tablero? Se quita el personal asignado de todas las OTs para volver a armar la semana desde cero. Los días programados y la selección de OTs no se tocan.")) return;
+    setLimpiando(true);
+    setMsg("");
+    try {
+      const res = await fetch(`/api/planificacion/${id}/limpiar-tablero`, { method: "POST" });
+      const data = await res.json();
+      setMsg(data.ok ? `✓ Tablero limpio: ${data.otsLimpiadas} OTs sin personal` : `Error: ${data.error}`);
+      await loadPlan();
+    } catch {
+      setMsg("Error de red");
+    }
+    setLimpiando(false);
   }
 
   async function patchOt(otId: string, patch: Partial<OtBorrador>) {
@@ -447,6 +463,15 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
                       fontWeight: 700, fontSize: 13, cursor: "pointer",
                     }}
                   >{balanceando ? "Balanceando…" : "⚖️ Balancear"}</button>
+                  <button
+                    onClick={limpiarTablero}
+                    disabled={limpiando || plan.ots.every(o => o.personalAsignado.length === 0)}
+                    style={{
+                      padding: "8px 14px", borderRadius: 8, border: "1.5px solid #dc2626",
+                      background: "white", color: "#dc2626",
+                      fontWeight: 700, fontSize: 13, cursor: "pointer",
+                    }}
+                  >{limpiando ? "Limpiando…" : "🧹 Limpiar tablero"}</button>
                   <button
                     onClick={publicarPlan}
                     disabled={publicando || otsSeleccionadas.length === 0}
