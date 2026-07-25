@@ -278,13 +278,14 @@ function OtCard({
 // ─── Columna de día ─────────────────────────────────────────────────────────
 function DiaColumn({
   titulo, subtitulo, ots, esBacklog, diaCode, cuadrilla, roster, capacidadOverride, dragOverActivo, disabled,
-  onDragOverColumna, onDragLeaveColumna, onDropColumna,
+  onDragOverColumna, onDragLeaveColumna, onDropColumna, onDropGrupo,
   draggingOtId, onDragStartOt, onDragEndOt, onDropTecnicoEnOt, onQuitarTecnico, onClickBacklog, onDevolverABacklog, onEditarHH, onEditCuadrilla, onEditCapacidad,
 }: {
   titulo: string; subtitulo: string; ots: OtBorrador[]; esBacklog: boolean;
   diaCode: string; cuadrilla: CuadrillaMatriz; roster: RosterItem[]; capacidadOverride: CapacidadOverride;
   dragOverActivo: boolean; disabled: boolean;
   onDragOverColumna: () => void; onDragLeaveColumna: () => void; onDropColumna: (e: DragEvent) => void;
+  onDropGrupo: (e: DragEvent, grupo: string) => void;
   draggingOtId: string | null;
   onDragStartOt: (e: DragEvent, otId: string) => void; onDragEndOt: () => void;
   onDropTecnicoEnOt: (e: DragEvent, otId: string) => void;
@@ -297,6 +298,7 @@ function DiaColumn({
 }) {
   const [editandoGrupo, setEditandoGrupo] = useState<string | null>(null);
   const [editandoCapacidad, setEditandoCapacidad] = useState<string | null>(null);
+  const [dragOverGrupo, setDragOverGrupo] = useState<string | null>(null);
   const hh = esBacklog ? ots.reduce((s, o) => s + o.hhTotal, 0) : ots.reduce((s, o) => s + hhPorDia(o), 0);
   return (
     <div
@@ -329,7 +331,20 @@ function DiaColumn({
           const pctUtil = cap && cap.horasDisponibles > 0 ? hhGrupo / cap.horasDisponibles : 0;
           const uc = cap ? colorUtilizacion(pctUtil, cap.horasDisponibles) : null;
           return (
-            <div key={grupo} style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            <div
+              key={grupo}
+              onDragOver={esBacklog ? undefined : e => { e.preventDefault(); e.stopPropagation(); setDragOverGrupo(grupo); }}
+              onDragLeave={esBacklog ? undefined : () => setDragOverGrupo(g => (g === grupo ? null : g))}
+              onDrop={esBacklog ? undefined : e => { setDragOverGrupo(null); onDropGrupo(e, grupo); }}
+              style={{
+                display: "flex", flexDirection: "column", gap: 7,
+                borderRadius: 6,
+                outline: dragOverGrupo === grupo ? "2px dashed #7c3aed" : "none",
+                outlineOffset: 2,
+                background: dragOverGrupo === grupo ? "#7c3aed0f" : "transparent",
+                transition: "background 0.1s",
+              }}
+            >
               <div style={{ position: "relative" }}>
                 <div
                   onClick={() => { if (!esBacklog) setEditandoGrupo(editandoGrupo === grupo ? null : grupo); }}
@@ -543,6 +558,27 @@ export default function TableroSemanal({
     onPatchOt(otId, { hhTotal });
   }
 
+  // Arrastrar una OT y soltarla sobre la sección de un grupo (G1-G4/Diurno/
+  // Nocturno) dentro de un día: fija el grupo a mano (grupoManual=true, ver
+  // ots/[otId]/route.ts) para que Balancear ya no la mueva. Si la OT viene de
+  // otro día o de Sin programar, además hay que ubicarla en este día, igual
+  // que moverADia.
+  function moverAGrupoEnDia(otId: string, dia: string, grupo: string) {
+    const ot = plan.ots.find(o => o.id === otId);
+    if (!ot) return;
+    const yaEnEsteDia = ot.dias?.includes(dia) ?? false;
+    if (yaEnEsteDia) {
+      onPatchOt(otId, { grupo });
+      return;
+    }
+    if (!ot.esGuardia && DIAS_LABORALES.includes(dia)) {
+      const diasNecesarios = calcularDiasNecesarios(ot.hhTotal, ot.personas, grupo);
+      onPatchOt(otId, { dias: distribuirEnDias(dia, diasNecesarios), grupo });
+    } else {
+      onPatchOt(otId, { dias: [dia], grupo });
+    }
+  }
+
   async function asignarTecnico(otId: string, nombre: string, diaCode: string) {
     const ot = plan.ots.find(o => o.id === otId);
     if (!ot) return;
@@ -589,6 +625,14 @@ export default function TableroSemanal({
     if (payload?.tipo === "ot") moverADia(payload.id, dia);
   }
 
+  function handleDropGrupo(e: DragEvent, dia: string, grupo: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverDia(null);
+    const payload = leerPayload(e);
+    if (payload?.tipo === "ot") moverAGrupoEnDia(payload.id, dia, grupo);
+  }
+
   function handleDropTecnicoEnOt(e: DragEvent, otId: string, diaCode: string) {
     const payload = leerPayload(e);
     if (payload?.tipo === "tecnico") {
@@ -626,6 +670,7 @@ export default function TableroSemanal({
             onDragOverColumna={() => setDragOverDia("")}
             onDragLeaveColumna={() => setDragOverDia(null)}
             onDropColumna={e => handleDropColumna(e, "")}
+            onDropGrupo={() => {}}
             draggingOtId={draggingOtId}
             onDragStartOt={handleDragStartOt}
             onDragEndOt={() => setDraggingOtId(null)}
@@ -650,6 +695,7 @@ export default function TableroSemanal({
                 onDragOverColumna={() => setDragOverDia(d.code)}
                 onDragLeaveColumna={() => setDragOverDia(null)}
                 onDropColumna={e => handleDropColumna(e, d.code)}
+                onDropGrupo={(e, grupo) => handleDropGrupo(e, d.code, grupo)}
                 draggingOtId={draggingOtId}
                 onDragStartOt={handleDragStartOt}
                 onDragEndOt={() => setDraggingOtId(null)}

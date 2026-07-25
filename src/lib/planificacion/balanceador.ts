@@ -189,11 +189,19 @@ export const GRUPOS_ORDENADOS = ["G1", "G2", "G3", "G4"];
  * roster: técnicos en turno normal ("T") ese día, descontando a los que ya
  * están tomados por la guardia Diurno (esos sí están sembrados de forma
  * confiable desde la asistencia real, ver seedMembresiaDesdeAsistencia). El
- * total de HH del día se reparte parejo entre los 4 grupos.
+ * total de HH del día se reparte parejo entre los 4 grupos como cupo de
+ * referencia.
  *
- * Si una OT no entra en ningún grupo sin pasarse de capacidad, se coloca
- * igual en G4 (overflow) en vez de quedar sin grupo — el planificador de
- * referencia también deja grupos por encima del 100% cuando hace falta.
+ * El reparto entre G1-G4 es por menor carga relativa: cada OT (de la más
+ * pesada a la más liviana) se manda al grupo que, sumándole esta OT, quede
+ * con el % de uso más bajo en el peor de sus días — no al primer grupo que
+ * "entra" bajo su cupo. Con el cupo fijo dividido en 4 partes iguales, un
+ * criterio de "cabe o no cabe" hacía que la primera OT (la más grande) casi
+ * nunca entrara en el 1/4 de G1 y todo cayera en cascada hasta G4, aunque
+ * G1-G3 tuvieran de sobra. Comparar % de uso en vez de exigir que quepa deja
+ * que el cupo se pase del 100% cuando hace falta (igual que el planificador
+ * de referencia), pero repartido parejo entre los 4 grupos en vez de siempre
+ * en G4.
  */
 export function agruparPorCapacidad(
   ots: Array<{ id: string; hhTotal: number; dias: string[] }>,
@@ -214,25 +222,33 @@ export function agruparPorCapacidad(
     }
   }
 
+  const usadoPorGrupoDia = new Map<string, number>();
   const asignaciones = new Map<string, string>();
   const ordenadas = [...ots].sort((a, b) => b.hhTotal - a.hhTotal);
-  const ultimoGrupo = GRUPOS_ORDENADOS[GRUPOS_ORDENADOS.length - 1];
 
   for (const ot of ordenadas) {
     const dias = ot.dias.length > 0 ? ot.dias : TODOS_LOS_DIAS;
     const hhPorDia = ot.hhTotal / dias.length;
 
-    let grupoElegido = ultimoGrupo;
+    let grupoElegido = GRUPOS_ORDENADOS[0];
+    let peorUtilizacionMinima = Infinity;
     for (const grupo of GRUPOS_ORDENADOS) {
-      const cabe = dias.every(dia => (capacidadPorGrupoDia.get(`${grupo}|${dia}`) ?? 0) >= hhPorDia);
-      if (cabe) {
+      let peorUtilizacion = 0;
+      for (const dia of dias) {
+        const clave = `${grupo}|${dia}`;
+        const capacidad = capacidadPorGrupoDia.get(clave) ?? 0;
+        const usado = usadoPorGrupoDia.get(clave) ?? 0;
+        const utilizacion = capacidad > 0 ? (usado + hhPorDia) / capacidad : (usado + hhPorDia > 0 ? Infinity : 0);
+        peorUtilizacion = Math.max(peorUtilizacion, utilizacion);
+      }
+      if (peorUtilizacion < peorUtilizacionMinima) {
+        peorUtilizacionMinima = peorUtilizacion;
         grupoElegido = grupo;
-        break;
       }
     }
     for (const dia of dias) {
       const clave = `${grupoElegido}|${dia}`;
-      capacidadPorGrupoDia.set(clave, (capacidadPorGrupoDia.get(clave) ?? 0) - hhPorDia);
+      usadoPorGrupoDia.set(clave, (usadoPorGrupoDia.get(clave) ?? 0) + hhPorDia);
     }
     asignaciones.set(ot.id, grupoElegido);
   }
