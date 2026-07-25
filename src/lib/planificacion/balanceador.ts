@@ -45,10 +45,12 @@ export interface OtAsignacion {
 }
 
 /**
- * Calcula disponibilidad de cada técnico en la semana
+ * Calcula disponibilidad de cada técnico en la semana. 10 horas/día/persona
+ * parejo para todos los grupos (G1-G4, Diurno, Nocturno), igual que el Excel
+ * de referencia (Programa Semanal Instrumentacion, hoja I-XX).
  */
-export function horasPorDiaPersona(grupo: string): number {
-  return grupo === "Nocturno" ? 10 : 8;
+export function horasPorDiaPersona(_grupo: string): number {
+  return 10;
 }
 
 export function calcularDisponibilidad(
@@ -177,9 +179,9 @@ export const DIAS_LABORALES = ["Lu", "Ma", "Mi", "Ju", "Vi"];
 
 /**
  * Cuántos días hace falta para completar el total de HH de una OT, según la
- * cantidad de personas asignadas y las horas/día/persona del grupo (8 en
- * Diurno/G1-G4, 10 en Nocturno). Se limita a los 5 días hábiles: una OT que
- * a ese ritmo tomaría más de 5 días simplemente reparte más HH por día.
+ * cantidad de personas asignadas y las horas/día/persona del grupo (10 parejo
+ * para todos). Se limita a los 5 días hábiles: una OT que a ese ritmo tomaría
+ * más de 5 días simplemente reparte más HH por día.
  */
 export function calcularDiasNecesarios(hhTotal: number, personas: number, grupo: string): number {
   const capacidadDia = Math.max(1, personas) * horasPorDiaPersona(grupo);

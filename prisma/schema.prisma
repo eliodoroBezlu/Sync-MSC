@@ -523,6 +523,9 @@ model PlanBorrador {
   creadoPor             String
   publicadoEn           DateTime?
   programacionSemanalId String?
+  // Override manual de horas-hombre disponibles por grupo/día: {grupo: {dia: horas}}.
+  // Ausente = capacidad automática (headcount de CuadrillaMiembro x 10 hrs/día).
+  capacidadOverride     Json     @default("{}")
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 

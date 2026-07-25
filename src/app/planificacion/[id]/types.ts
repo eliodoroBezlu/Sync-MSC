@@ -23,9 +23,13 @@ export type TecnicoRef = { nombre: string; usuarioId: string | null };
 // {grupo: {dia: [técnicos]}} — quién cubre cada cuadrilla cada día.
 export type CuadrillaMatriz = Record<string, Record<string, TecnicoRef[]>>;
 
+// {grupo: {dia: horasDisponiblesOverride}} — ausente = cálculo automático.
+export type CapacidadOverride = Record<string, Record<string, number>>;
+
 export type Plan = {
   id: string; semana: number; anio: number; areaCodigo: string; disciplina: string;
   estado: string; creadoPor: string;
+  capacidadOverride: CapacidadOverride;
   ots: OtBorrador[];
   roster: RosterItem[];
 };

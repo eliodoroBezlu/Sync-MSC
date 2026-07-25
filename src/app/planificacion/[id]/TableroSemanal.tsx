@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import type { DragEvent } from "react";
-import type { OtBorrador, Plan, RosterItem, CuadrillaMatriz, TecnicoRef } from "./types";
+import type { OtBorrador, Plan, RosterItem, CuadrillaMatriz, CapacidadOverride } from "./types";
+import type { TecnicoRef } from "./types";
 import { tipoOtDisplay } from "@/lib/tiposOt";
 import { calcularDiasNecesarios, distribuirEnDias, DIAS_LABORALES } from "@/lib/planificacion/balanceador";
+import { calcularReporteCapacidad, horasDisponiblesGrupoDia } from "@/lib/planificacion/capacidad";
 import CuadrillaEditor from "./CuadrillaEditor";
 
 type EditCuadrillaFn = (
@@ -13,6 +15,8 @@ type EditCuadrillaFn = (
   agregar?: { nombre: string; usuarioId?: string | null }[],
   quitar?: string[],
 ) => Promise<void>;
+
+type EditCapacidadFn = (grupo: string, dia: string, horas: number | null) => void;
 
 function hhPorDia(ot: Pick<OtBorrador, "hhTotal" | "dias">): number {
   return ot.hhTotal / Math.max(1, ot.dias.length);
@@ -49,6 +53,74 @@ function agruparPorGrupo(ots: OtBorrador[]): Array<{ grupo: string; ots: OtBorra
     if (!ordenados.includes(g)) ordenados.push(g);
   }
   return ordenados.map(grupo => ({ grupo, ots: ots.filter(o => o.grupo === grupo) }));
+}
+
+function colorUtilizacion(pct: number, disponible: number): { bg: string; color: string } {
+  if (disponible <= 0) return { bg: "#f1f5f9", color: "#94a3b8" };
+  if (pct > 1) return { bg: "#fee2e2", color: "#dc2626" };
+  if (pct >= 0.85) return { bg: "#fef3c7", color: "#b45309" };
+  return { bg: "#dcfce7", color: "#15803d" };
+}
+
+// Popover para ajustar manualmente las horas-hombre disponibles de un
+// grupo en un día puntual (ej. alguien avisó que hoy solo vienen 3 de 4).
+// Sin ajuste, la capacidad sale automática: headcount de la cuadrilla × 10h.
+function CapacidadEditor({
+  grupo, dia, headcount, horasAuto, horasActual, esManual, disabled, onClose, onEdit,
+}: {
+  grupo: string; dia: string; headcount: number; horasAuto: number; horasActual: number; esManual: boolean;
+  disabled: boolean; onClose: () => void; onEdit: EditCapacidadFn;
+}) {
+  const [valor, setValor] = useState(String(horasActual));
+
+  function guardar() {
+    const n = Number(valor);
+    if (Number.isFinite(n) && n >= 0) onEdit(grupo, dia, n);
+    onClose();
+  }
+  function volverAutomatico() {
+    onEdit(grupo, dia, null);
+    onClose();
+  }
+
+  return (
+    <div
+      onClick={e => e.stopPropagation()}
+      style={{
+        position: "absolute", zIndex: 30, top: "100%", left: 0, marginTop: 4,
+        width: 190, background: "white", borderRadius: 10, border: "1px solid #e2e8f0",
+        boxShadow: "0 8px 24px rgba(15,40,71,0.18)", padding: 10,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 800, color: "#374151" }}>{grupo} · {dia} · HH disp.</span>
+        <button onClick={onClose} style={{ border: "none", background: "none", color: "#94a3b8", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
+      </div>
+      <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 6 }}>
+        Automático: {headcount} pers. × 10h = {horasAuto.toFixed(0)}HH
+      </div>
+      {disabled ? (
+        <div style={{ fontSize: 11, color: "#374151" }}>{horasActual.toFixed(0)}HH {esManual ? "(manual)" : "(automático)"}</div>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+            <input
+              type="number" min={0} step={1} autoFocus value={valor}
+              onChange={e => setValor(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") guardar(); if (e.key === "Escape") onClose(); }}
+              style={{ flex: 1, fontSize: 11, borderRadius: 6, border: "1.5px solid #7c3aed", padding: "3px 6px" }}
+            />
+            <button onClick={guardar} style={{ padding: "3px 10px", borderRadius: 6, border: "none", background: "#7c3aed", color: "white", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>OK</button>
+          </div>
+          {esManual && (
+            <button onClick={volverAutomatico} style={{ border: "none", background: "none", color: "#0891b2", cursor: "pointer", fontSize: 10, fontWeight: 700, padding: 0 }}>
+              ↺ Volver a automático
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
 }
 
 function getMondayOfIsoWeek(anio: number, semana: number): Date {
@@ -200,12 +272,12 @@ function OtCard({
 
 // ─── Columna de día ─────────────────────────────────────────────────────────
 function DiaColumn({
-  titulo, subtitulo, ots, esBacklog, diaCode, cuadrilla, roster, dragOverActivo, disabled,
+  titulo, subtitulo, ots, esBacklog, diaCode, cuadrilla, roster, capacidadOverride, dragOverActivo, disabled,
   onDragOverColumna, onDragLeaveColumna, onDropColumna,
-  draggingOtId, onDragStartOt, onDragEndOt, onDropTecnicoEnOt, onQuitarTecnico, onClickBacklog, onDevolverABacklog, onEditarHH, onEditCuadrilla,
+  draggingOtId, onDragStartOt, onDragEndOt, onDropTecnicoEnOt, onQuitarTecnico, onClickBacklog, onDevolverABacklog, onEditarHH, onEditCuadrilla, onEditCapacidad,
 }: {
   titulo: string; subtitulo: string; ots: OtBorrador[]; esBacklog: boolean;
-  diaCode: string; cuadrilla: CuadrillaMatriz; roster: RosterItem[];
+  diaCode: string; cuadrilla: CuadrillaMatriz; roster: RosterItem[]; capacidadOverride: CapacidadOverride;
   dragOverActivo: boolean; disabled: boolean;
   onDragOverColumna: () => void; onDragLeaveColumna: () => void; onDropColumna: (e: DragEvent) => void;
   draggingOtId: string | null;
@@ -216,8 +288,10 @@ function DiaColumn({
   onDevolverABacklog: (otId: string) => void;
   onEditarHH: (otId: string, hhTotal: number) => void;
   onEditCuadrilla: EditCuadrillaFn;
+  onEditCapacidad: EditCapacidadFn;
 }) {
   const [editandoGrupo, setEditandoGrupo] = useState<string | null>(null);
+  const [editandoCapacidad, setEditandoCapacidad] = useState<string | null>(null);
   const hh = esBacklog ? ots.reduce((s, o) => s + o.hhTotal, 0) : ots.reduce((s, o) => s + hhPorDia(o), 0);
   return (
     <div
@@ -246,13 +320,16 @@ function DiaColumn({
           const gc = grupoColor(grupo);
           const hhGrupo = esBacklog ? otsGrupo.reduce((s, o) => s + o.hhTotal, 0) : otsGrupo.reduce((s, o) => s + hhPorDia(o), 0);
           const miembrosGrupo = cuadrilla[grupo]?.[diaCode] ?? [];
+          const cap = esBacklog ? null : horasDisponiblesGrupoDia(grupo, diaCode, cuadrilla, capacidadOverride);
+          const pctUtil = cap && cap.horasDisponibles > 0 ? hhGrupo / cap.horasDisponibles : 0;
+          const uc = cap ? colorUtilizacion(pctUtil, cap.horasDisponibles) : null;
           return (
             <div key={grupo} style={{ display: "flex", flexDirection: "column", gap: 7 }}>
               <div style={{ position: "relative" }}>
                 <div
                   onClick={() => { if (!esBacklog) setEditandoGrupo(editandoGrupo === grupo ? null : grupo); }}
                   style={{
-                    background: gc.bg, color: gc.color, borderRadius: 6,
+                    background: gc.bg, color: gc.color, borderRadius: "6px 6px 0 0",
                     padding: "3px 8px", fontSize: 10, fontWeight: 800, letterSpacing: "0.03em",
                     display: "flex", justifyContent: "space-between",
                     cursor: esBacklog ? "default" : "pointer",
@@ -268,6 +345,30 @@ function DiaColumn({
                     disabled={disabled}
                     onClose={() => setEditandoGrupo(null)}
                     onEdit={onEditCuadrilla}
+                  />
+                )}
+                {cap && uc && (
+                  <div
+                    onClick={() => setEditandoCapacidad(editandoCapacidad === grupo ? null : grupo)}
+                    style={{
+                      background: uc.bg, color: uc.color, borderRadius: "0 0 6px 6px",
+                      padding: "2px 8px", fontSize: 9, fontWeight: 700,
+                      display: "flex", justifyContent: "space-between", cursor: disabled ? "default" : "pointer",
+                    }}
+                    title={disabled ? undefined : `Ajustar HH disponibles de ${grupo} · ${titulo}`}
+                  >
+                    <span>{hhGrupo.toFixed(0)}/{cap.horasDisponibles.toFixed(0)}HH{cap.esManual ? " ✎" : ""}</span>
+                    <span>{(pctUtil * 100).toFixed(0)}%</span>
+                  </div>
+                )}
+                {editandoCapacidad === grupo && cap && !disabled && (
+                  <CapacidadEditor
+                    grupo={grupo} dia={diaCode}
+                    headcount={cap.headcount} horasAuto={cap.headcount * 10}
+                    horasActual={cap.horasDisponibles} esManual={cap.esManual}
+                    disabled={disabled}
+                    onClose={() => setEditandoCapacidad(null)}
+                    onEdit={onEditCapacidad}
                   />
                 )}
               </div>
@@ -352,20 +453,67 @@ function PersonalRail({ plan, disabled }: { plan: Plan; disabled: boolean }) {
   );
 }
 
+// ─── Resumen semanal de HH (réplica de las filas 1-8 de la hoja I-XX) ─────
+function ResumenSemanal({ reporte }: { reporte: ReturnType<typeof calcularReporteCapacidad> }) {
+  const uc = colorUtilizacion(reporte.utilizacionSemana, reporte.totalDisponible);
+  return (
+    <div style={{
+      display: "flex", flexWrap: "wrap", alignItems: "center", gap: 14,
+      background: "white", border: "1px solid #f1f5f9", borderRadius: 10,
+      padding: "9px 14px", marginBottom: 10,
+    }}>
+      <div style={{ display: "flex", gap: 16 }}>
+        <div>
+          <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Disponible</div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#0f2847" }}>{reporte.totalDisponible.toFixed(0)}HH</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Programada</div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#0f2847" }}>{reporte.totalProgramada.toFixed(0)}HH</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Atención reactivo</div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: reporte.horasReactivo >= 0 ? "#0f2847" : "#dc2626" }}>{reporte.horasReactivo.toFixed(0)}HH</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Utilización semana</div>
+          <div style={{ display: "inline-block", background: uc.bg, color: uc.color, borderRadius: 6, padding: "1px 8px", fontSize: 13, fontWeight: 800 }}>
+            {(reporte.utilizacionSemana * 100).toFixed(0)}%
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginLeft: "auto" }}>
+        {reporte.porGrupo.map(g => {
+          const gc = grupoColor(g.grupo);
+          const guc = colorUtilizacion(g.utilizacionPromedio, 1);
+          return (
+            <div key={g.grupo} style={{ display: "flex", alignItems: "center", gap: 4, background: gc.bg, borderRadius: 6, padding: "3px 8px" }}>
+              <span style={{ fontSize: 9, fontWeight: 800, color: gc.color }}>{g.grupo.toUpperCase()}</span>
+              <span style={{ fontSize: 10, fontWeight: 800, color: guc.color }}>{(g.utilizacionPromedio * 100).toFixed(0)}%</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Tablero principal ──────────────────────────────────────────────────────
 export default function TableroSemanal({
-  plan, onPatchOt, cuadrilla, onEditCuadrilla, disabled,
+  plan, onPatchOt, cuadrilla, onEditCuadrilla, onEditCapacidad, disabled,
 }: {
   plan: Plan;
   onPatchOt: (otId: string, patch: Partial<OtBorrador>) => void;
   cuadrilla: CuadrillaMatriz;
   onEditCuadrilla: EditCuadrillaFn;
+  onEditCapacidad: EditCapacidadFn;
   disabled: boolean;
 }) {
   const [draggingOtId, setDraggingOtId] = useState<string | null>(null);
   const [dragOverDia, setDragOverDia] = useState<string | null>(null);
 
   const monday = getMondayOfIsoWeek(plan.anio, plan.semana);
+  const reporte = calcularReporteCapacidad(plan.ots, cuadrilla, plan.capacidadOverride);
 
   function otsDelDia(code: string): OtBorrador[] {
     if (code === "") return plan.ots.filter(o => !o.dias || o.dias.length === 0);
@@ -444,52 +592,57 @@ export default function TableroSemanal({
   }
 
   return (
-    <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-      <PersonalRail plan={plan} disabled={disabled} />
+    <div>
+      <ResumenSemanal reporte={reporte} />
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+        <PersonalRail plan={plan} disabled={disabled} />
 
-      <div style={{ display: "flex", gap: 10, overflowX: "auto", flex: 1, minWidth: 0, paddingBottom: 10 }}>
-        <DiaColumn
-          titulo="Sin programar" subtitulo="OTs importadas sin día"
-          ots={otsDelDia("")} esBacklog diaCode="" cuadrilla={cuadrilla} roster={plan.roster} disabled={disabled}
-          dragOverActivo={dragOverDia === ""}
-          onDragOverColumna={() => setDragOverDia("")}
-          onDragLeaveColumna={() => setDragOverDia(null)}
-          onDropColumna={e => handleDropColumna(e, "")}
-          draggingOtId={draggingOtId}
-          onDragStartOt={handleDragStartOt}
-          onDragEndOt={() => setDraggingOtId(null)}
-          onDropTecnicoEnOt={(e, otId) => handleDropTecnicoEnOt(e, otId, "")}
-          onQuitarTecnico={quitarTecnico}
-          onClickBacklog={clickAgregarBacklog}
-          onDevolverABacklog={otId => moverADia(otId, "")}
-          onEditarHH={editarHH}
-          onEditCuadrilla={onEditCuadrilla}
-        />
-        {DIAS_INFO.map((d, i) => {
-          const date = new Date(monday);
-          date.setDate(monday.getDate() + i);
-          return (
-            <DiaColumn
-              key={d.code}
-              titulo={d.largo}
-              subtitulo={date.toLocaleDateString("es-BO", { day: "2-digit", month: "short" })}
-              ots={otsDelDia(d.code)} esBacklog={false} diaCode={d.code} cuadrilla={cuadrilla} roster={plan.roster} disabled={disabled}
-              dragOverActivo={dragOverDia === d.code}
-              onDragOverColumna={() => setDragOverDia(d.code)}
-              onDragLeaveColumna={() => setDragOverDia(null)}
-              onDropColumna={e => handleDropColumna(e, d.code)}
-              draggingOtId={draggingOtId}
-              onDragStartOt={handleDragStartOt}
-              onDragEndOt={() => setDraggingOtId(null)}
-              onDropTecnicoEnOt={(e, otId) => handleDropTecnicoEnOt(e, otId, d.code)}
-              onQuitarTecnico={quitarTecnico}
-              onClickBacklog={clickAgregarBacklog}
-              onDevolverABacklog={otId => moverADia(otId, "")}
-              onEditarHH={editarHH}
-              onEditCuadrilla={onEditCuadrilla}
-            />
-          );
-        })}
+        <div style={{ display: "flex", gap: 10, overflowX: "auto", flex: 1, minWidth: 0, paddingBottom: 10 }}>
+          <DiaColumn
+            titulo="Sin programar" subtitulo="OTs importadas sin día"
+            ots={otsDelDia("")} esBacklog diaCode="" cuadrilla={cuadrilla} roster={plan.roster} capacidadOverride={plan.capacidadOverride} disabled={disabled}
+            dragOverActivo={dragOverDia === ""}
+            onDragOverColumna={() => setDragOverDia("")}
+            onDragLeaveColumna={() => setDragOverDia(null)}
+            onDropColumna={e => handleDropColumna(e, "")}
+            draggingOtId={draggingOtId}
+            onDragStartOt={handleDragStartOt}
+            onDragEndOt={() => setDraggingOtId(null)}
+            onDropTecnicoEnOt={(e, otId) => handleDropTecnicoEnOt(e, otId, "")}
+            onQuitarTecnico={quitarTecnico}
+            onClickBacklog={clickAgregarBacklog}
+            onDevolverABacklog={otId => moverADia(otId, "")}
+            onEditarHH={editarHH}
+            onEditCuadrilla={onEditCuadrilla}
+            onEditCapacidad={onEditCapacidad}
+          />
+          {DIAS_INFO.map((d, i) => {
+            const date = new Date(monday);
+            date.setDate(monday.getDate() + i);
+            return (
+              <DiaColumn
+                key={d.code}
+                titulo={d.largo}
+                subtitulo={date.toLocaleDateString("es-BO", { day: "2-digit", month: "short" })}
+                ots={otsDelDia(d.code)} esBacklog={false} diaCode={d.code} cuadrilla={cuadrilla} roster={plan.roster} capacidadOverride={plan.capacidadOverride} disabled={disabled}
+                dragOverActivo={dragOverDia === d.code}
+                onDragOverColumna={() => setDragOverDia(d.code)}
+                onDragLeaveColumna={() => setDragOverDia(null)}
+                onDropColumna={e => handleDropColumna(e, d.code)}
+                draggingOtId={draggingOtId}
+                onDragStartOt={handleDragStartOt}
+                onDragEndOt={() => setDraggingOtId(null)}
+                onDropTecnicoEnOt={(e, otId) => handleDropTecnicoEnOt(e, otId, d.code)}
+                onQuitarTecnico={quitarTecnico}
+                onClickBacklog={clickAgregarBacklog}
+                onDevolverABacklog={otId => moverADia(otId, "")}
+                onEditarHH={editarHH}
+                onEditCuadrilla={onEditCuadrilla}
+                onEditCapacidad={onEditCapacidad}
+              />
+            );
+          })}
+        </div>
       </div>
     </div>
   );

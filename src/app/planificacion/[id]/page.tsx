@@ -271,6 +271,32 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
     }
   }
 
+  async function patchCapacidad(grupo: string, dia: string, horas: number | null) {
+    // Optimista: el ajuste manual de horas disponibles se ve al instante en
+    // el pill del grupo, sin esperar el viaje al servidor.
+    setPlan(prev => {
+      if (!prev) return prev;
+      const siguiente = { ...prev.capacidadOverride };
+      const grupoActual = { ...(siguiente[grupo] ?? {}) };
+      if (horas == null) delete grupoActual[dia];
+      else grupoActual[dia] = horas;
+      if (Object.keys(grupoActual).length === 0) delete siguiente[grupo];
+      else siguiente[grupo] = grupoActual;
+      return { ...prev, capacidadOverride: siguiente };
+    });
+    try {
+      const res = await fetch(`/api/planificacion/${id}/capacidad`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ grupo, dia, horas }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error ?? "Error al guardar");
+    } catch (err) {
+      setMsg(`Error: ${err instanceof Error ? err.message : "no se pudo guardar"}`);
+      await loadPlan();
+    }
+  }
+
   async function exportar(formato: "excel" | "json" | "ical") {
     const url = `/api/planificacion/${id}/exportar?formato=${formato}`;
     window.open(url, "_blank");
@@ -460,7 +486,9 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
                     style={{
                       padding: "8px 14px", borderRadius: 8, border: "1.5px solid #0891b2",
                       background: "white", color: "#0891b2",
-                      fontWeight: 700, fontSize: 13, cursor: "pointer",
+                      fontWeight: 700, fontSize: 13,
+                      cursor: balanceando || otsSeleccionadas.length === 0 ? "not-allowed" : "pointer",
+                      opacity: balanceando || otsSeleccionadas.length === 0 ? 0.45 : 1,
                     }}
                   >{balanceando ? "Balanceando…" : "⚖️ Balancear"}</button>
                   <button
@@ -469,8 +497,11 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
                     style={{
                       padding: "8px 14px", borderRadius: 8, border: "1.5px solid #dc2626",
                       background: "white", color: "#dc2626",
-                      fontWeight: 700, fontSize: 13, cursor: "pointer",
+                      fontWeight: 700, fontSize: 13,
+                      cursor: limpiando || plan.ots.every(o => o.personalAsignado.length === 0) ? "not-allowed" : "pointer",
+                      opacity: limpiando || plan.ots.every(o => o.personalAsignado.length === 0) ? 0.45 : 1,
                     }}
+                    title={plan.ots.every(o => o.personalAsignado.length === 0) ? "No hay personal asignado todavía: nada que limpiar" : undefined}
                   >{limpiando ? "Limpiando…" : "🧹 Limpiar tablero"}</button>
                   <button
                     onClick={publicarPlan}
@@ -569,6 +600,7 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
                 onPatchOt={patchOtLocal}
                 cuadrilla={cuadrilla}
                 onEditCuadrilla={patchCuadrilla}
+                onEditCapacidad={patchCapacidad}
                 disabled={yaPublicado}
               />
             )}
