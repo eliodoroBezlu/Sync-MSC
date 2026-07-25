@@ -7,7 +7,7 @@ import { useUser } from "@/context/AuthContext";
 import TableroSemanal from "./TableroSemanal";
 import SeleccionOts from "./SeleccionOts";
 import type { OtBorrador, Plan, CuadrillaMatriz } from "./types";
-import { CODIGOS_ASISTENCIA } from "@/lib/planificacion/cuadrillas";
+import { CODIGOS_ASISTENCIA, calcularGrupo } from "@/lib/planificacion/cuadrillas";
 
 const GRUPOS = ["Diurno", "Nocturno", "G1", "G2", "G3", "G4"];
 const DIAS_SEMANA = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"];
@@ -200,6 +200,15 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
 
   useEffect(() => { loadPlan(); }, [loadPlan]);
 
+  // Recarga en segundo plano: igual que loadPlan pero sin pasar por
+  // cargando=true, para que ediciones puntuales (roster, cuadrilla) no
+  // tapen la pantalla entera con el spinner de carga inicial.
+  const refreshPlanQuiet = useCallback(async () => {
+    const res = await fetch(`/api/planificacion/${id}`);
+    const data = await res.json();
+    setPlan(data);
+  }, [id]);
+
   async function cargarAlertas() {
     const res = await fetch(`/api/planificacion/${id}/alertas`);
     const data = await res.json();
@@ -234,15 +243,30 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
   }
 
   async function patchAsistencia(rosterId: string, indice: number, codigo: string) {
-    const res = await fetch(`/api/planificacion/${id}/roster/${rosterId}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ indice, codigo }),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      await Promise.all([loadPlan(), loadCuadrilla()]);
-    } else {
-      setMsg(`Error: ${data.error}`);
+    // Optimista: el cambio se ve al instante en la celda, sin esperar el
+    // viaje al servidor ni tapar la pantalla con el spinner de carga.
+    setPlan(prev => prev
+      ? {
+          ...prev,
+          roster: prev.roster.map(r => {
+            if (r.id !== rosterId) return r;
+            const asistencia = [...r.asistencia];
+            asistencia[indice] = codigo;
+            return { ...r, asistencia, grupo: calcularGrupo(asistencia) };
+          }),
+        }
+      : prev);
+    try {
+      const res = await fetch(`/api/planificacion/${id}/roster/${rosterId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ indice, codigo }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error ?? "Error al guardar");
+      await Promise.all([refreshPlanQuiet(), loadCuadrilla()]);
+    } catch (err) {
+      setMsg(`Error: ${err instanceof Error ? err.message : "no se pudo guardar"}`);
+      await loadPlan();
     }
   }
 
