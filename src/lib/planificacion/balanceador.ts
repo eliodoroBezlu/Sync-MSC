@@ -257,7 +257,9 @@ export function agruparPorCapacidad(
 }
 
 const DIAS_SEMANA = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"];
-export const DIAS_LABORALES = ["Lu", "Ma", "Mi", "Ju", "Vi"];
+// La mina trabaja Lu-Sa (no Lu-Vi): el reparto automático de una OT al
+// arrastrarla a un día puede usar hasta el sábado.
+export const DIAS_LABORALES = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa"];
 
 /**
  * Cuántos días hace falta para completar el total de HH de una OT, según la

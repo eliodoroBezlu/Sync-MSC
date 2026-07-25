@@ -43,13 +43,15 @@ function OtRow({ ot, onSave, onDelete }: {
   }
 
   async function guardar() {
+    const dias = form.dias ?? [];
     const patch: Partial<OtBorrador> = {
       grupo: form.grupo,
       personas: Number(form.personas),
       hrsTrabajo: Number(form.hrsTrabajo),
       fechaInicioOt: form.fechaInicioOt,
       fechaFinOt: form.fechaFinOt,
-      diasTexto: form.diasTexto,
+      dias,
+      diasTexto: dias.join(", "),
     };
     await onSave(ot.id, patch);
     setEditando(false);
