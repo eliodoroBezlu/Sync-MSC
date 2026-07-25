@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
-import { balancearOts, balancearDias } from "@/lib/planificacion/balanceador";
+import { balancearOts, balancearDias, agruparPorCapacidad } from "@/lib/planificacion/balanceador";
 import { normalizarOpeplant } from "@/lib/planificacion/normalizarOpeplant";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -49,19 +49,38 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
     // entre cualquiera con asistencia D/N cruda (ver balanceador.ts).
     const miembrosCuadrilla = await prisma.cuadrillaMiembro.findMany({ where: { planBorradorId: id } });
 
-    // Ejecutar balanceador: asigna técnicos y, por separado, reparte en la
-    // semana las OTs que todavía no tienen día asignado. Ambos se indexan
-    // por id de fila para no confundir la fila Diurno con la Nocturno de
-    // una misma OT OPEPLANT.
-    const asignaciones = balancearOts(otsParaBal, rosterParaBal, miembrosCuadrilla);
+    // Orden del balanceo, igual al que sigue el planificador a mano:
+    // 1) reparte en la semana las OTs que todavía no tienen día asignado;
+    // 2) con esos días ya definidos, agrupa las OTs (no guardia) en
+    //    G1→G2→G3→G4 según la capacidad de HH del día de cada grupo —
+    //    Turno Nocturno queda afuera, es solo para guardia OPEPLANT/manual;
+    // 3) recién ahí balancea técnicos, ya con el grupo final de cada OT.
+    // Todo se indexa por id de fila para no confundir la fila Diurno con la
+    // Nocturno de una misma OT OPEPLANT.
     const asignacionesDias = balancearDias(otsParaBal);
+    const otsConDiasFinales = otsParaBal.map(o => ({
+      ...o,
+      dias: asignacionesDias.get(o.id) ?? o.dias,
+    }));
 
-    // Actualizar OTs con nuevas asignaciones de personal y/o día
+    const asignacionesGrupo = agruparPorCapacidad(
+      otsConDiasFinales.filter(o => !o.esGuardia),
+      miembrosCuadrilla
+    );
+    const otsConGrupoFinal = otsConDiasFinales.map(o => ({
+      ...o,
+      grupo: asignacionesGrupo.get(o.id) ?? o.grupo,
+    }));
+
+    const asignaciones = balancearOts(otsConGrupoFinal, rosterParaBal, miembrosCuadrilla);
+
+    // Actualizar OTs con nuevas asignaciones de grupo, día y/o personal
     let actualizadas = 0;
-    for (const ot of otsParaBal) {
+    for (const ot of otsConGrupoFinal) {
       const tecnicos = asignaciones.get(ot.id);
       const diasNuevos = asignacionesDias.get(ot.id);
-      if (!tecnicos && !diasNuevos) continue;
+      const grupoNuevo = asignacionesGrupo.get(ot.id);
+      if (!tecnicos && !diasNuevos && !grupoNuevo) continue;
 
       await prisma.planBorradorOt.update({
         where: { id: ot.id },
@@ -75,6 +94,7 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
               }
             : {}),
           ...(diasNuevos ? { dias: diasNuevos, diasTexto: diasNuevos.join(", ") } : {}),
+          ...(grupoNuevo ? { grupo: grupoNuevo } : {}),
         },
       });
       actualizadas++;

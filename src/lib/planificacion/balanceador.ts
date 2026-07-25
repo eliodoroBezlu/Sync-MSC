@@ -174,6 +174,58 @@ export function balancearOts(
   return asignaciones;
 }
 
+export const GRUPOS_ORDENADOS = ["G1", "G2", "G3", "G4"];
+
+/**
+ * Agrupa OTs (no guardia) en G1→G2→G3→G4 según la capacidad de HH del día de
+ * cada grupo (técnicos de la cuadrilla de ese grupo/día × 10 HH) — el mismo
+ * criterio que aplica el planificador a mano en el Excel de referencia
+ * (llena G1 hasta el tope del día, lo que sobra pasa a G2, luego G3, luego
+ * G4). Turno Nocturno queda fuera de este reparto: es exclusivo de guardia
+ * OPEPLANT y asignación manual.
+ *
+ * Si una OT no entra en ningún grupo sin pasarse de capacidad, se coloca
+ * igual en G4 (overflow) en vez de quedar sin grupo — el planificador de
+ * referencia también deja grupos por encima del 100% cuando hace falta.
+ */
+export function agruparPorCapacidad(
+  ots: Array<{ id: string; hhTotal: number; dias: string[] }>,
+  miembros: CuadrillaMiembroRow[]
+): Map<string, string> {
+  const capacidadPorGrupoDia = new Map<string, number>();
+  for (const grupo of GRUPOS_ORDENADOS) {
+    for (const dia of TODOS_LOS_DIAS) {
+      const tecnicos = new Set(tecnicosDeCuadrillaEnDia(miembros, grupo, dia).map(t => t.nombre));
+      capacidadPorGrupoDia.set(`${grupo}|${dia}`, tecnicos.size * horasPorDiaPersona(grupo));
+    }
+  }
+
+  const asignaciones = new Map<string, string>();
+  const ordenadas = [...ots].sort((a, b) => b.hhTotal - a.hhTotal);
+  const ultimoGrupo = GRUPOS_ORDENADOS[GRUPOS_ORDENADOS.length - 1];
+
+  for (const ot of ordenadas) {
+    const dias = ot.dias.length > 0 ? ot.dias : TODOS_LOS_DIAS;
+    const hhPorDia = ot.hhTotal / dias.length;
+
+    let grupoElegido = ultimoGrupo;
+    for (const grupo of GRUPOS_ORDENADOS) {
+      const cabe = dias.every(dia => (capacidadPorGrupoDia.get(`${grupo}|${dia}`) ?? 0) >= hhPorDia);
+      if (cabe) {
+        grupoElegido = grupo;
+        break;
+      }
+    }
+    for (const dia of dias) {
+      const clave = `${grupoElegido}|${dia}`;
+      capacidadPorGrupoDia.set(clave, (capacidadPorGrupoDia.get(clave) ?? 0) - hhPorDia);
+    }
+    asignaciones.set(ot.id, grupoElegido);
+  }
+
+  return asignaciones;
+}
+
 const DIAS_SEMANA = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"];
 export const DIAS_LABORALES = ["Lu", "Ma", "Mi", "Ju", "Vi"];
 
