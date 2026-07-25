@@ -153,21 +153,23 @@ function iniciales(nombre: string): string {
   return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase();
 }
 
-// Un técnico está "en sitio" esta semana si tiene T (trabajo), D (diurno) o
-// N (nocturno) al menos un día — V/CS/L/"" son ausencias (vacación, comisión
-// de servicio, licencia). Los ausentes toda la semana no se pueden arrastrar.
+// Un técnico está "en sitio" esta semana si tiene T (turno normal/guardia
+// diurna) o N (turno nocturno) al menos un día — D es descanso (código de
+// RRHH, no "diurno" pese a la letra) y V/CS/L/"" son ausencias (vacación,
+// comisión de servicio, licencia). Los ausentes toda la semana no se pueden
+// arrastrar.
 function estaEnSitio(asistencia: string[]): boolean {
-  return asistencia.some(a => a === "T" || a === "D" || a === "N");
+  return asistencia.some(a => a === "T" || a === "N");
 }
 
-// Mismo criterio T/D/N que estaEnSitio, pero para un día puntual — usado para
+// Mismo criterio T/N que estaEnSitio, pero para un día puntual — usado para
 // bloquear el drop de un técnico sobre un día en el que no está en sitio
-// (entra/sale a mitad de semana).
+// (entra/sale a mitad de semana, o tiene descanso ese día).
 function trabajaEseDia(asistencia: string[], diaCode: string): boolean {
   const idx = DIAS_INFO.findIndex(d => d.code === diaCode);
   if (idx === -1) return true;
   const a = asistencia[idx];
-  return a === "T" || a === "D" || a === "N";
+  return a === "T" || a === "N";
 }
 
 // ─── Tarjeta de OT ──────────────────────────────────────────────────────────
