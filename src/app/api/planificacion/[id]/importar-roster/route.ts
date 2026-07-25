@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { seedMembresiaDesdeAsistencia, cachePersonalAsignado, calcularGrupo } from "@/lib/planificacion/cuadrillas";
+import { getWeekDates } from "@/lib/semana";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -42,10 +43,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
     // ─── PASO 1: Encontrar la sección INST y el encabezado de días ───────
     const INICIO_BUSQUEDA = 740; // Fila ~741 en Excel
-    let mesNumero = 0; // Enero=1, Junio=6, etc.
-    let indiceDiaInicio = -1; // Índice de columna donde empieza el mes
-    let indiceCol22 = -1; // Índice de columna del día 22
-    let indiceCol28 = -1; // Índice de columna del día 28
+    let indiceDiaInicio = -1; // Índice de columna donde empieza el mes (día "1")
     let filaEncabezado = -1;
     let filaInstrumentistas = -1;
 
@@ -79,9 +77,6 @@ export async function POST(req: NextRequest, { params }: Ctx) {
             if (esSecuencia) {
               // Encontramos la secuencia correcta 1-30
               indiceDiaInicio = c;
-              indiceCol22 = c + 21; // "22" está 21 posiciones después de "1"
-              indiceCol28 = c + 27; // "28" está 27 posiciones después de "1"
-              mesNumero = 6;
               break;
             }
           }
@@ -90,12 +85,26 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       }
     }
 
-    if (indiceDiaInicio < 0 || indiceCol22 < 0 || indiceCol28 < 0) {
+    if (indiceDiaInicio < 0) {
       return NextResponse.json(
         { error: "No se pudo encontrar la estructura de días en el Excel" },
         { status: 400 }
       );
     }
+
+    // ─── Días del mes (Lun-Dom) que corresponden a la semana del plan ────
+    // El Excel trae las columnas de un único mes; calculamos qué días de
+    // ese mes cubre plan.semana/plan.anio en vez de asumir un rango fijo.
+    const fechasSemana = getWeekDates(plan.semana, plan.anio);
+    const mesesEnSemana = new Set(fechasSemana.map(f => f.getMonth()));
+    if (mesesEnSemana.size > 1) {
+      return NextResponse.json(
+        { error: `La semana ${plan.semana}/${plan.anio} cruza dos meses; esta importación no lo soporta.` },
+        { status: 400 }
+      );
+    }
+    const diaInicio = fechasSemana[0].getDate();
+    const diaFin = fechasSemana[6].getDate();
 
     // ─── PASO 2: Leer técnicos desde filaInstrumentistas+1 ───────────────
     const personas: Array<{
@@ -132,9 +141,9 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       });
     }
 
-    // ─── PASO 3: Extraer solo los 7 días de la semana (22-28) ────────────
-    const colInicio = indiceCol22 - indiceDiaInicio; // Índice relativo
-    const colFin = indiceCol28 - indiceDiaInicio;
+    // ─── PASO 3: Extraer solo los 7 días de la semana del plan ───────────
+    const colInicio = diaInicio - 1; // Índice relativo (día 1 = offset 0)
+    const colFin = diaFin - 1;
 
     // Borrar roster anterior
     await prisma.rosterSemanal.deleteMany({ where: { planBorradorId: id } });
@@ -214,13 +223,13 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       ok: true,
       importados: guardados,
       encontrados: personas.length,
-      diasSemana: "22-28 (Semana 26)",
+      diasSemana: `${diaInicio}-${diaFin} (Semana ${plan.semana})`,
       mensaje: `${guardados}/${personas.length} técnicos importados`,
       ...(errores.length > 0 && { advertencias: errores }),
       debug: {
         indiceDiaInicio,
-        indiceCol22,
-        indiceCol28,
+        diaInicio,
+        diaFin,
         colInicio,
         colFin,
       },
