@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import type { DragEvent } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { DragEvent, RefObject } from "react";
 import type { OtBorrador, Plan, RosterItem, CuadrillaMatriz, CapacidadOverride } from "./types";
 import type { TecnicoRef } from "./types";
 import { tipoOtDisplay } from "@/lib/tiposOt";
@@ -597,6 +597,56 @@ function ResumenSemanal({ reporte }: { reporte: ReturnType<typeof calcularReport
   );
 }
 
+// ─── Scrollbar espejo ───────────────────────────────────────────────────────
+// El tablero de días puede quedar muy alto (muchas OTs), lo que empuja su
+// scrollbar horizontal nativo fuera de la vista hasta bajar del todo. Esta
+// barra delgada duplica ese scroll arriba del tablero, sincronizada en ambos
+// sentidos con el contenedor real, para navegar entre días sin bajar primero.
+function ScrollbarEspejo({ targetRef }: { targetRef: RefObject<HTMLDivElement | null> }) {
+  const barRef = useRef<HTMLDivElement>(null);
+  const [anchoContenido, setAnchoContenido] = useState(0);
+  const sincronizando = useRef(false);
+
+  useEffect(() => {
+    const el = targetRef.current;
+    if (!el) return;
+    const actualizarAncho = () => setAnchoContenido(el.scrollWidth);
+    actualizarAncho();
+    const ro = new ResizeObserver(actualizarAncho);
+    ro.observe(el);
+    for (const hijo of Array.from(el.children)) ro.observe(hijo);
+
+    function onScrollTarget() {
+      if (sincronizando.current || !barRef.current || !el) return;
+      sincronizando.current = true;
+      barRef.current.scrollLeft = el.scrollLeft;
+      sincronizando.current = false;
+    }
+    el.addEventListener("scroll", onScrollTarget);
+    return () => {
+      ro.disconnect();
+      el.removeEventListener("scroll", onScrollTarget);
+    };
+  }, [targetRef]);
+
+  function onScrollBar() {
+    if (sincronizando.current || !barRef.current || !targetRef.current) return;
+    sincronizando.current = true;
+    targetRef.current.scrollLeft = barRef.current.scrollLeft;
+    sincronizando.current = false;
+  }
+
+  return (
+    <div
+      ref={barRef}
+      onScroll={onScrollBar}
+      style={{ overflowX: "auto", overflowY: "hidden", marginBottom: 6, paddingLeft: 172 + 16 }}
+    >
+      <div style={{ width: anchoContenido, height: 1 }} />
+    </div>
+  );
+}
+
 // ─── Tablero principal ──────────────────────────────────────────────────────
 export default function TableroSemanal({
   plan, onPatchOt, cuadrilla, onEditCuadrilla, onEditCapacidad, disabled,
@@ -610,6 +660,7 @@ export default function TableroSemanal({
 }) {
   const [draggingOtId, setDraggingOtId] = useState<string | null>(null);
   const [dragOverDia, setDragOverDia] = useState<string | null>(null);
+  const diasScrollRef = useRef<HTMLDivElement>(null);
 
   const monday = getMondayOfIsoWeek(plan.anio, plan.semana);
   const reporte = calcularReporteCapacidad(plan.ots, cuadrilla, plan.capacidadOverride);
@@ -786,10 +837,11 @@ export default function TableroSemanal({
   return (
     <div>
       <ResumenSemanal reporte={reporte} />
+      <ScrollbarEspejo targetRef={diasScrollRef} />
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
         <PersonalRail plan={plan} disabled={disabled} />
 
-        <div style={{ display: "flex", gap: 10, overflowX: "auto", flex: 1, minWidth: 0, paddingBottom: 10 }}>
+        <div ref={diasScrollRef} style={{ display: "flex", gap: 10, overflowX: "auto", flex: 1, minWidth: 0, paddingBottom: 10 }}>
           <DiaColumn
             titulo="Sin programar" subtitulo="OTs importadas sin día"
             ots={otsDelDia("")} esBacklog diaCode="" cuadrilla={cuadrilla} roster={plan.roster} capacidadOverride={plan.capacidadOverride} disabled={disabled}

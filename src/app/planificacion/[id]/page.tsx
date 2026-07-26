@@ -506,7 +506,7 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
     <div style={{ minHeight: "100vh", background: "#f1f5f9" }}>
       <AppHeader backHref="/planificacion" />
 
-      <main style={{ maxWidth: tab === "tablero" ? 1440 : 1100, margin: "0 auto", padding: "20px 16px" }}>
+      <main style={{ maxWidth: tab === "tablero" ? "none" : 1100, margin: "0 auto", padding: "20px 16px" }}>
         {/* Header del plan */}
         <div style={{ background: "white", borderRadius: 14, padding: "18px 22px", marginBottom: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
