@@ -1597,7 +1597,7 @@ export default function ReporteOTPage() {
         )}
 
         {/* Reabrir OT — solo admin, en estados que bloquean al técnico */}
-        {esAdmin && ["revisado", "pendiente_revision", "concluido"].includes(ot.estado) && (
+        {esAdmin && ["revisado", "pendiente_revision", "concluido", "solicitar_correccion"].includes(ot.estado) && (
           <div style={{ ...S.card, background: "#fff7ed", border: "1px solid #fed7aa" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: showReabrir ? 12 : 0 }}>
               <div>
