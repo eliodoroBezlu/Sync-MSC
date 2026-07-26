@@ -89,7 +89,9 @@ export async function generarResumenOtsPdf(plan: Plan): Promise<void> {
   const altoFila = Math.max((ALTO_DISPONIBLE - ALTO_HEAD) / filas, 2.2);
   const fontSize = Math.min(7, Math.max(3.4, altoFila / 1.7));
   const cellPadding = Math.min(1.8, Math.max(0.3, fontSize * 0.22));
-  const overflow: "linebreak" | "ellipsize" = ots.length > 22 ? "ellipsize" : "linebreak";
+  // Siempre en una sola línea: el texto largo (p.ej. Tipo Trabajo) se trunca
+  // en vez de agrandar la fila y desconfigurar el alto uniforme de la tabla.
+  const overflow = "ellipsize" as const;
 
   autoTable(doc, {
     startY: 31,
