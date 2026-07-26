@@ -4,19 +4,30 @@ import type { Plan, CuadrillaMatriz, OtBorrador } from "@/app/planificacion/[id]
 import { DIAS_SEMANA, grupoDelDia } from "./cuadrillas";
 import { calcularReporteCapacidad, hhPorDia } from "./capacidad";
 
-const NAVY    = [13, 47, 94]    as [number, number, number];
-const BLANCO  = [255, 255, 255] as [number, number, number];
-const NEGRO   = [17, 24, 39]    as [number, number, number];
-const GRIS_L  = [248, 250, 252] as [number, number, number];
-const GRIS    = [107, 114, 128] as [number, number, number];
-const BORDE   = [226, 232, 240] as [number, number, number];
-const VERDE   = [0, 176, 80]    as [number, number, number];
-const AMARILLO = [255, 217, 0]  as [number, number, number];
+// Misma paleta que src/lib/generarInformeOT.ts, para que ambos documentos
+// se vean como parte del mismo sistema (nada de amarillos ni colores Excel).
+const NAVY    = [13, 47, 94]     as [number, number, number];
+const AZUL    = [37, 99, 235]    as [number, number, number];
+const HDR_BG  = [235, 242, 255]  as [number, number, number];
+const HDR_TOP = [59, 100, 165]   as [number, number, number];
+const BLANCO  = [255, 255, 255]  as [number, number, number];
+const NEGRO   = [17, 24, 39]     as [number, number, number];
+const GRIS    = [107, 114, 128]  as [number, number, number];
+const GRIS_L  = [241, 245, 249]  as [number, number, number];
+const BORDE   = [226, 232, 240]  as [number, number, number];
+const VERDE   = [22, 163, 74]    as [number, number, number];
 const NARANJA_GRUPO = [237, 125, 49] as [number, number, number];
 const AZUL_DIURNO   = [189, 215, 238] as [number, number, number];
 const AZUL_NOCTURNO = [142, 169, 219] as [number, number, number];
 
 const MAX_PAGINAS = 2;
+
+// Margen uniforme (arriba/abajo/izq/der): deja una franja en blanco junto al
+// borde físico de la hoja para que ninguna impresora recorte el encabezado
+// ni el pie — antes el pie llegaba hasta el borde y por eso no imprimía bien.
+const MARGEN = 8;
+const ALTO_ENCABEZADO = 17; // banda superior (sin la línea de acento)
+const ALTO_PIE = 9;
 
 const GRUPOS_ORDEN = ["G1", "G2", "G3", "G4", "Diurno", "Nocturno"];
 
@@ -36,16 +47,31 @@ const DIA_NOMBRE: Record<string, string> = {
   Lu: "lunes", Ma: "martes", Mi: "miércoles", Ju: "jueves", Vi: "viernes", Sa: "sábado", Do: "domingo",
 };
 
-function fechaLarga(semana: number, anio: number, diaCodigo: string): string {
+const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+
+function lunesDeSemana(semana: number, anio: number): Date {
   const jan4 = new Date(anio, 0, 4);
   const lunes = new Date(jan4);
   const dow = jan4.getDay() || 7;
   lunes.setDate(jan4.getDate() - dow + 1 + (semana - 1) * 7);
+  return lunes;
+}
+
+function fechaLarga(semana: number, anio: number, diaCodigo: string): string {
+  const lunes = lunesDeSemana(semana, anio);
   const offset = DIAS_SEMANA.indexOf(diaCodigo);
   const fecha = new Date(lunes);
   fecha.setDate(lunes.getDate() + offset);
-  const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
   return `${DIA_NOMBRE[diaCodigo]}, ${fecha.getDate()} de ${MESES[fecha.getMonth()]} de ${fecha.getFullYear()}`;
+}
+
+function rangoSemana(semana: number, anio: number): string {
+  const lunes = lunesDeSemana(semana, anio);
+  const domingo = new Date(lunes);
+  domingo.setDate(lunes.getDate() + 6);
+  const mismoMes = lunes.getMonth() === domingo.getMonth();
+  const inicio = mismoMes ? `${lunes.getDate()}` : `${lunes.getDate()} ${MESES[lunes.getMonth()]}`;
+  return `${inicio} – ${domingo.getDate()} ${MESES[domingo.getMonth()]} ${anio}`;
 }
 
 function fmtNum(n: number): string {
@@ -55,8 +81,42 @@ function fmtNum(n: number): string {
 
 function checkPage(doc: jsPDF, y: number, espacio: number): number {
   const PH = doc.internal.pageSize.getHeight();
-  if (y + espacio > PH - 12) { doc.addPage(); return 12; }
+  const limiteInferior = PH - MARGEN - ALTO_PIE - 4;
+  if (y + espacio > limiteInferior) { doc.addPage(); return MARGEN + 6; }
   return y;
+}
+
+// Encabezado tipo "reporte de OT": franja azul-navy fina + banda clara con
+// el branding a la izquierda y el dato de semana a la derecha. Sin amarillos.
+function encabezado(doc: jsPDF, plan: Plan, PW: number): void {
+  doc.setFillColor(...HDR_TOP);
+  doc.rect(MARGEN, MARGEN, PW - MARGEN * 2, 3, "F");
+  doc.setFillColor(...HDR_BG);
+  doc.rect(MARGEN, MARGEN + 3, PW - MARGEN * 2, ALTO_ENCABEZADO - 4, "F");
+  doc.setFillColor(...AZUL);
+  doc.rect(MARGEN, MARGEN + ALTO_ENCABEZADO - 1, PW - MARGEN * 2, 1, "F");
+
+  const xIzq = MARGEN + 3;
+  const xDer = PW - MARGEN - 3;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(...NAVY);
+  doc.text("SYNC MSC", xIzq, MARGEN + 9);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(...HDR_TOP);
+  doc.text("Sistema de Gestión de Mantenimiento", xIzq, MARGEN + 13.5);
+  doc.text(`Plan Semanal — ${plan.disciplina.toUpperCase()} ${plan.areaCodigo.toUpperCase()}`, xIzq, MARGEN + 15.9);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(...NAVY);
+  doc.text(`SEMANA ${plan.semana} / ${plan.anio}`, xDer, MARGEN + 9.5, { align: "right" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...HDR_TOP);
+  doc.text(rangoSemana(plan.semana, plan.anio), xDer, MARGEN + 15, { align: "right" });
 }
 
 function piePagina(doc: jsPDF, titulo: string) {
@@ -65,44 +125,48 @@ function piePagina(doc: jsPDF, titulo: string) {
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
     const PH = doc.internal.pageSize.getHeight();
+    const yPie = PH - MARGEN - ALTO_PIE;
     doc.setFillColor(...NAVY);
-    doc.rect(0, PH - 9, PW, 9, "F");
+    doc.rect(MARGEN, yPie, PW - MARGEN * 2, ALTO_PIE, "F");
     doc.setFont("helvetica", "normal");
     doc.setFontSize(6.5);
     doc.setTextColor(...BLANCO);
-    doc.text(`SYNC MSC · ${titulo} · Generado ${new Date().toLocaleDateString("es-BO")}`, 10, PH - 3.2);
-    doc.text(`Pág. ${i} / ${totalPages}`, PW - 10, PH - 3.2, { align: "right" });
+    doc.text(`SYNC MSC · ${titulo} · Generado ${new Date().toLocaleDateString("es-BO")}`, MARGEN + 3, yPie + ALTO_PIE - 3);
+    doc.text(`Pág. ${i} / ${totalPages}`, PW - MARGEN - 3, yPie + ALTO_PIE - 3, { align: "right" });
   }
 }
 
-// Anchos pensados para hoja vertical (190mm útiles = 210mm A4 - 20mm de márgenes).
+// Anchos pensados para hoja carta horizontal (263mm útiles = 279.4mm carta
+// horizontal - 16.4mm de márgenes de 8mm a cada lado).
 const COLS = [
-  { header: "N° OT",                 width: 14 },
-  { header: "Tipo OT",                width: 10 },
-  { header: "Tipo Trabajo",           width: 11 },
-  { header: "Prioridad",              width: 10 },
-  { header: "Descripción de Trabajo", width: 31 },
-  { header: "Equipo",                 width: 14 },
-  { header: "Descripción de Equipo",  width: 24 },
-  { header: "Pers.",                  width: 8 },
-  { header: "Hr Trab.",               width: 8 },
-  { header: "Hr Total",               width: 10 },
-  { header: "Personal",               width: 50 },
+  { header: "N° OT",                 width: 16 },
+  { header: "Tipo OT",                width: 12 },
+  { header: "Tipo Trabajo",           width: 13 },
+  { header: "Prioridad",              width: 12 },
+  { header: "Descripción de Trabajo", width: 42 },
+  { header: "Equipo",                 width: 16 },
+  { header: "Descripción de Equipo",  width: 30 },
+  { header: "Pers.",                  width: 9 },
+  { header: "Hr Trab.",               width: 10 },
+  { header: "Hr Total",               width: 11 },
+  { header: "Personal",               width: 92 },
 ];
 
 /**
- * Plan semanal continuo, en vertical, acotado a un máximo de 2 hojas (tipo
- * hoja "I-30" del Excel de referencia): los días fluyen uno después del otro
- * en el mismo documento — sin salto de página forzado por día — igual que la
- * impresión continua de Excel. Cada día agrupa sus OTs por bloque (GRUPO
- * 1-4 / TURNO DIURNO / TURNO NOCTURNO) con una fila de UTILIZACIÓN combinada
- * al final. El tamaño de fuente/fila se calcula según el total de filas para
- * que todo entre en 2 hojas, y el texto largo (p.ej. Tipo Trabajo) se trunca
- * en una sola línea en vez de agrandar la fila. Se abre en pestaña nueva
- * (preview del visor nativo del navegador) para revisar antes de descargar.
+ * Plan semanal continuo, en hoja carta horizontal, acotado a un máximo de 2
+ * hojas: los días fluyen uno después del otro en el mismo documento — sin
+ * salto de página forzado por día. Cada día agrupa sus OTs por bloque
+ * (GRUPO 1-4 / TURNO DIURNO / TURNO NOCTURNO) con una fila de UTILIZACIÓN
+ * combinada al final. El tamaño de fuente/fila se calcula según el total de
+ * filas para que todo entre en 2 hojas, y el texto largo (p.ej. Tipo
+ * Trabajo) se trunca en una sola línea en vez de agrandar la fila. El
+ * encabezado y el pie siguen el mismo estilo profesional (navy/azul, sin
+ * colores tipo Excel) que src/lib/generarInformeOT.ts. Se abre en pestaña
+ * nueva (preview del visor nativo del navegador) para revisar antes de
+ * descargar.
  */
 export async function generarPlanSemanalPdf(plan: Plan, cuadrilla: CuadrillaMatriz): Promise<void> {
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "letter" });
   const PW = doc.internal.pageSize.getWidth();
   const PH = doc.internal.pageSize.getHeight();
 
@@ -173,8 +237,11 @@ export async function generarPlanSemanalPdf(plan: Plan, cuadrilla: CuadrillaMatr
   }
 
   // ── Tamaño de fuente/fila adaptativo para acotar el documento a 2 hojas ──
-  const ALTO_UTIL_POR_HOJA = PH - 14 - 9 - 3; // margen superior, pie de página, buffer
-  const ALTO_BANNER = 12;
+  const TOP_RESERVA_CONT = MARGEN + 6; // margen superior en páginas 2+ (sin encabezado)
+  const RESERVA_PIE = ALTO_PIE + MARGEN + 4;
+  const ALTO_UTIL_POR_HOJA = PH - TOP_RESERVA_CONT - RESERVA_PIE;
+  const Y_INICIO = MARGEN + ALTO_ENCABEZADO + 4; // debajo del encabezado, solo hoja 1
+  const ALTO_BANNER = Y_INICIO - TOP_RESERVA_CONT; // costo extra del encabezado vs. una página de continuación
   const ALTO_BARRAS_DIA = DIAS_SEMANA.length * 7;
   const ALTO_HEADERS = DIAS_SEMANA.length * 6;
   const alturaDisponible = ALTO_UTIL_POR_HOJA * MAX_PAGINAS - ALTO_BANNER - ALTO_BARRAS_DIA - ALTO_HEADERS;
@@ -182,36 +249,23 @@ export async function generarPlanSemanalPdf(plan: Plan, cuadrilla: CuadrillaMatr
   const fontSize = Math.min(6.5, Math.max(3.0, altoFila / 1.7));
   const cellPadding = Math.min(1.4, Math.max(0.25, fontSize * 0.22));
 
-  // ── Banner superior: Semana | fecha corta | título | etiqueta ─────────────
-  autoTable(doc, {
-    startY: 10,
-    margin: { left: 10, right: 10 },
-    theme: "plain",
-    body: [[
-      { content: "Semana", styles: { fillColor: VERDE, textColor: BLANCO, fontStyle: "bold", halign: "center" } },
-      { content: `${plan.semana} / ${String(plan.anio).slice(-2)}`, styles: { fillColor: AMARILLO, textColor: NEGRO, fontStyle: "bold", halign: "center" } },
-      { content: `PROGRAMA SEMANAL ${plan.disciplina.toUpperCase()} ${plan.areaCodigo.toUpperCase()}`, styles: { fillColor: AMARILLO, textColor: NEGRO, fontStyle: "bold", halign: "center" } },
-      { content: "Programación Semanal", styles: { fillColor: VERDE, textColor: BLANCO, fontStyle: "bold", halign: "center" } },
-    ]],
-    columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 18 }, 2: { cellWidth: "auto" }, 3: { cellWidth: 42 } },
-    styles: { fontSize: 8, cellPadding: 2, lineWidth: 0.3, lineColor: NEGRO },
-  });
-  let y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+  encabezado(doc, plan, PW);
+  let y = Y_INICIO;
 
   for (const { dia, body } of diasBody) {
     y = checkPage(doc, y, 16);
 
     doc.setFillColor(...NAVY);
-    doc.rect(10, y, PW - 20, 6.5, "F");
+    doc.rect(MARGEN, y, PW - MARGEN * 2, 6.5, "F");
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(...BLANCO);
-    doc.text(fechaLarga(plan.semana, plan.anio, dia), 12, y + 4.6);
+    doc.text(fechaLarga(plan.semana, plan.anio, dia), MARGEN + 2, y + 4.6);
     y += 6.5;
 
     autoTable(doc, {
       startY: y,
-      margin: { left: 10, right: 10, bottom: 11, top: 12 },
+      margin: { left: MARGEN, right: MARGEN, bottom: RESERVA_PIE, top: TOP_RESERVA_CONT },
       head: [COLS.map(c => c.header)],
       body,
       headStyles: { fillColor: [71, 85, 105], textColor: BLANCO, fontSize: Math.min(fontSize + 0.5, 7), fontStyle: "bold", cellPadding, halign: "center" },
