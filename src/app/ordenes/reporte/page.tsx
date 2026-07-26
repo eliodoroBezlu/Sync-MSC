@@ -111,6 +111,27 @@ type OTDoc = {
 
 type AreaOpt = { codigo: string; nombre: string };
 
+function normalizarNombre(nombre: string): string {
+  return nombre.toLowerCase().normalize("NFD").replace(/\p{Mn}/gu, "");
+}
+
+// Un técnico "pertenece" a la OT si está en el roster estático (ot.tecnicos) O si ya
+// registró al menos un avance (ot.registrosDiarios). En OTs de larga duración es común
+// que un técnico distinto al roster original cargue avances en semanas posteriores; si
+// solo miráramos ot.tecnicos, la OT desaparecería de su lista y perdería permisos de
+// edición sobre su propio trabajo ya guardado.
+function esTecnicoDeLaOt(
+  ot: { tecnicos: { usuarioId: string; nombreCompleto: string }[]; registrosDiarios?: RegistroDiario[] },
+  user: { id?: string; nombre?: string } | null
+): boolean {
+  if (!user) return false;
+  const tokensUser = normalizarNombre(user.nombre ?? "").split(/\s+/).filter(t => t.length > 2);
+  const coincideNombre = (nombreCompleto: string) => tokensUser.some(tok => normalizarNombre(nombreCompleto).includes(tok));
+  const enRoster = ot.tecnicos.some(t => (t.usuarioId && t.usuarioId === user.id) || coincideNombre(t.nombreCompleto));
+  if (enRoster) return true;
+  return (ot.registrosDiarios ?? []).some(r => (r.usuarioId && r.usuarioId === user.id) || coincideNombre(r.tecnico));
+}
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const ESTADO_COLOR: Record<string, string> = {
@@ -421,13 +442,7 @@ export default function ReporteOTPage() {
   const ordenesFiltradas = ordenes.filter((o) => {
     // Técnico/Contratista solo ve sus propias OTs
     if (esTecnico && user) {
-      const tokensUser = user.nombre.toLowerCase().normalize("NFD").replace(/\p{Mn}/gu, "").split(/\s+/).filter(t => t.length > 2);
-      const esAsignado = o.tecnicos.some(t => {
-        if (t.usuarioId && t.usuarioId === user.id) return true;
-        const nombreNorm = t.nombreCompleto.toLowerCase().normalize("NFD").replace(/\p{Mn}/gu, "");
-        return tokensUser.some(tok => nombreNorm.includes(tok));
-      });
-      if (!esAsignado) return false;
+      if (!esTecnicoDeLaOt(o, user)) return false;
     }
     // Supervisor con áreas asignadas solo ve OTs de sus áreas
     if (user && user.rol === 3 && user.areas && user.areas.length > 0) {
@@ -991,13 +1006,9 @@ export default function ReporteOTPage() {
   // corregir errores durante la semana); una vez enviada a revisión ya no puede tocarla.
   const puedeEditarTecnico = enEstadoTecnico || ot.estado === "en_proceso";
 
-  // Técnico solo puede editar OTs donde él está asignado (por id o por nombre)
-  const tokensNombre = (user?.nombre ?? "").toLowerCase().normalize("NFD").replace(/\p{Mn}/gu, "").split(/\s+/).filter(t => t.length > 2);
-  const esOtPropia = esTecnico && ot.tecnicos.some(t => {
-    if (t.usuarioId && user?.id && t.usuarioId === user.id) return true;
-    const nombreNorm = t.nombreCompleto.toLowerCase().normalize("NFD").replace(/\p{Mn}/gu, "");
-    return tokensNombre.some(tok => nombreNorm.includes(tok));
-  });
+  // Técnico solo puede editar OTs donde él está asignado (por id/nombre en el roster,
+  // o porque ya registró un avance propio — ver esTecnicoDeLaOt)
+  const esOtPropia = esTecnico && esTecnicoDeLaOt(ot, user);
 
   const canEdit = !isConcluido && (esAdmin || (esTecnico && puedeEditarTecnico && esOtPropia) || (esSup && !esTecnico));
 

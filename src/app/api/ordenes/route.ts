@@ -179,6 +179,15 @@ export async function GET(req: NextRequest) {
     andConditions.push({ NOT: { estado: "concluido", fecha: { lt: fechaArchivoCorte } } });
   }
 
+  // OTs de larga duración (varias semanas): su "fecha" queda fija en el día de creación,
+  // así que un filtro fechaDesde/fechaHasta (p. ej. "últimas 3 semanas") las hace
+  // desaparecer de la lista aunque sigan activas y se les siga registrando avance.
+  // Mientras la OT no esté concluida, se mantiene visible sin importar su fecha —
+  // el filtro de fecha solo restringe el historial de OTs ya cerradas.
+  if (Object.keys(fechaFilter).length) {
+    andConditions.push({ OR: [{ fecha: fechaFilter }, { NOT: { estado: "concluido" } }] });
+  }
+
   const programacionSemanalId = searchParams.get("programacionSemanalId");
 
   const ordenes = await prisma.ordenTrabajo.findMany({
@@ -189,7 +198,6 @@ export async function GET(req: NextRequest) {
       ...(turno ? { turno } : {}),
       ...(otJdeNumero ? { otJdeNumero } : {}),
       ...(origenPlan !== null ? { origenPlan: origenPlan === "true" } : {}),
-      ...(Object.keys(fechaFilter).length ? { fecha: fechaFilter } : {}),
       ...(parentOtId ? { parentOtId } : {}),
       ...(programacionSemanalId ? { programacionSemanalId } : {}),
       ...(andConditions.length > 0 ? { AND: andConditions } : {}),
