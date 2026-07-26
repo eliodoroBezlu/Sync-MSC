@@ -81,6 +81,16 @@ export async function generarResumenOtsPdf(plan: Plan): Promise<void> {
   doc.setTextColor(...NEGRO);
   doc.text(`Resumen de Órdenes de Trabajo · ${ots.length} OTs · ${ots.reduce((s, o) => s + o.hhTotal, 0).toFixed(0)} HH totales`, 10, 27);
 
+  // ── Escalado dinámico para garantizar que todo entre en una sola hoja ────
+  const PH = doc.internal.pageSize.getHeight();
+  const ALTO_DISPONIBLE = PH - 31 - 9 - 4; // banner+subtítulo arriba, pie abajo, margen
+  const ALTO_HEAD = 7.5;
+  const filas = Math.max(ots.length, 1);
+  const altoFila = Math.max((ALTO_DISPONIBLE - ALTO_HEAD) / filas, 2.2);
+  const fontSize = Math.min(7, Math.max(3.4, altoFila / 1.7));
+  const cellPadding = Math.min(1.8, Math.max(0.3, fontSize * 0.22));
+  const overflow: "linebreak" | "ellipsize" = ots.length > 22 ? "ellipsize" : "linebreak";
+
   autoTable(doc, {
     startY: 31,
     margin: { left: 10, right: 10 },
@@ -105,8 +115,8 @@ export async function generarResumenOtsPdf(plan: Plan): Promise<void> {
       fmt(ot.fechaFinOt),
       String(ot.dias.length),
     ]),
-    headStyles: { fillColor: NAVY, textColor: BLANCO, fontSize: 7, fontStyle: "bold", cellPadding: 2, halign: "center" },
-    bodyStyles: { fontSize: 7, cellPadding: 1.8, textColor: NEGRO, overflow: "linebreak", lineColor: BORDE, lineWidth: 0.2 },
+    headStyles: { fillColor: NAVY, textColor: BLANCO, fontSize: Math.min(fontSize + 0.5, 7), fontStyle: "bold", cellPadding, halign: "center" },
+    bodyStyles: { fontSize, cellPadding, textColor: NEGRO, overflow, lineColor: BORDE, lineWidth: 0.2 },
     alternateRowStyles: { fillColor: GRIS_L },
     columnStyles: {
       0: { cellWidth: 10, halign: "center", fontStyle: "bold" },
