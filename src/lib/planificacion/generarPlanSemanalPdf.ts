@@ -152,25 +152,95 @@ const COLS = [
   { header: "Personal",               width: 99 },
 ];
 
+const MAX_PAGINAS = 3;
+
+// Escalera de tamaños: se intenta primero con la letra más legible (10pt
+// títulos / 8pt cuerpo) y solo se reduce un escalón si el documento no
+// entra en MAX_PAGINAS — nunca se baja más de lo necesario.
+interface NivelFuente {
+  fuenteTitulos: number;
+  fuenteCuerpo: number;
+  fuenteGrupo: number;
+  padding: number;
+  paddingGrupo: number;
+  altoBarraDia: number;
+}
+
+const NIVELES: NivelFuente[] = [
+  { fuenteTitulos: 10,  fuenteCuerpo: 8,   fuenteGrupo: 7,   padding: 1.3, paddingGrupo: 0.9, altoBarraDia: 7.5 },
+  { fuenteTitulos: 9.5, fuenteCuerpo: 7.5, fuenteGrupo: 6.5, padding: 1.0, paddingGrupo: 0.7, altoBarraDia: 7 },
+  { fuenteTitulos: 9,   fuenteCuerpo: 7,   fuenteGrupo: 6,   padding: 0.8, paddingGrupo: 0.6, altoBarraDia: 6.5 },
+  { fuenteTitulos: 8.5, fuenteCuerpo: 6.5, fuenteGrupo: 6,   padding: 0.6, paddingGrupo: 0.5, altoBarraDia: 6 },
+];
+
+function renderizarConNivel(
+  plan: Plan,
+  diasBody: { dia: string; body: RowInput[] }[],
+  nivel: NivelFuente
+): jsPDF {
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "letter" });
+  const PW = doc.internal.pageSize.getWidth();
+
+  const TOP_RESERVA_CONT = MARGEN + 6; // margen superior en páginas 2+ (sin encabezado)
+  const RESERVA_PIE = ALTO_PIE + MARGEN + 4;
+  const Y_INICIO = MARGEN + ALTO_ENCABEZADO + 4; // debajo del encabezado, solo hoja 1
+
+  encabezado(doc, plan, PW);
+  let y = Y_INICIO;
+
+  for (const { dia, body } of diasBody) {
+    y = checkPage(doc, y, 16);
+
+    doc.setFillColor(...NAVY);
+    doc.rect(MARGEN, y, PW - MARGEN * 2, nivel.altoBarraDia, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(nivel.fuenteTitulos);
+    doc.setTextColor(...BLANCO);
+    doc.text(fechaLarga(plan.semana, plan.anio, dia), MARGEN + 2, y + nivel.altoBarraDia - 2.2);
+    y += nivel.altoBarraDia;
+
+    // Las filas de título de grupo llevan su propio fontSize/cellPadding fijo
+    // (más chico que el cuerpo); solo se reescalan aquí si el nivel cambió.
+    const bodyEscalado: RowInput[] = body.map((fila): RowInput => {
+      if (!Array.isArray(fila) || fila.length !== 1) return fila;
+      const celda = fila[0];
+      if (typeof celda !== "object" || celda === null || !("colSpan" in celda) || !("styles" in celda)) return fila;
+      if (celda.colSpan !== COLS.length || celda.styles?.fontStyle !== "bold" || !("fillColor" in celda.styles)) return fila;
+      return [{ ...celda, styles: { ...celda.styles, fontSize: nivel.fuenteGrupo, cellPadding: nivel.paddingGrupo } }];
+    });
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: MARGEN, right: MARGEN, bottom: RESERVA_PIE, top: TOP_RESERVA_CONT },
+      head: [COLS.map(c => c.header)],
+      body: bodyEscalado,
+      headStyles: { fillColor: [71, 85, 105], textColor: BLANCO, fontSize: nivel.fuenteCuerpo, fontStyle: "bold", cellPadding: nivel.padding, halign: "center", overflow: "ellipsize" },
+      bodyStyles: { fontSize: nivel.fuenteCuerpo, cellPadding: nivel.padding, textColor: NEGRO, overflow: "ellipsize", lineColor: BORDE, lineWidth: 0.2 },
+      alternateRowStyles: { fillColor: GRIS_L },
+      columnStyles: Object.fromEntries(COLS.map((c, i) => [i, { cellWidth: c.width, halign: [1, 5, 6].includes(i) ? "center" as const : "left" as const }])),
+    });
+    y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+  }
+
+  return doc;
+}
+
 /**
  * Plan semanal continuo, en hoja carta horizontal: los días fluyen uno
  * después del otro en el mismo documento — sin salto de página forzado por
  * día. Cada día agrupa sus OTs por bloque (GRUPO 1-4 / TURNO DIURNO / TURNO
- * NOCTURNO) con una fila de UTILIZACIÓN combinada al final. Prioriza la
- * legibilidad en papel (letra cercana a 10pt, como el Excel de referencia)
- * ya que este documento se imprime y se publica para que el personal lo
- * lea — por eso las columnas se consolidan en vez de achicar el texto, y el
- * documento puede ocupar más de 2 hojas si la semana tiene muchas OTs. El
- * texto largo (p.ej. Descripción de Equipo) se trunca en una sola línea en
- * vez de agrandar la fila. El encabezado y el pie siguen el mismo estilo
+ * NOCTURNO) con una fila de UTILIZACIÓN combinada al final. Se prueba primero
+ * con la letra más legible (10pt títulos / 8pt cuerpo, cercana al Excel de
+ * referencia) y solo se reduce un escalón (ver NIVELES) si el documento no
+ * entra en MAX_PAGINAS hojas — nunca se achica más de lo necesario, porque
+ * esto se imprime y se publica para que el personal lo lea. El texto largo
+ * (p.ej. Descripción de Equipo) se trunca en una sola línea en vez de
+ * agrandar la fila. El encabezado y el pie siguen el mismo estilo
  * profesional (navy/azul, sin colores tipo Excel) que
  * src/lib/generarInformeOT.ts. Se abre en pestaña nueva (preview del visor
  * nativo del navegador) para revisar antes de descargar.
  */
 export async function generarPlanSemanalPdf(plan: Plan, cuadrilla: CuadrillaMatriz): Promise<void> {
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "letter" });
-  const PW = doc.internal.pageSize.getWidth();
-
   const ots = plan.ots.filter(o => o.seleccionada || o.esGuardia);
   const reporte = calcularReporteCapacidad(ots, cuadrilla, plan.capacidadOverride, DIAS_SEMANA);
 
@@ -189,7 +259,7 @@ export async function generarPlanSemanalPdf(plan: Plan, cuadrilla: CuadrillaMatr
 
       huboContenido = true;
       const colores = colorDeGrupo(grupo);
-      body.push([{ content: etiquetaGrupo(grupo), colSpan: COLS.length, styles: { fillColor: colores.bg, textColor: colores.texto, fontStyle: "bold", halign: "left", fontSize: 7, cellPadding: 0.9 } }]);
+      body.push([{ content: etiquetaGrupo(grupo), colSpan: COLS.length, styles: { fillColor: colores.bg, textColor: colores.texto, fontStyle: "bold", halign: "left" } }]);
 
       const nombresGrupoDia = new Set((cuadrilla[grupo]?.[dia] ?? []).map(t => t.nombre));
       if (otsDelBlock.length === 0) {
@@ -229,42 +299,13 @@ export async function generarPlanSemanalPdf(plan: Plan, cuadrilla: CuadrillaMatr
     diasBody.push({ dia, body });
   }
 
-  // ── Tamaño de letra fijo y legible en papel (el Excel de referencia usa
-  // 10pt). Ya no se achica el texto para forzar un límite de páginas: este
-  // documento se imprime y se publica para el personal, así que la
-  // legibilidad manda sobre el número exacto de hojas.
-  const TOP_RESERVA_CONT = MARGEN + 6; // margen superior en páginas 2+ (sin encabezado)
-  const RESERVA_PIE = ALTO_PIE + MARGEN + 4;
-  const Y_INICIO = MARGEN + ALTO_ENCABEZADO + 4; // debajo del encabezado, solo hoja 1
-  const FUENTE_TITULOS = 10; // fechas/días de cada día, como el Excel original
-  const FUENTE_CUERPO = 8;
-  const CELL_PADDING = 1.3;
-
-  encabezado(doc, plan, PW);
-  let y = Y_INICIO;
-
-  for (const { dia, body } of diasBody) {
-    y = checkPage(doc, y, 16);
-
-    doc.setFillColor(...NAVY);
-    doc.rect(MARGEN, y, PW - MARGEN * 2, 7.5, "F");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(FUENTE_TITULOS);
-    doc.setTextColor(...BLANCO);
-    doc.text(fechaLarga(plan.semana, plan.anio, dia), MARGEN + 2, y + 5.3);
-    y += 7.5;
-
-    autoTable(doc, {
-      startY: y,
-      margin: { left: MARGEN, right: MARGEN, bottom: RESERVA_PIE, top: TOP_RESERVA_CONT },
-      head: [COLS.map(c => c.header)],
-      body,
-      headStyles: { fillColor: [71, 85, 105], textColor: BLANCO, fontSize: FUENTE_CUERPO, fontStyle: "bold", cellPadding: CELL_PADDING, halign: "center", overflow: "ellipsize" },
-      bodyStyles: { fontSize: FUENTE_CUERPO, cellPadding: CELL_PADDING, textColor: NEGRO, overflow: "ellipsize", lineColor: BORDE, lineWidth: 0.2 },
-      alternateRowStyles: { fillColor: GRIS_L },
-      columnStyles: Object.fromEntries(COLS.map((c, i) => [i, { cellWidth: c.width, halign: [1, 5, 6].includes(i) ? "center" as const : "left" as const }])),
-    });
-    y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+  // Se prueba primero con la letra más legible y solo se baja un escalón a
+  // la vez si el documento no entra en MAX_PAGINAS — nunca se achica más de
+  // lo necesario, y si ni el escalón más chico alcanza, se usa ese (mejor
+  // esfuerzo) en vez de perder legibilidad para nada.
+  let doc = renderizarConNivel(plan, diasBody, NIVELES[0]);
+  for (let i = 1; i < NIVELES.length && doc.getNumberOfPages() > MAX_PAGINAS; i++) {
+    doc = renderizarConNivel(plan, diasBody, NIVELES[i]);
   }
 
   piePagina(doc, `Plan Semanal ${plan.semana}/${plan.anio}`);
