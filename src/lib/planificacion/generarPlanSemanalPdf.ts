@@ -72,6 +72,20 @@ function rangoSemana(semana: number, anio: number): string {
   return `${inicio} – ${domingo.getDate()} ${MESES[domingo.getMonth()]} ${anio}`;
 }
 
+// Los nombres se guardan "Apellido(s) Nombre(s)" (p.ej. "Pérez López Juan
+// Carlos"). Para la columna Personal del PDF se muestra solo primer
+// apellido + primer nombre ("Pérez Juan"), igual al criterio ya usado en
+// src/app/inicio/page.tsx para elegir el nombre de pila: con 4+ palabras el
+// nombre es la penúltima, si no la última — así se descartan el segundo
+// apellido y el segundo nombre cuando existen.
+function nombreCorto(nombreCompleto: string): string {
+  const p = nombreCompleto.trim().split(/\s+/).filter(Boolean);
+  if (p.length <= 1) return nombreCompleto.trim();
+  const apellido = p[0];
+  const nombre = p.length >= 4 ? p[p.length - 2] : p[p.length - 1];
+  return `${apellido} ${nombre}`;
+}
+
 function fmtNum(n: number): string {
   const r = Math.round(n * 10) / 10;
   return Number.isInteger(r) ? String(r) : r.toFixed(1);
@@ -139,20 +153,22 @@ function piePagina(doc: jsPDF, titulo: string) {
 // y "Hr Trab."/"Hr Total" se fusionan en una sola columna cada par para
 // liberar ancho y poder imprimir con una letra legible (10pt, como el Excel
 // de referencia) en vez de achicar el texto para forzar 2 hojas. "Equipo"
-// (el TAG) nunca debe truncarse, así que tiene ancho generoso a costa de
-// "Tipo / Prior." (poco importante) y "Personal".
+// (el TAG) nunca debe truncarse, así que tiene ancho generoso. "Personal"
+// usa nombres acortados (ver nombreCorto) en vez del nombre completo, así
+// que ya no necesita ser la columna más ancha: el espacio ganado se movió a
+// "Descripción de Trabajo" y "Descripción de Equipo".
 const COLS = [
   { header: "N° OT",                 width: 18 },
   { header: "Tipo / Prior.",         width: 14 },
-  { header: "Descripción de Trabajo", width: 46 },
-  { header: "Equipo",                 width: 28 },
-  { header: "Descripción de Equipo",  width: 32 },
+  { header: "Descripción de Trabajo", width: 68 },
+  { header: "Equipo",                 width: 32 },
+  { header: "Descripción de Equipo",  width: 40 },
   { header: "Pers.",                  width: 10 },
   { header: "Hr Trab./Prog.",         width: 16 },
-  { header: "Personal",               width: 99 },
+  { header: "Personal",               width: 65 },
 ];
 
-const MAX_PAGINAS = 3;
+const MAX_PAGINAS = 2;
 
 // Escalera de tamaños: se intenta primero con la letra más legible (10pt
 // títulos / 8pt cuerpo) y solo se reduce un escalón si el documento no
@@ -274,7 +290,7 @@ export async function generarPlanSemanalPdf(plan: Plan, cuadrilla: CuadrillaMatr
             ot.descripcionEquipo,
             String(ot.personas),
             `${ot.hrsTrabajo} / ${fmtNum(hhPorDia(ot, dia))}`,
-            ot.personalAsignado.filter(n => nombresGrupoDia.has(n)).join(" / ") || "—",
+            ot.personalAsignado.filter(n => nombresGrupoDia.has(n)).map(nombreCorto).join(" / ") || "—",
           ]);
         }
       }
