@@ -138,16 +138,18 @@ function piePagina(doc: jsPDF, titulo: string) {
 // horizontal - 16.4mm de márgenes de 8mm a cada lado). "Tipo OT"/"Prioridad"
 // y "Hr Trab."/"Hr Total" se fusionan en una sola columna cada par para
 // liberar ancho y poder imprimir con una letra legible (10pt, como el Excel
-// de referencia) en vez de achicar el texto para forzar 2 hojas.
+// de referencia) en vez de achicar el texto para forzar 2 hojas. "Equipo"
+// (el TAG) nunca debe truncarse, así que tiene ancho generoso a costa de
+// "Tipo / Prior." (poco importante) y "Personal".
 const COLS = [
   { header: "N° OT",                 width: 18 },
-  { header: "Tipo / Prior.",         width: 20 },
+  { header: "Tipo / Prior.",         width: 14 },
   { header: "Descripción de Trabajo", width: 46 },
-  { header: "Equipo",                 width: 18 },
+  { header: "Equipo",                 width: 28 },
   { header: "Descripción de Equipo",  width: 32 },
   { header: "Pers.",                  width: 10 },
   { header: "Hr Trab./Prog.",         width: 16 },
-  { header: "Personal",               width: 103 },
+  { header: "Personal",               width: 99 },
 ];
 
 /**
@@ -187,7 +189,7 @@ export async function generarPlanSemanalPdf(plan: Plan, cuadrilla: CuadrillaMatr
 
       huboContenido = true;
       const colores = colorDeGrupo(grupo);
-      body.push([{ content: etiquetaGrupo(grupo), colSpan: COLS.length, styles: { fillColor: colores.bg, textColor: colores.texto, fontStyle: "bold", halign: "left" } }]);
+      body.push([{ content: etiquetaGrupo(grupo), colSpan: COLS.length, styles: { fillColor: colores.bg, textColor: colores.texto, fontStyle: "bold", halign: "left", fontSize: 7, cellPadding: 0.9 } }]);
 
       const nombresGrupoDia = new Set((cuadrilla[grupo]?.[dia] ?? []).map(t => t.nombre));
       if (otsDelBlock.length === 0) {
@@ -257,7 +259,7 @@ export async function generarPlanSemanalPdf(plan: Plan, cuadrilla: CuadrillaMatr
       margin: { left: MARGEN, right: MARGEN, bottom: RESERVA_PIE, top: TOP_RESERVA_CONT },
       head: [COLS.map(c => c.header)],
       body,
-      headStyles: { fillColor: [71, 85, 105], textColor: BLANCO, fontSize: FUENTE_CUERPO + 0.5, fontStyle: "bold", cellPadding: CELL_PADDING, halign: "center" },
+      headStyles: { fillColor: [71, 85, 105], textColor: BLANCO, fontSize: FUENTE_CUERPO, fontStyle: "bold", cellPadding: CELL_PADDING, halign: "center", overflow: "ellipsize" },
       bodyStyles: { fontSize: FUENTE_CUERPO, cellPadding: CELL_PADDING, textColor: NEGRO, overflow: "ellipsize", lineColor: BORDE, lineWidth: 0.2 },
       alternateRowStyles: { fillColor: GRIS_L },
       columnStyles: Object.fromEntries(COLS.map((c, i) => [i, { cellWidth: c.width, halign: [1, 5, 6].includes(i) ? "center" as const : "left" as const }])),
