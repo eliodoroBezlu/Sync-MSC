@@ -107,3 +107,55 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
+
+// Quita un contratista del roster de la semana. Restringido a filas
+// esContratista=true: el personal de planta se administra únicamente vía
+// re-importación del Excel, nunca por borrado manual desde aquí.
+export async function DELETE(_req: NextRequest, { params }: Ctx) {
+  try {
+    const { id, rosterId } = await params;
+
+    const plan = await prisma.planBorrador.findUnique({ where: { id } });
+    if (!plan) return NextResponse.json({ ok: false, error: "Plan no encontrado" }, { status: 404 });
+    if (plan.estado === "publicado") {
+      return NextResponse.json({ ok: false, error: "No se puede editar un plan publicado" }, { status: 400 });
+    }
+
+    const roster = await prisma.rosterSemanal.findUnique({ where: { id: rosterId } });
+    if (!roster || roster.planBorradorId !== id) {
+      return NextResponse.json({ ok: false, error: "Técnico no encontrado en este plan" }, { status: 404 });
+    }
+    if (!roster.esContratista) {
+      return NextResponse.json(
+        { ok: false, error: "Solo se pueden quitar contratistas; el personal de planta se administra por importación" },
+        { status: 400 }
+      );
+    }
+
+    await prisma.rosterSemanal.delete({ where: { id: rosterId } });
+
+    await prisma.cuadrillaMiembro.deleteMany({
+      where: { planBorradorId: id, tecnicoNombre: roster.nombre },
+    });
+
+    const otsAfectadas = await prisma.planBorradorOt.findMany({
+      where: { planBorradorId: id, personalAsignado: { has: roster.nombre } },
+    });
+    for (const ot of otsAfectadas) {
+      await prisma.planBorradorOt.update({
+        where: { id: ot.id },
+        data: {
+          personalAsignado: ot.personalAsignado.filter(n => n !== roster.nombre),
+          personalAsignadoIds: roster.usuarioId
+            ? ot.personalAsignadoIds.filter(uid => uid !== roster.usuarioId)
+            : ot.personalAsignadoIds,
+        },
+      });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Error quitando del roster";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
+}

@@ -6,6 +6,7 @@ import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
 import TableroSemanal from "./TableroSemanal";
 import SeleccionOts from "./SeleccionOts";
+import AgregarContratistaModal from "./AgregarContratistaModal";
 import type { OtBorrador, Plan, CuadrillaMatriz } from "./types";
 import { CODIGOS_ASISTENCIA, calcularGrupo } from "@/lib/planificacion/cuadrillas";
 
@@ -188,6 +189,8 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
   const [balanceando, setBalanceando] = useState(false);
   const [limpiando, setLimpiando] = useState(false);
   const [cuadrilla, setCuadrilla] = useState<CuadrillaMatriz>({});
+  const [mostrarAgregarContratista, setMostrarAgregarContratista] = useState(false);
+  const [quitandoRosterId, setQuitandoRosterId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -275,6 +278,20 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
       setMsg(`Error: ${err instanceof Error ? err.message : "no se pudo guardar"}`);
       await loadPlan();
     }
+  }
+
+  async function quitarContratista(rosterId: string, nombre: string) {
+    if (!confirm(`¿Quitar a ${nombre} del roster de esta semana?`)) return;
+    setQuitandoRosterId(rosterId);
+    try {
+      const res = await fetch(`/api/planificacion/${id}/roster/${rosterId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error ?? "Error al quitar");
+      await Promise.all([refreshPlanQuiet(), loadCuadrilla()]);
+    } catch (err) {
+      setMsg(`Error: ${err instanceof Error ? err.message : "no se pudo quitar"}`);
+    }
+    setQuitandoRosterId(null);
   }
 
   async function patchCapacidad(grupo: string, dia: string, horas: number | null) {
@@ -665,7 +682,12 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
             <div style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>Técnicos disponibles esta semana</div>
               {!yaPublicado && (
-                <>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => setMostrarAgregarContratista(true)} style={{
+                    padding: "6px 14px", borderRadius: 8, background: "#7c3aed14",
+                    color: "#7c3aed", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    border: "1.5px solid #7c3aed30",
+                  }}>+ Agregar contratista</button>
                   <label htmlFor="input-roster" style={{
                     padding: "6px 14px", borderRadius: 8, background: "#0891b214",
                     color: "#0891b2", fontSize: 12, fontWeight: 700, cursor: "pointer",
@@ -675,7 +697,7 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
                   </label>
                   <input id="input-roster" type="file" accept=".xlsx,.xls" style={{ display: "none" }}
                     onChange={e => e.target.files?.[0] && importarRoster(e.target.files[0])} />
-                </>
+                </div>
               )}
             </div>
 
@@ -694,12 +716,21 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
                         {["Lu","Ma","Mi","Ju","Vi","Sa","Do"][d-1]}
                       </th>
                     ))}
+                    {!yaPublicado && <th style={{ width: 30 }}></th>}
                   </tr>
                 </thead>
                 <tbody>
                   {plan.roster.map(r => (
                     <tr key={r.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                      <td style={{ padding: "7px 8px", fontSize: 13, fontWeight: 600, color: "#0f2847" }}>{r.nombre}</td>
+                      <td style={{ padding: "7px 8px", fontSize: 13, fontWeight: 600, color: "#0f2847" }}>
+                        {r.nombre}
+                        {r.esContratista && (
+                          <span style={{
+                            marginLeft: 6, padding: "1px 6px", borderRadius: 10, fontSize: 9, fontWeight: 700,
+                            background: "#7c3aed14", color: "#7c3aed",
+                          }}>Contratista</span>
+                        )}
+                      </td>
                       <td style={{ padding: "7px 8px", textAlign: "center" }}>
                         <span style={{
                           padding: "2px 8px", borderRadius: 12, fontSize: 10, fontWeight: 700,
@@ -736,6 +767,21 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
                           )}
                         </td>
                       ))}
+                      {!yaPublicado && (
+                        <td style={{ padding: "4px", textAlign: "center" }}>
+                          {r.esContratista && (
+                            <button
+                              onClick={() => quitarContratista(r.id, r.nombre)}
+                              disabled={quitandoRosterId === r.id}
+                              title={`Quitar a ${r.nombre} del roster`}
+                              style={{
+                                background: "none", border: "none", cursor: quitandoRosterId === r.id ? "not-allowed" : "pointer",
+                                color: "#dc2626", fontSize: 13, opacity: quitandoRosterId === r.id ? 0.4 : 1,
+                              }}
+                            >✕</button>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -744,6 +790,16 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
           </div>
         )}
       </main>
+
+      {mostrarAgregarContratista && (
+        <AgregarContratistaModal
+          planId={id}
+          areaCodigo={plan.areaCodigo}
+          rosterUsuarioIds={plan.roster.map(r => r.usuarioId)}
+          onClose={() => setMostrarAgregarContratista(false)}
+          onAgregado={() => { refreshPlanQuiet(); loadCuadrilla(); }}
+        />
+      )}
     </div>
   );
 }

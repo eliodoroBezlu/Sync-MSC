@@ -165,8 +165,10 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       personas.push({ nombre: col3, usuarioId, asistenciaSemana, guardiaDiurnaSemana });
     }
 
-    // Borrar roster anterior
-    await prisma.rosterSemanal.deleteMany({ where: { planBorradorId: id } });
+    // Borrar roster anterior — se preservan los contratistas agregados a mano
+    // desde el Tablero (esContratista: true), ya que no vienen del Excel y
+    // una reimportación no debe borrarlos.
+    await prisma.rosterSemanal.deleteMany({ where: { planBorradorId: id, esContratista: false } });
 
     // Guardar técnicos con sus 7 días
     let guardados = 0;
