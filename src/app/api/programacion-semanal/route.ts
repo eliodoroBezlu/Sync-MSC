@@ -14,12 +14,21 @@ type OtProgramadaRow = Record<string, unknown> & {
 // se publicó antes de que existiera, o antes de este fix), Registro las
 // muestra como "no iniciada" aunque el técnico ya viene registrando avances.
 // Se reconcilia en cada lectura para que se autocorrija sin acción manual.
+//
+// También cubre el caso recurrente: cuando un técnico registra el avance de
+// UN día de una OT recurrente, el backend (api/ordenes POST) solo enlaza esa
+// fila puntual — los demás días de la semana quedan "en_proceso" (estado por
+// defecto al publicar el plan) pero sin ordenTrabajoId. Registro los toma
+// como huérfanos y cae al "hermano registrado" (refRegistradaMap), que si
+// quedó en "completada" bloquea la semana entera. Por eso aquí no se filtra
+// solo "no_iniciada": cualquier fila sin ordenTrabajoId que aún no esté
+// completada/en revisión es candidata a enlazarse con la OT abierta.
 async function reconciliarContinuaciones(
   programas: Array<{ otsProgramadas: OtProgramadaRow[] }>
 ): Promise<void> {
   const pendientes = programas
     .flatMap(p => p.otsProgramadas)
-    .filter(o => !o.ordenTrabajoId && o.estado === "no_iniciada");
+    .filter(o => !o.ordenTrabajoId && o.estado !== "completada" && o.estado !== "en_revision");
   if (pendientes.length === 0) return;
 
   const numeros = [...new Set(pendientes.map(o => o.numeroOT))];

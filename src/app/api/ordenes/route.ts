@@ -353,18 +353,36 @@ export async function POST(req: NextRequest) {
         // aunque el técnico registre un día distinto al que originó la OT consolidada.
         const diaAvance = otJdeDia || DIA_ABREV[new Date(body.fecha + "T12:00:00").getDay()];
         if (diaAvance) {
-          await prisma.otProgramada.updateMany({
-            where: {
-              programacionSemanalId: body.programacionSemanalId,
-              ...(otJdeNumero ? { numeroOT: otJdeNumero } : {}),
-              dia: diaAvance,
-            },
-            data: {
-              estado: "completada",
-              ordenTrabajoId: existente.id,
-              ordenTrabajoNum: existente.numeroOT,
-            },
-          });
+          const whereSemanaOT = {
+            programacionSemanalId: body.programacionSemanalId,
+            ...(otJdeNumero ? { numeroOT: otJdeNumero } : {}),
+          };
+          const diasEnPlan = await prisma.otProgramada.count({ where: whereSemanaOT });
+          if (diasEnPlan > 1) {
+            // OT recurrente (2+ días en el plan de la semana): vincular TODOS los
+            // días a esta OT consolidada, y marcar "completada" solo el día recién
+            // trabajado. Si solo se vinculara ese día, los demás quedarían con
+            // ordenTrabajoId null — Registro los trataría como huérfanos y caería
+            // al "hermano registrado" (refRegistradaMap), que si ya está en
+            // "completada" bloquea el registro del resto de la semana.
+            await prisma.otProgramada.updateMany({
+              where: whereSemanaOT,
+              data: { ordenTrabajoId: existente.id, ordenTrabajoNum: existente.numeroOT },
+            });
+            await prisma.otProgramada.updateMany({
+              where: { ...whereSemanaOT, dia: diaAvance },
+              data: { estado: "completada" },
+            });
+          } else {
+            await prisma.otProgramada.updateMany({
+              where: { ...whereSemanaOT, dia: diaAvance },
+              data: {
+                estado: "completada",
+                ordenTrabajoId: existente.id,
+                ordenTrabajoNum: existente.numeroOT,
+              },
+            });
+          }
         }
 
         const otActualizada = await prisma.ordenTrabajo.findUnique({
