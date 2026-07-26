@@ -31,14 +31,20 @@ async function reconciliarContinuaciones(
     .filter(o => !o.ordenTrabajoId && o.estado !== "completada" && o.estado !== "en_revision");
   if (pendientes.length === 0) return;
 
+  // OtProgramada.numeroOT guarda el N° de OT del JDE (lo que se ve en la
+  // tarjeta del plan), NO el numeroOT interno de OrdenTrabajo (correlativo
+  // generado por siguienteNumeroOT(), único por registro). Por eso el match
+  // debe hacerse contra OrdenTrabajo.otJdeNumero — comparar contra
+  // OrdenTrabajo.numeroOT nunca encontraba coincidencias y esta reconciliación
+  // quedaba sin efecto en la práctica para cualquier OT de origen JDE.
   const numeros = [...new Set(pendientes.map(o => o.numeroOT))];
   const existentes = await prisma.ordenTrabajo.findMany({
-    where: { numeroOT: { in: numeros }, estado: { not: "concluido" } },
-    select: { id: true, numeroOT: true, estado: true },
+    where: { otJdeNumero: { in: numeros }, estado: { not: "concluido" } },
+    select: { id: true, numeroOT: true, estado: true, otJdeNumero: true },
   });
   if (existentes.length === 0) return;
 
-  const porNumero = new Map(existentes.map(o => [o.numeroOT, o]));
+  const porNumero = new Map(existentes.map(o => [o.otJdeNumero as string, o]));
   for (const row of pendientes) {
     const existente = porNumero.get(row.numeroOT);
     if (!existente) continue;
