@@ -1282,6 +1282,16 @@ export default function RegistroOTPage() {
 
   async function enviarRevisionRecurrente(ref: PlanRef) {
     if (!ref.ot.ordenTrabajoId) return;
+    // Una OT recurrente es un solo registro compartido por todos los días de la semana:
+    // enviarla a revisión la cierra COMPLETA (los 7 días), no solo el día desde el que se
+    // presiona el botón. Confirmar explícitamente evita que un técnico cierre la semana
+    // entera tras registrar apenas el primer día.
+    const confirmado = window.confirm(
+      "Esto enviará a revisión TODA la semana de esta OT recurrente (todos los días), no solo este día.\n\n" +
+      "Ya no podrás registrar más avances hasta que el supervisor la envíe de vuelta a corrección.\n\n" +
+      "¿Ya registraste todos los días trabajados de esta OT? ¿Continuar?"
+    );
+    if (!confirmado) return;
     setSavingRevision(true);
     try {
       const res = await fetch(`/api/ordenes/${ref.ot.ordenTrabajoId}`, {
@@ -1986,7 +1996,7 @@ export default function RegistroOTPage() {
                                   onClick={() => enviarRevisionRecurrente(refEfectivo)}
                                   disabled={savingRevision}
                                   style={{ ...S.btnGreen(savingRevision), padding: "5px 10px", fontSize: 11 }}>
-                                  {savingRevision ? "Enviando…" : "Enviar a revisión ✓"}
+                                  {savingRevision ? "Enviando…" : "Enviar semana a revisión ✓"}
                                 </button>
                               ) : (
                                 <span style={{ fontSize: 10, fontWeight: 700, background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 6, padding: "2px 8px" }}>
