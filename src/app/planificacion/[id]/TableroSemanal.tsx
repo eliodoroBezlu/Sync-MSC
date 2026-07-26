@@ -221,10 +221,17 @@ function OtCard({
   function guardarHH() {
     if (multiDia) {
       if (valorHH.trim() === "") {
-        onEditarHHDia(ot.id, diaCode, null);
+        if (manualEsteDia) onEditarHHDia(ot.id, diaCode, null);
       } else {
         const n = Number(valorHH);
-        if (Number.isFinite(n) && n >= 0) onEditarHHDia(ot.id, diaCode, n);
+        // Solo fija un override si el valor realmente cambió respecto al
+        // que ya se estaba mostrando (automático o manual). Sin este check,
+        // cualquier clic que abra y cierre la edición sin tocar nada (ej. un
+        // blur accidental durante un drag) congela el día en su valor
+        // automático de ese instante, restándolo del total repartible entre
+        // el resto de días — dejando días sin editar en 0HH sin que nadie
+        // los haya tocado a propósito.
+        if (Number.isFinite(n) && n >= 0 && n !== horasEsteDia) onEditarHHDia(ot.id, diaCode, n);
       }
     } else {
       const n = Number(valorHH);
