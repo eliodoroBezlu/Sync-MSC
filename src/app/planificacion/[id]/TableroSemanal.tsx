@@ -355,6 +355,15 @@ function DiaColumn({
   const [editandoCapacidad, setEditandoCapacidad] = useState<string | null>(null);
   const [dragOverGrupo, setDragOverGrupo] = useState<string | null>(null);
   const hh = esBacklog ? ots.reduce((s, o) => s + o.hhTotal, 0) : ots.reduce((s, o) => s + hhPorDia(o, diaCode), 0);
+  // Utilización total del día: suma la HH disponible de los 6 grupos (aunque
+  // no tengan OTs ese día) contra la HH programada — mismo cálculo que la
+  // fila verde "UTILIZACION" del Excel I-XX, pero a nivel de columna/día en
+  // vez de por grupo.
+  const disponibleDia = esBacklog ? 0 : GRUPOS_ORDEN.reduce(
+    (s, g) => s + horasDisponiblesGrupoDia(g, diaCode, cuadrilla, capacidadOverride).horasDisponibles, 0,
+  );
+  const pctUtilDia = disponibleDia > 0 ? hh / disponibleDia : 0;
+  const ucDia = colorUtilizacion(pctUtilDia, disponibleDia);
   return (
     <div
       onDragOver={e => { e.preventDefault(); onDragOverColumna(); }}
@@ -371,6 +380,17 @@ function DiaColumn({
         <div style={{ fontSize: 12, fontWeight: 800, color: esBacklog ? "#64748b" : "#0f2847" }}>{titulo}</div>
         <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 1 }}>{subtitulo}</div>
         <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 1 }}>{ots.length} OT{ots.length !== 1 ? "s" : ""} · {hh.toFixed(1)}HH</div>
+        {!esBacklog && (
+          <div
+            title="Utilización total del día: HH programada / HH disponible en los 6 grupos"
+            style={{
+              display: "inline-block", marginTop: 5, background: ucDia.bg, color: ucDia.color,
+              borderRadius: 6, padding: "2px 8px", fontSize: 10, fontWeight: 800,
+            }}
+          >
+            {hh.toFixed(0)}/{disponibleDia.toFixed(0)}HH · {(pctUtilDia * 100).toFixed(0)}%
+          </div>
+        )}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 8, minHeight: 140, flex: 1 }}>
         {esBacklog && ots.length === 0 && (
