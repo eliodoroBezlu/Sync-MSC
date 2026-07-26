@@ -21,6 +21,19 @@ type EditCapacidadFn = (grupo: string, dia: string, horas: number | null) => voi
 
 type EditHHDiaFn = (otId: string, diaCode: string, horas: number | null) => void;
 
+// Reparto de hhTotal en los días de la OT: si el día tiene una entrada en
+// hhPorDiaManual (fijada a mano desde la tarjeta), se usa tal cual; el resto
+// de hhTotal (descontando lo ya reservado en días con override) se reparte
+// parejo entre los días sin override — así siempre suma exactamente hhTotal.
+function hhPorDia(ot: Pick<OtBorrador, "hhTotal" | "dias" | "hhPorDiaManual">, dia: string): number {
+  const manual = ot.hhPorDiaManual?.[dia];
+  if (manual != null) return manual;
+  const diasSinOverride = ot.dias.filter(d => ot.hhPorDiaManual?.[d] == null);
+  const hhReservado = ot.dias.reduce((s, d) => s + (ot.hhPorDiaManual?.[d] ?? 0), 0);
+  const hhRestante = Math.max(0, ot.hhTotal - hhReservado);
+  return hhRestante / Math.max(1, diasSinOverride.length);
+}
+
 const DIAS_INFO = [
   { code: "Lu", largo: "Lunes" },
   { code: "Ma", largo: "Martes" },
@@ -30,34 +43,6 @@ const DIAS_INFO = [
   { code: "Sa", largo: "Sábado" },
   { code: "Do", largo: "Domingo" },
 ] as const;
-
-const ORDEN_DIA: Record<string, number> = Object.fromEntries(
-  DIAS_INFO.map((d, i) => [d.code, i])
-);
-
-// Reparto de hhTotal en los días de la OT: si el día tiene una entrada en
-// hhPorDiaManual (fijada a mano desde la tarjeta), se usa tal cual. El resto
-// de hhTotal (descontando lo ya reservado en días con override) se reparte
-// en turnos completos de 10HH/persona (igual que horasPorDiaPersona() en
-// balanceador.ts y la plantilla Excel de referencia) entre los días sin
-// override, en orden Lu→Do, y el último día se queda con lo que sobre —
-// nunca un promedio parejo que da fracciones sin sentido (ej. 9.71HH/día
-// al repartir 68HH en 7 días). Así, 68HH en 7 días queda 10,10,10,10,10,10,8.
-function hhPorDia(ot: Pick<OtBorrador, "hhTotal" | "dias" | "hhPorDiaManual" | "personas">, dia: string): number {
-  const manual = ot.hhPorDiaManual?.[dia];
-  if (manual != null) return manual;
-  const diasSinOverride = ot.dias
-    .filter(d => ot.hhPorDiaManual?.[d] == null)
-    .slice()
-    .sort((a, b) => (ORDEN_DIA[a] ?? 0) - (ORDEN_DIA[b] ?? 0));
-  const idx = diasSinOverride.indexOf(dia);
-  if (idx === -1) return 0;
-  const hhReservado = ot.dias.reduce((s, d) => s + (ot.hhPorDiaManual?.[d] ?? 0), 0);
-  const hhRestante = Math.max(0, ot.hhTotal - hhReservado);
-  const capacidadDia = Math.max(1, ot.personas) * 10;
-  const hhAntes = idx * capacidadDia;
-  return Math.min(capacidadDia, Math.max(0, hhRestante - hhAntes));
-}
 
 // Mismo orden y colores que el Plan Semanal publicado (src/app/ordenes/semanales)
 // para que la agrupación por turno se vea consistente en ambas pantallas.
