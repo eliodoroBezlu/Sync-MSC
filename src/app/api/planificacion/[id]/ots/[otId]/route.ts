@@ -37,6 +37,11 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     // cuadrilla vigente del grupo/día — un nombre que no es miembro de la
     // cuadrilla de ese grupo en ninguno de los días de la OT no persiste.
     if ("personalAsignado" in body) data.personalAsignado = body.personalAsignado;
+    if ("diasTexto"     in body) {
+      data.diasTexto = body.diasTexto;
+      data.dias      = body.dias?.length ? body.dias : expandirDias(body.diasTexto ?? "");
+    }
+    if ("dias" in body) data.dias = body.dias;
     if ("personas" in body || "hrsTrabajo" in body) {
       const ot = await prisma.planBorradorOt.findUnique({ where: { id: otId } });
       if (!ot) return NextResponse.json({ error: "OT no encontrada" }, { status: 404 });
@@ -44,18 +49,26 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       const hrsTrabajo = Number(body.hrsTrabajo ?? ot.hrsTrabajo);
       data.personas   = personas;
       data.hrsTrabajo = hrsTrabajo;
-      data.hhTotal    = personas * hrsTrabajo;
+      // hhTotal es el HH ESTIMADA de la semana completa (viene del Excel JDE
+      // al importar), no el producto de un solo día — el formulario de
+      // edición del Tablero reenvía personas/hrsTrabajo en cada guardado
+      // aunque el usuario solo haya tocado otro campo (Días, Fechas), así que
+      // solo se recalcula si esos valores realmente cambiaron. Y si cambian,
+      // se multiplica por la cantidad de días programados: de lo contrario
+      // una OT multi-día (ej. 68HH en 7 días) colapsaba a personas×hrsTrabajo
+      // de un único día (10HH) con cualquier edición, sin que el usuario
+      // tocara Personas ni Hrs/día.
+      if (personas !== ot.personas || hrsTrabajo !== ot.hrsTrabajo) {
+        const dias = (data.dias as string[] | undefined) ?? ot.dias;
+        const numDias = Math.max(1, dias?.length ?? 1);
+        data.hhTotal = personas * hrsTrabajo * numDias;
+      }
     }
     if ("hhTotal" in body && !("personas" in body) && !("hrsTrabajo" in body)) {
       data.hhTotal = Number(body.hhTotal);
     }
     if ("fechaInicioOt" in body) data.fechaInicioOt = body.fechaInicioOt ? new Date(body.fechaInicioOt) : null;
     if ("fechaFinOt"    in body) data.fechaFinOt    = body.fechaFinOt    ? new Date(body.fechaFinOt)    : null;
-    if ("diasTexto"     in body) {
-      data.diasTexto = body.diasTexto;
-      data.dias      = body.dias?.length ? body.dias : expandirDias(body.diasTexto ?? "");
-    }
-    if ("dias" in body) data.dias = body.dias;
     if ("hhPorDiaManual" in body) {
       const v = body.hhPorDiaManual;
       const esMapaValido = v && typeof v === "object" && !Array.isArray(v)
