@@ -4,6 +4,7 @@ export type OtBorrador = {
   personas: number; hrsTrabajo: number; hhTotal: number;
   fechaInicioOt: string | null; fechaFinOt: string | null;
   diasTexto: string | null; dias: string[];
+  hhPorDiaManual: Record<string, number> | null;
   grupo: string; personalAsignado: string[]; esGuardia: boolean;
   seleccionada: boolean;
   motivoNoProgramada: string | null;

@@ -555,6 +555,7 @@ model PlanBorradorOt {
   fechaFinOt          DateTime?
   diasTexto           String?
   dias                String[]
+  hhPorDiaManual      Json?    // {dia: horas} — override manual del reparto de hhTotal en días puntuales; los días sin entrada aquí siguen repartiéndose parejo con el resto de hhTotal, ver hhPorDia() en capacidad.ts/TableroSemanal.tsx
   estadoJDE           String?  // código de estado JDE: 40 Listo para Programar, 48 En progreso, 30 Espera de Compras/Servicio, 45 Reprogramado, 44 Parada de Planta, 43 Programa Semanal
   estadoDetalle       String?  // descripción del estadoJDE tal como viene del Excel
   solicitante         String?  // columna Q del Excel PROGRAMA

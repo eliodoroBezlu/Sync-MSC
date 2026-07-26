@@ -184,6 +184,9 @@ const migraciones = [
 
   // ── Grupo asignado a mano: Balancear no lo sobrescribe (2026-07) ────────────
   "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS \"grupoManual\" BOOLEAN NOT NULL DEFAULT false",
+
+  // ── Reparto manual de HH por día en una OT multi-día (2026-07) ──────────────
+  "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS \"hhPorDiaManual\" JSONB",
 ];
 
 (async () => {

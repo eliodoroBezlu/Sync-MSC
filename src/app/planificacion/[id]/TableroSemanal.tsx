@@ -18,8 +18,19 @@ type EditCuadrillaFn = (
 
 type EditCapacidadFn = (grupo: string, dia: string, horas: number | null) => void;
 
-function hhPorDia(ot: Pick<OtBorrador, "hhTotal" | "dias">): number {
-  return ot.hhTotal / Math.max(1, ot.dias.length);
+type EditHHDiaFn = (otId: string, diaCode: string, horas: number | null) => void;
+
+// Reparto de hhTotal en los días de la OT: si el día tiene una entrada en
+// hhPorDiaManual (fijada a mano desde la tarjeta), se usa tal cual; el resto
+// de hhTotal (descontando lo ya reservado en días con override) se reparte
+// parejo entre los días sin override — así siempre suma exactamente hhTotal.
+function hhPorDia(ot: Pick<OtBorrador, "hhTotal" | "dias" | "hhPorDiaManual">, dia: string): number {
+  const manual = ot.hhPorDiaManual?.[dia];
+  if (manual != null) return manual;
+  const diasSinOverride = ot.dias.filter(d => ot.hhPorDiaManual?.[d] == null);
+  const hhReservado = ot.dias.reduce((s, d) => s + (ot.hhPorDiaManual?.[d] ?? 0), 0);
+  const hhRestante = Math.max(0, ot.hhTotal - hhReservado);
+  return hhRestante / Math.max(1, diasSinOverride.length);
 }
 
 const DIAS_INFO = [
@@ -174,11 +185,11 @@ function trabajaEseDia(asistencia: string[], diaCode: string): boolean {
 
 // ─── Tarjeta de OT ──────────────────────────────────────────────────────────
 function OtCard({
-  ot, enBacklog, disabled, isDragging, tecnicosDia,
-  onDragStart, onDragEnd, onDropTecnico, onQuitarTecnico, onClickBacklog, onDevolverABacklog, onEditarHH,
+  ot, enBacklog, disabled, isDragging, tecnicosDia, diaCode,
+  onDragStart, onDragEnd, onDropTecnico, onQuitarTecnico, onClickBacklog, onDevolverABacklog, onEditarHH, onEditarHHDia,
 }: {
   ot: OtBorrador; enBacklog: boolean; disabled: boolean; isDragging: boolean;
-  tecnicosDia: TecnicoRef[];
+  tecnicosDia: TecnicoRef[]; diaCode: string;
   onDragStart: (e: DragEvent, otId: string) => void;
   onDragEnd: () => void;
   onDropTecnico: (e: DragEvent, otId: string) => void;
@@ -186,15 +197,32 @@ function OtCard({
   onClickBacklog: (ot: OtBorrador) => void;
   onDevolverABacklog: (otId: string) => void;
   onEditarHH: (otId: string, hhTotal: number) => void;
+  onEditarHHDia: EditHHDiaFn;
 }) {
   const s = tipoOtDisplay(ot.tipoOT);
-  const [editandoHH, setEditandoHH] = useState(false);
-  const [valorHH, setValorHH] = useState(String(ot.hhTotal));
   const multiDia = ot.dias.length > 1;
+  const horasEsteDia = hhPorDia(ot, diaCode);
+  const manualEsteDia = ot.hhPorDiaManual?.[diaCode] != null;
+  const [editandoHH, setEditandoHH] = useState(false);
+  const [valorHH, setValorHH] = useState(String(multiDia ? horasEsteDia : ot.hhTotal));
+
+  function empezarEdicion() {
+    setValorHH(String(multiDia ? horasEsteDia : ot.hhTotal));
+    setEditandoHH(true);
+  }
 
   function guardarHH() {
-    const n = Number(valorHH);
-    if (Number.isFinite(n) && n >= 0 && n !== ot.hhTotal) onEditarHH(ot.id, n);
+    if (multiDia) {
+      if (valorHH.trim() === "") {
+        onEditarHHDia(ot.id, diaCode, null);
+      } else {
+        const n = Number(valorHH);
+        if (Number.isFinite(n) && n >= 0) onEditarHHDia(ot.id, diaCode, n);
+      }
+    } else {
+      const n = Number(valorHH);
+      if (Number.isFinite(n) && n >= 0 && n !== ot.hhTotal) onEditarHH(ot.id, n);
+    }
     setEditandoHH(false);
   }
 
@@ -240,21 +268,25 @@ function OtCard({
         <span style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600 }}>{ot.grupo}{ot.personas > 1 ? ` · ${ot.personas}px` : ""}</span>
         {editandoHH ? (
           <input
-            type="number" min={0} step={1} autoFocus
+            type="number" min={0} step={0.5} autoFocus
             value={valorHH}
             onClick={e => e.stopPropagation()}
             onChange={e => setValorHH(e.target.value)}
             onBlur={guardarHH}
-            onKeyDown={e => { if (e.key === "Enter") guardarHH(); if (e.key === "Escape") { setValorHH(String(ot.hhTotal)); setEditandoHH(false); } }}
+            onKeyDown={e => { if (e.key === "Enter") guardarHH(); if (e.key === "Escape") { setValorHH(String(multiDia ? horasEsteDia : ot.hhTotal)); setEditandoHH(false); } }}
             style={{ width: 46, fontSize: 10, fontWeight: 700, textAlign: "right", borderRadius: 4, border: "1.5px solid #7c3aed", padding: "1px 3px" }}
           />
         ) : (
           <span
-            onClick={e => { if (disabled) return; e.stopPropagation(); setValorHH(String(ot.hhTotal)); setEditandoHH(true); }}
-            title={disabled ? undefined : multiDia ? `Total ${ot.hhTotal}HH repartidas en ${ot.dias.length} días — clic para editar` : "Clic para editar HH"}
+            onClick={e => { if (disabled) return; e.stopPropagation(); empezarEdicion(); }}
+            title={
+              disabled ? undefined
+              : multiDia ? `Total ${ot.hhTotal}HH en ${ot.dias.length} días · este día: ${horasEsteDia.toFixed(1)}HH${manualEsteDia ? " (fijado a mano)" : " (reparto automático)"} — clic para editar, vaciar y Enter para volver a automático`
+              : "Clic para editar HH"
+            }
             style={{ fontSize: 10, color: "#374151", fontWeight: 700, cursor: disabled ? "default" : "pointer", borderBottom: disabled ? "none" : "1px dotted #cbd5e1" }}
           >
-            {multiDia ? `${hhPorDia(ot).toFixed(0)}HH/día` : `${ot.hhTotal}HH`}
+            {multiDia ? `${horasEsteDia.toFixed(1)}HH/día${manualEsteDia ? " ✎" : ""}` : `${ot.hhTotal}HH`}
           </span>
         )}
       </div>
@@ -291,7 +323,7 @@ function OtCard({
 function DiaColumn({
   titulo, subtitulo, ots, esBacklog, diaCode, cuadrilla, roster, capacidadOverride, dragOverActivo, disabled,
   onDragOverColumna, onDragLeaveColumna, onDropColumna, onDropGrupo,
-  draggingOtId, onDragStartOt, onDragEndOt, onDropTecnicoEnOt, onQuitarTecnico, onClickBacklog, onDevolverABacklog, onEditarHH, onEditCuadrilla, onEditCapacidad,
+  draggingOtId, onDragStartOt, onDragEndOt, onDropTecnicoEnOt, onQuitarTecnico, onClickBacklog, onDevolverABacklog, onEditarHH, onEditarHHDia, onEditCuadrilla, onEditCapacidad,
 }: {
   titulo: string; subtitulo: string; ots: OtBorrador[]; esBacklog: boolean;
   diaCode: string; cuadrilla: CuadrillaMatriz; roster: RosterItem[]; capacidadOverride: CapacidadOverride;
@@ -305,13 +337,14 @@ function DiaColumn({
   onClickBacklog: (ot: OtBorrador) => void;
   onDevolverABacklog: (otId: string) => void;
   onEditarHH: (otId: string, hhTotal: number) => void;
+  onEditarHHDia: EditHHDiaFn;
   onEditCuadrilla: EditCuadrillaFn;
   onEditCapacidad: EditCapacidadFn;
 }) {
   const [editandoGrupo, setEditandoGrupo] = useState<string | null>(null);
   const [editandoCapacidad, setEditandoCapacidad] = useState<string | null>(null);
   const [dragOverGrupo, setDragOverGrupo] = useState<string | null>(null);
-  const hh = esBacklog ? ots.reduce((s, o) => s + o.hhTotal, 0) : ots.reduce((s, o) => s + hhPorDia(o), 0);
+  const hh = esBacklog ? ots.reduce((s, o) => s + o.hhTotal, 0) : ots.reduce((s, o) => s + hhPorDia(o, diaCode), 0);
   return (
     <div
       onDragOver={e => { e.preventDefault(); onDragOverColumna(); }}
@@ -327,7 +360,7 @@ function DiaColumn({
       <div style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9" }}>
         <div style={{ fontSize: 12, fontWeight: 800, color: esBacklog ? "#64748b" : "#0f2847" }}>{titulo}</div>
         <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 1 }}>{subtitulo}</div>
-        <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 1 }}>{ots.length} OT{ots.length !== 1 ? "s" : ""} · {hh.toFixed(0)}HH</div>
+        <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 1 }}>{ots.length} OT{ots.length !== 1 ? "s" : ""} · {hh.toFixed(1)}HH</div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 8, minHeight: 140, flex: 1 }}>
         {esBacklog && ots.length === 0 && (
@@ -337,7 +370,7 @@ function DiaColumn({
         )}
         {agruparPorGrupo(ots, !esBacklog).map(({ grupo, ots: otsGrupo }) => {
           const gc = grupoColor(grupo);
-          const hhGrupo = esBacklog ? otsGrupo.reduce((s, o) => s + o.hhTotal, 0) : otsGrupo.reduce((s, o) => s + hhPorDia(o), 0);
+          const hhGrupo = esBacklog ? otsGrupo.reduce((s, o) => s + o.hhTotal, 0) : otsGrupo.reduce((s, o) => s + hhPorDia(o, diaCode), 0);
           const miembrosGrupo = cuadrilla[grupo]?.[diaCode] ?? [];
           const cap = esBacklog ? null : horasDisponiblesGrupoDia(grupo, diaCode, cuadrilla, capacidadOverride);
           const pctUtil = cap && cap.horasDisponibles > 0 ? hhGrupo / cap.horasDisponibles : 0;
@@ -369,7 +402,7 @@ function DiaColumn({
                   title={esBacklog ? undefined : `Editar cuadrilla ${grupo} · ${titulo}`}
                 >
                   <span>{grupo.toUpperCase()}</span>
-                  <span>{otsGrupo.length} · {hhGrupo.toFixed(0)}HH</span>
+                  <span>{otsGrupo.length} · {hhGrupo.toFixed(1)}HH</span>
                 </div>
                 {editandoGrupo === grupo && !esBacklog && (
                   <CuadrillaEditor
@@ -389,7 +422,7 @@ function DiaColumn({
                     }}
                     title={disabled ? undefined : `Ajustar HH disponibles de ${grupo} · ${titulo}`}
                   >
-                    <span>{hhGrupo.toFixed(0)}/{cap.horasDisponibles.toFixed(0)}HH{cap.esManual ? " ✎" : ""}</span>
+                    <span>{hhGrupo.toFixed(1)}/{cap.horasDisponibles.toFixed(0)}HH{cap.esManual ? " ✎" : ""}</span>
                     <span>{(pctUtil * 100).toFixed(0)}%</span>
                   </div>
                 )}
@@ -407,7 +440,7 @@ function DiaColumn({
               {otsGrupo.map(ot => (
                 <OtCard
                   key={ot.id} ot={ot} enBacklog={esBacklog} disabled={disabled}
-                  isDragging={draggingOtId === ot.id}
+                  isDragging={draggingOtId === ot.id} diaCode={diaCode}
                   tecnicosDia={esBacklog ? [] : ot.personalAsignado
                     .filter(n => miembrosGrupo.some(t => t.nombre === n))
                     .map(n => miembrosGrupo.find(t => t.nombre === n)!)}
@@ -417,6 +450,7 @@ function DiaColumn({
                   onClickBacklog={onClickBacklog}
                   onDevolverABacklog={onDevolverABacklog}
                   onEditarHH={onEditarHH}
+                  onEditarHHDia={onEditarHHDia}
                 />
               ))}
             </div>
@@ -593,6 +627,21 @@ export default function TableroSemanal({
     onPatchOt(otId, { hhTotal });
   }
 
+  // Fija (o quita, con horas=null) el reparto manual de HH de un día puntual
+  // de una OT multi-día — el resto de hhTotal se sigue repartiendo parejo
+  // entre los días sin override, ver hhPorDia().
+  function editarHHDia(otId: string, diaCode: string, horas: number | null) {
+    const ot = plan.ots.find(o => o.id === otId);
+    if (!ot) return;
+    const actual = { ...(ot.hhPorDiaManual ?? {}) };
+    if (horas == null) {
+      delete actual[diaCode];
+    } else {
+      actual[diaCode] = horas;
+    }
+    onPatchOt(otId, { hhPorDiaManual: Object.keys(actual).length > 0 ? actual : null });
+  }
+
   // Arrastrar una OT y soltarla sobre la sección de un grupo (G1-G4/Diurno/
   // Nocturno) dentro de un día: fija el grupo a mano (grupoManual=true, ver
   // ots/[otId]/route.ts) para que Balancear ya no la mueva. Si la OT viene de
@@ -627,10 +676,22 @@ export default function TableroSemanal({
     // guardia (OPEPLANT) abarca toda la semana en un solo registro, así que
     // dropear al mismo técnico en un día distinto debe seguir registrando su
     // membresía de cuadrilla para ESE día aunque ya figure en la OT.
-    const yaEnCrew = (cuadrilla[ot.grupo]?.[diaCode] ?? []).some(t => t.nombre === nombre);
-    if (diaCode && !yaEnCrew) {
+    //
+    // Si la OT abarca varios días, registrar al técnico en la cuadrilla del
+    // grupo para TODOS los días que la OT tiene programados (no solo el día
+    // donde se soltó) — evita repetir el arrastre día por día para una OT de
+    // una sola persona en toda la semana, y hace que la capacidad/"tecnicosDia"
+    // reflejen su presencia en cada día real de la OT.
+    const diasParaRegistrar = diaCode
+      ? ot.dias.filter(d => {
+          if (tecnico && !trabajaEseDia(tecnico.asistencia, d)) return false;
+          const yaEnCrew = (cuadrilla[ot.grupo]?.[d] ?? []).some(t => t.nombre === nombre);
+          return !yaEnCrew;
+        })
+      : [];
+    if (diasParaRegistrar.length > 0) {
       const r = plan.roster.find(x => x.nombre === nombre);
-      await onEditCuadrilla(ot.grupo, [diaCode], [{ nombre, usuarioId: r?.usuarioId ?? null }]);
+      await onEditCuadrilla(ot.grupo, diasParaRegistrar, [{ nombre, usuarioId: r?.usuarioId ?? null }]);
     }
     if (!ot.personalAsignado.includes(nombre)) {
       onPatchOt(otId, { personalAsignado: [...ot.personalAsignado, nombre] });
@@ -720,6 +781,7 @@ export default function TableroSemanal({
             onClickBacklog={clickAgregarBacklog}
             onDevolverABacklog={otId => moverADia(otId, "")}
             onEditarHH={editarHH}
+            onEditarHHDia={editarHHDia}
             onEditCuadrilla={onEditCuadrilla}
             onEditCapacidad={onEditCapacidad}
           />
@@ -745,6 +807,7 @@ export default function TableroSemanal({
                 onClickBacklog={clickAgregarBacklog}
                 onDevolverABacklog={otId => moverADia(otId, "")}
                 onEditarHH={editarHH}
+                onEditarHHDia={editarHHDia}
                 onEditCuadrilla={onEditCuadrilla}
                 onEditCapacidad={onEditCapacidad}
               />

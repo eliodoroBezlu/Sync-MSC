@@ -21,6 +21,7 @@ export interface OtParaCapacidad {
   grupo: string;
   dias: string[];
   hhTotal: number;
+  hhPorDiaManual?: Record<string, number> | null;
 }
 
 export interface CapacidadGrupoDia {
@@ -68,8 +69,16 @@ function ordenarGrupos(presentes: Set<string>): string[] {
   return ordenados;
 }
 
-function hhPorDia(ot: OtParaCapacidad): number {
-  return ot.hhTotal / Math.max(1, ot.dias.length);
+// Reparto de hhTotal en los días de la OT: si el día tiene una entrada en
+// hhPorDiaManual, se usa tal cual; el resto de hhTotal (descontando lo ya
+// reservado en días con override) se reparte parejo entre los días sin override.
+function hhPorDia(ot: OtParaCapacidad, dia: string): number {
+  const manual = ot.hhPorDiaManual?.[dia];
+  if (manual != null) return manual;
+  const diasSinOverride = ot.dias.filter(d => ot.hhPorDiaManual?.[d] == null);
+  const hhReservado = ot.dias.reduce((s, d) => s + (ot.hhPorDiaManual?.[d] ?? 0), 0);
+  const hhRestante = Math.max(0, ot.hhTotal - hhReservado);
+  return hhRestante / Math.max(1, diasSinOverride.length);
 }
 
 function utilizacion(programadas: number, disponibles: number): number {
@@ -97,7 +106,7 @@ export function calcularReporteCapacidad(
       const horasDisponibles = manual ?? headcount * HORAS_POR_PERSONA_DIA;
       const horasProgramadas = ots
         .filter(o => o.grupo === grupo && o.dias.includes(dia))
-        .reduce((s, o) => s + hhPorDia(o), 0);
+        .reduce((s, o) => s + hhPorDia(o, dia), 0);
       porGrupoDia.push({
         grupo,
         dia,

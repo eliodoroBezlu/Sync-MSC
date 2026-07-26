@@ -48,6 +48,13 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       data.dias      = body.dias?.length ? body.dias : expandirDias(body.diasTexto ?? "");
     }
     if ("dias" in body) data.dias = body.dias;
+    if ("hhPorDiaManual" in body) {
+      const v = body.hhPorDiaManual;
+      const esMapaValido = v && typeof v === "object" && !Array.isArray(v)
+        && Object.values(v).every(x => typeof x === "number" && Number.isFinite(x) && x >= 0);
+      data.hhPorDiaManual = v === null ? null : esMapaValido ? v : undefined;
+      if (data.hhPorDiaManual === undefined) delete data.hhPorDiaManual;
+    }
 
     let ot = await prisma.planBorradorOt.update({ where: { id: otId }, data });
 
