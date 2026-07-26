@@ -191,6 +191,8 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
   const [cuadrilla, setCuadrilla] = useState<CuadrillaMatriz>({});
   const [mostrarAgregarContratista, setMostrarAgregarContratista] = useState(false);
   const [quitandoRosterId, setQuitandoRosterId] = useState<string | null>(null);
+  const [filtroOts, setFiltroOts] = useState("");
+  const [filtroGrupoOts, setFiltroGrupoOts] = useState("");
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -633,7 +635,7 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
         {/* Tab OTs */}
         {tab === "ots" && (
           <div style={{ background: "white", borderRadius: "0 12px 12px 12px", overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
-            <div style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>Lista de OTs del plan</div>
               {!yaPublicado && (
                 <>
@@ -656,22 +658,75 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
                 <div style={{ fontSize: 11, color: "#cbd5e1" }}>Formato: columnas numeroOT, tipoOT, tipoTrabajo, descripcion, tag, personas, hrsTrabajo, diasTexto, fechaInicioOt, fechaFinOt</div>
               </div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ background: "#f8fafc" }}>
-                      {["#", "OT", "Descripción / TAG", "Fechas", "HH", "Grupo", "Personal", ""].map(h => (
-                        <th key={h} style={{ padding: "8px", fontSize: 11, fontWeight: 700, color: "#64748b", textAlign: "left", whiteSpace: "nowrap" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {plan.ots.map(ot => (
-                      <OtRow key={ot.id} ot={ot} onSave={patchOt} onDelete={deleteOt} />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <>
+                <div style={{ padding: "10px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <input
+                    value={filtroOts}
+                    onChange={e => setFiltroOts(e.target.value)}
+                    placeholder="Buscar por # OT, TAG o descripción…"
+                    style={{
+                      flex: "1 1 240px", padding: "7px 12px", borderRadius: 8,
+                      border: "1.5px solid #e2e8f0", fontSize: 12.5, boxSizing: "border-box" as const,
+                    }}
+                  />
+                  <select
+                    value={filtroGrupoOts}
+                    onChange={e => setFiltroGrupoOts(e.target.value)}
+                    style={{
+                      padding: "7px 10px", borderRadius: 8, border: "1.5px solid #e2e8f0",
+                      fontSize: 12.5, color: "#374151", background: "white",
+                    }}
+                  >
+                    <option value="">Todos los grupos</option>
+                    {GRUPOS.map(g => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                  {(filtroOts || filtroGrupoOts) && (
+                    <button
+                      onClick={() => { setFiltroOts(""); setFiltroGrupoOts(""); }}
+                      style={{
+                        padding: "7px 12px", borderRadius: 8, border: "1px solid #e2e8f0",
+                        background: "white", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                      }}
+                    >Limpiar</button>
+                  )}
+                </div>
+                {(() => {
+                  const q = filtroOts.trim().toLowerCase();
+                  const otsFiltradas = plan.ots.filter(ot => {
+                    const coincideTexto = !q
+                      || ot.numeroOT.toLowerCase().includes(q)
+                      || ot.tag.toLowerCase().includes(q)
+                      || ot.descripcion.toLowerCase().includes(q);
+                    const coincideGrupo = !filtroGrupoOts || ot.grupo === filtroGrupoOts;
+                    return coincideTexto && coincideGrupo;
+                  });
+                  if (otsFiltradas.length === 0) {
+                    return (
+                      <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
+                        Ninguna OT coincide con el filtro.
+                      </div>
+                    );
+                  }
+                  return (
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ background: "#f8fafc" }}>
+                            {["#", "OT", "Descripción / TAG", "Fechas", "HH", "Grupo", "Personal", ""].map(h => (
+                              <th key={h} style={{ padding: "8px", fontSize: 11, fontWeight: 700, color: "#64748b", textAlign: "left", whiteSpace: "nowrap" }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {otsFiltradas.map(ot => (
+                            <OtRow key={ot.id} ot={ot} onSave={patchOt} onDelete={deleteOt} />
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+              </>
             )}
           </div>
         )}
