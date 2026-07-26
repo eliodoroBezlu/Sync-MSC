@@ -561,7 +561,8 @@ model PlanBorradorOt {
   solicitante         String?  // columna Q del Excel PROGRAMA
   observaciones       String?  // columna R del Excel PROGRAMA
   grupo               String   @default("Diurno")
-  grupoManual         Boolean  @default(false) // true si el planificador fijó el grupo a mano — Balancear no lo toca
+  grupoPorDia         Json?    // {dia: grupo} — override manual del grupo en días puntuales de una OT multi-día; los días sin entrada aquí siguen usando `grupo`, ver grupoDelDia() en cuadrillas.ts
+  grupoManual         Boolean  @default(false) // true si el planificador fijó el grupo (o algún grupoPorDia) a mano — Balancear no lo toca
   personalAsignado    String[] // cache derivado de CuadrillaMiembro — no editar directo, ver /api/planificacion/[id]/cuadrillas
   personalAsignadoIds String[]
   esGuardia           Boolean  @default(false)

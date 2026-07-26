@@ -5,6 +5,7 @@ import {
   construirMatriz,
   cachePersonalAsignado,
   seedMembresiaDesdeAsistencia,
+  grupoDelDia,
   type CuadrillaMiembroRow,
 } from "@/lib/planificacion/cuadrillas";
 
@@ -121,16 +122,17 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       }
 
       // Recalcular el cache personalAsignado/personalAsignadoIds de las OTs
-      // de este grupo cuyos días programados se vieron afectados.
-      const otsAfectadas = await tx.planBorradorOt.findMany({
-        where: { planBorradorId: id, grupo: body.grupo },
-      });
-      const miembrosActualizados = await tx.cuadrillaMiembro.findMany({
-        where: { planBorradorId: id, grupo: body.grupo },
-      });
-      for (const ot of otsAfectadas) {
-        if (!ot.dias.some(d => dias.includes(d))) continue;
-        const cache = cachePersonalAsignado(ot, miembrosActualizados as CuadrillaMiembroRow[]);
+      // cuyo grupo EFECTIVO en algún día afectado es este grupo — se recorre
+      // todo el plan (no solo `grupo: body.grupo`) porque, con grupoPorDia,
+      // una OT de otro grupo base puede tener un día puntual override a
+      // body.grupo.
+      const otsDelPlan = await tx.planBorradorOt.findMany({ where: { planBorradorId: id } });
+      const miembrosActualizados = await tx.cuadrillaMiembro.findMany({ where: { planBorradorId: id } });
+      for (const ot of otsDelPlan) {
+        const otConGrupo = { ...ot, grupoPorDia: ot.grupoPorDia as Record<string, string> | null };
+        const tocaEsteGrupo = ot.dias.some(d => dias.includes(d) && grupoDelDia(otConGrupo, d) === body.grupo);
+        if (!tocaEsteGrupo) continue;
+        const cache = cachePersonalAsignado(otConGrupo, miembrosActualizados as CuadrillaMiembroRow[]);
         await tx.planBorradorOt.update({ where: { id: ot.id }, data: cache });
       }
     });

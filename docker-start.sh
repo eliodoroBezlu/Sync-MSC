@@ -187,6 +187,9 @@ const migraciones = [
 
   // ── Reparto manual de HH por día en una OT multi-día (2026-07) ──────────────
   "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS \"hhPorDiaManual\" JSONB",
+
+  // ── Grupo manual por día en una OT multi-día (2026-07) ──────────────────────
+  "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS \"grupoPorDia\" JSONB",
 ];
 
 (async () => {

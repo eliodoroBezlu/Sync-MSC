@@ -7,6 +7,7 @@ import type { TecnicoRef } from "./types";
 import { tipoOtDisplay } from "@/lib/tiposOt";
 import { calcularDiasNecesarios, distribuirEnDias, DIAS_LABORALES } from "@/lib/planificacion/balanceador";
 import { calcularReporteCapacidad, horasDisponiblesGrupoDia } from "@/lib/planificacion/capacidad";
+import { grupoDelDia } from "@/lib/planificacion/cuadrillas";
 import CuadrillaEditor from "./CuadrillaEditor";
 
 type EditCuadrillaFn = (
@@ -62,13 +63,17 @@ function grupoColor(g: string) {
 // manualmente (vía el formulario de edición de la OT) a un grupo vacío,
 // igual que en la plantilla Excel "I-XX" (GRUPO 1-4 + TURNO DIURNO/NOCTURNO
 // fijos todos los días).
-function agruparPorGrupo(ots: OtBorrador[], incluirVacios: boolean): Array<{ grupo: string; ots: OtBorrador[] }> {
-  const presentes = new Set(ots.map(o => o.grupo));
+// Agrupa por el grupo EFECTIVO de cada OT en `diaCode` (grupoPorDia[diaCode]
+// si existe, si no el grupo base) — así una OT multi-día con un día puntual
+// reasignado a otro grupo (ver moverAGrupoEnDia) aparece en la sección
+// correcta de ESE día sin afectar el resto de sus días.
+function agruparPorGrupo(ots: OtBorrador[], incluirVacios: boolean, diaCode: string): Array<{ grupo: string; ots: OtBorrador[] }> {
+  const presentes = new Set(ots.map(o => grupoDelDia(o, diaCode)));
   const ordenados = incluirVacios ? [...GRUPOS_ORDEN] : GRUPOS_ORDEN.filter(g => presentes.has(g));
   for (const g of presentes) {
     if (!ordenados.includes(g)) ordenados.push(g);
   }
-  return ordenados.map(grupo => ({ grupo, ots: ots.filter(o => o.grupo === grupo) }));
+  return ordenados.map(grupo => ({ grupo, ots: ots.filter(o => grupoDelDia(o, diaCode) === grupo) }));
 }
 
 function colorUtilizacion(pct: number, disponible: number): { bg: string; color: string } {
@@ -201,6 +206,8 @@ function OtCard({
 }) {
   const s = tipoOtDisplay(ot.tipoOT);
   const multiDia = ot.dias.length > 1;
+  const grupoEsteDia = grupoDelDia(ot, diaCode);
+  const grupoSobreescrito = grupoEsteDia !== ot.grupo;
   const horasEsteDia = hhPorDia(ot, diaCode);
   const manualEsteDia = ot.hhPorDiaManual?.[diaCode] != null;
   const [editandoHH, setEditandoHH] = useState(false);
@@ -265,7 +272,10 @@ function OtCard({
         overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const,
       }}>{ot.descripcion}</div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-        <span style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600 }}>{ot.grupo}{ot.personas > 1 ? ` · ${ot.personas}px` : ""}</span>
+        <span
+          style={{ fontSize: 9, color: grupoSobreescrito ? "#7c3aed" : "#94a3b8", fontWeight: grupoSobreescrito ? 800 : 600 }}
+          title={grupoSobreescrito ? `Grupo base: ${ot.grupo} · este día: ${grupoEsteDia}` : undefined}
+        >{grupoEsteDia}{grupoSobreescrito ? " ✎" : ""}{ot.personas > 1 ? ` · ${ot.personas}px` : ""}</span>
         {editandoHH ? (
           <input
             type="number" min={0} step={0.5} autoFocus
@@ -368,7 +378,7 @@ function DiaColumn({
             Sin OTs pendientes
           </p>
         )}
-        {agruparPorGrupo(ots, !esBacklog).map(({ grupo, ots: otsGrupo }) => {
+        {agruparPorGrupo(ots, !esBacklog, diaCode).map(({ grupo, ots: otsGrupo }) => {
           const gc = grupoColor(grupo);
           const hhGrupo = esBacklog ? otsGrupo.reduce((s, o) => s + o.hhTotal, 0) : otsGrupo.reduce((s, o) => s + hhPorDia(o, diaCode), 0);
           const miembrosGrupo = cuadrilla[grupo]?.[diaCode] ?? [];
@@ -643,16 +653,22 @@ export default function TableroSemanal({
   }
 
   // Arrastrar una OT y soltarla sobre la sección de un grupo (G1-G4/Diurno/
-  // Nocturno) dentro de un día: fija el grupo a mano (grupoManual=true, ver
-  // ots/[otId]/route.ts) para que Balancear ya no la mueva. Si la OT viene de
-  // otro día o de Sin programar, además hay que ubicarla en este día, igual
-  // que moverADia.
+  // Nocturno) dentro de un día. Si ese día YA es parte de la OT, es un ajuste
+  // puntual: solo ESE día pasa al grupo elegido (grupoPorDia), el resto de
+  // los días de la OT se mantienen en su grupo actual — así una OT dividida
+  // en varios días (ej. Lu-Vi en Diurno) puede tener un día suelto (ej.
+  // Jueves) reasignado a otro grupo (ej. G2) sin mover el resto. Si la OT
+  // viene de otro día o de Sin programar, es la primera vez que se ubica: se
+  // fija el grupo base y los días, igual que antes.
   function moverAGrupoEnDia(otId: string, dia: string, grupo: string) {
     const ot = plan.ots.find(o => o.id === otId);
     if (!ot) return;
     const yaEnEsteDia = ot.dias?.includes(dia) ?? false;
     if (yaEnEsteDia) {
-      onPatchOt(otId, { grupo });
+      const actual = { ...(ot.grupoPorDia ?? {}) };
+      if (grupo === ot.grupo) delete actual[dia];
+      else actual[dia] = grupo;
+      onPatchOt(otId, { grupoPorDia: Object.keys(actual).length > 0 ? actual : null });
       return;
     }
     if (!ot.esGuardia && DIAS_LABORALES.includes(dia)) {
@@ -681,17 +697,26 @@ export default function TableroSemanal({
     // grupo para TODOS los días que la OT tiene programados (no solo el día
     // donde se soltó) — evita repetir el arrastre día por día para una OT de
     // una sola persona en toda la semana, y hace que la capacidad/"tecnicosDia"
-    // reflejen su presencia en cada día real de la OT.
+    // reflejen su presencia en cada día real de la OT. Cada día se registra en
+    // SU grupo efectivo (grupoDelDia): con grupoPorDia, días distintos de la
+    // misma OT pueden pertenecer a grupos distintos.
     const diasParaRegistrar = diaCode
       ? ot.dias.filter(d => {
           if (tecnico && !trabajaEseDia(tecnico.asistencia, d)) return false;
-          const yaEnCrew = (cuadrilla[ot.grupo]?.[d] ?? []).some(t => t.nombre === nombre);
+          const yaEnCrew = (cuadrilla[grupoDelDia(ot, d)]?.[d] ?? []).some(t => t.nombre === nombre);
           return !yaEnCrew;
         })
       : [];
     if (diasParaRegistrar.length > 0) {
       const r = plan.roster.find(x => x.nombre === nombre);
-      await onEditCuadrilla(ot.grupo, diasParaRegistrar, [{ nombre, usuarioId: r?.usuarioId ?? null }]);
+      const diasPorGrupo = new Map<string, string[]>();
+      for (const d of diasParaRegistrar) {
+        const g = grupoDelDia(ot, d);
+        diasPorGrupo.set(g, [...(diasPorGrupo.get(g) ?? []), d]);
+      }
+      for (const [g, dias] of diasPorGrupo) {
+        await onEditCuadrilla(g, dias, [{ nombre, usuarioId: r?.usuarioId ?? null }]);
+      }
     }
     if (!ot.personalAsignado.includes(nombre)) {
       onPatchOt(otId, { personalAsignado: [...ot.personalAsignado, nombre] });
@@ -708,7 +733,7 @@ export default function TableroSemanal({
       // directo, que lo sacaría de la OT los 7 días a la vez. El PATCH de
       // cuadrillas ya reconcilia personalAsignado en el servidor dejándolo
       // solo si sigue siendo elegible en algún otro día de la semana.
-      await onEditCuadrilla(ot.grupo, [diaCode], undefined, [nombre]);
+      await onEditCuadrilla(grupoDelDia(ot, diaCode), [diaCode], undefined, [nombre]);
       return;
     }
     onPatchOt(otId, { personalAsignado: ot.personalAsignado.filter(n => n !== nombre) });

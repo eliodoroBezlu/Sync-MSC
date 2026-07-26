@@ -63,12 +63,26 @@ export function tecnicosDeCuadrillaEnDia(
     .map(m => ({ nombre: m.tecnicoNombre, usuarioId: m.tecnicoUsuarioId }));
 }
 
-/** Técnicos por cada día que la OT ya tiene programado, según su grupo. */
+/**
+ * Grupo efectivo de una OT en un día puntual: el override de grupoPorDia si
+ * existe para ese día, si no el grupo base de la OT. Mismo patrón que
+ * hhPorDia() en capacidad.ts/TableroSemanal.tsx pero para grupo — permite que
+ * una OT multi-día (ej. Lu-Vi en Diurno) tenga un día puntual (ej. Jueves)
+ * reasignado a otro grupo (ej. G2) sin mover el resto de la OT.
+ */
+export function grupoDelDia(
+  ot: { grupo: string; grupoPorDia?: Record<string, string> | null },
+  dia: string
+): string {
+  return ot.grupoPorDia?.[dia] ?? ot.grupo;
+}
+
+/** Técnicos por cada día que la OT ya tiene programado, según el grupo efectivo de ese día. */
 export function resolverTecnicosDeOt(
-  ot: { grupo: string; dias: string[] },
+  ot: { grupo: string; grupoPorDia?: Record<string, string> | null; dias: string[] },
   miembros: CuadrillaMiembroRow[]
 ): { dia: string; tecnicos: TecnicoRef[] }[] {
-  return ot.dias.map(dia => ({ dia, tecnicos: tecnicosDeCuadrillaEnDia(miembros, ot.grupo, dia) }));
+  return ot.dias.map(dia => ({ dia, tecnicos: tecnicosDeCuadrillaEnDia(miembros, grupoDelDia(ot, dia), dia) }));
 }
 
 /**
@@ -88,14 +102,24 @@ export function resolverTecnicosDeOt(
  * del balanceador (candidatos filtrados por esta misma cuadrilla, ver
  * balanceador.ts) o de una asignación manual explícita — nunca un efecto
  * secundario de editar la cuadrilla.
+ *
+ * Cada día se evalúa contra su grupo efectivo (grupoDelDia): si la OT tiene
+ * un override en grupoPorDia para ese día, la elegibilidad usa ese grupo, no
+ * el grupo base de la OT.
  */
 export function cachePersonalAsignado(
-  ot: { grupo: string; dias: string[]; personalAsignado: string[]; personalAsignadoIds: string[] },
+  ot: {
+    grupo: string;
+    grupoPorDia?: Record<string, string> | null;
+    dias: string[];
+    personalAsignado: string[];
+    personalAsignadoIds: string[];
+  },
   miembros: CuadrillaMiembroRow[]
 ): { personalAsignado: string[]; personalAsignadoIds: string[] } {
   const elegibles = new Map<string, string | null>();
   for (const dia of ot.dias) {
-    for (const t of tecnicosDeCuadrillaEnDia(miembros, ot.grupo, dia)) {
+    for (const t of tecnicosDeCuadrillaEnDia(miembros, grupoDelDia(ot, dia), dia)) {
       elegibles.set(t.nombre, t.usuarioId);
     }
   }

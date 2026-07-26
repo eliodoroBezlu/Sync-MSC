@@ -10,7 +10,7 @@
  */
 
 import type { CuadrillaMatriz } from "./cuadrillas";
-import { DIAS_SEMANA } from "./cuadrillas";
+import { DIAS_SEMANA, grupoDelDia } from "./cuadrillas";
 
 const HORAS_POR_PERSONA_DIA = 10;
 
@@ -19,6 +19,7 @@ export type CapacidadOverride = Record<string, Record<string, number>>;
 
 export interface OtParaCapacidad {
   grupo: string;
+  grupoPorDia?: Record<string, string> | null;
   dias: string[];
   hhTotal: number;
   hhPorDiaManual?: Record<string, number> | null;
@@ -94,6 +95,7 @@ export function calcularReporteCapacidad(
   const presentes = new Set<string>([
     ...Object.keys(cuadrilla),
     ...ots.map(o => o.grupo),
+    ...ots.flatMap(o => (o.grupoPorDia ? Object.values(o.grupoPorDia) : [])),
     ...Object.keys(override),
   ]);
   const grupos = ordenarGrupos(presentes);
@@ -105,7 +107,7 @@ export function calcularReporteCapacidad(
       const manual = override[grupo]?.[dia];
       const horasDisponibles = manual ?? headcount * HORAS_POR_PERSONA_DIA;
       const horasProgramadas = ots
-        .filter(o => o.grupo === grupo && o.dias.includes(dia))
+        .filter(o => grupoDelDia(o, dia) === grupo && o.dias.includes(dia))
         .reduce((s, o) => s + hhPorDia(o, dia), 0);
       porGrupoDia.push({
         grupo,

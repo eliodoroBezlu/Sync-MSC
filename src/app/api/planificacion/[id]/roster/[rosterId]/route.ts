@@ -80,18 +80,20 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       });
     }
 
-    // Reconciliar el cache personalAsignado de las OTs Diurno/Nocturno: este
-    // técnico pudo dejar de cubrir un día que antes cubría, o al revés.
-    const otsAfectadas = await prisma.planBorradorOt.findMany({
-      where: { planBorradorId: id, grupo: { in: ["Diurno", "Nocturno"] } },
-    });
+    // Reconciliar el cache personalAsignado de las OTs que tocan Diurno/
+    // Nocturno (grupo base o override de grupoPorDia): este técnico pudo
+    // dejar de cubrir un día que antes cubría, o al revés.
+    const otsDelPlan = await prisma.planBorradorOt.findMany({ where: { planBorradorId: id } });
+    const otsAfectadas = otsDelPlan
+      .map(o => ({ ...o, grupoPorDia: o.grupoPorDia as Record<string, string> | null }))
+      .filter(o => o.grupo === "Diurno" || o.grupo === "Nocturno"
+        || Object.values(o.grupoPorDia ?? {}).some(g => g === "Diurno" || g === "Nocturno"));
     if (otsAfectadas.length > 0) {
       const miembrosVigentes = await prisma.cuadrillaMiembro.findMany({
-        where: { planBorradorId: id, grupo: { in: ["Diurno", "Nocturno"] } },
-      });
+        where: { planBorradorId: id },
+      }) as CuadrillaMiembroRow[];
       for (const ot of otsAfectadas) {
-        const propios = miembrosVigentes.filter(m => m.grupo === ot.grupo) as CuadrillaMiembroRow[];
-        const cache = cachePersonalAsignado(ot, propios);
+        const cache = cachePersonalAsignado(ot, miembrosVigentes);
         if (
           cache.personalAsignado.length !== ot.personalAsignado.length ||
           cache.personalAsignado.some(n => !ot.personalAsignado.includes(n))

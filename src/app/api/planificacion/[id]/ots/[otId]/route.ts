@@ -23,6 +23,14 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     // Un cambio de grupo hecho a mano (formulario de edición) queda fijo:
     // Balancear ya no lo va a recalcular, ver balancear/route.ts.
     if ("grupo" in body) data.grupoManual = true;
+    if ("grupoPorDia" in body) {
+      const v = body.grupoPorDia;
+      const esMapaValido = v && typeof v === "object" && !Array.isArray(v)
+        && Object.values(v).every(x => typeof x === "string" && x.length > 0);
+      data.grupoPorDia = v === null ? null : esMapaValido ? v : undefined;
+      if (data.grupoPorDia === undefined) delete data.grupoPorDia;
+      else data.grupoManual = true;
+    }
     // personalAsignadoIds no se acepta directo: se resuelve siempre a partir
     // de CuadrillaMiembro más abajo. personalAsignado sí se acepta (drag&drop
     // manual desde el Tablero) pero queda sujeto a reconciliación contra la
@@ -58,14 +66,20 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 
     let ot = await prisma.planBorradorOt.update({ where: { id: otId }, data });
 
-    // Grupo/días/personalAsignado cambiaron: reconciliar contra la cuadrilla
-    // vigente (filtra nombres que ya no son miembros del grupo/día — nunca
-    // agrega miembros nuevos que el usuario no pidió, ver cachePersonalAsignado).
-    if ("grupo" in data || "dias" in data || "personalAsignado" in data) {
+    // Grupo/días/grupoPorDia/personalAsignado cambiaron: reconciliar contra la
+    // cuadrilla vigente (filtra nombres que ya no son miembros del grupo
+    // efectivo de cada día — nunca agrega miembros nuevos que el usuario no
+    // pidió, ver cachePersonalAsignado). Se trae la cuadrilla completa del
+    // plan (no solo ot.grupo) porque, con grupoPorDia, la OT puede tocar más
+    // de un grupo a la vez.
+    if ("grupo" in data || "dias" in data || "grupoPorDia" in data || "personalAsignado" in data) {
       const miembros = await prisma.cuadrillaMiembro.findMany({
-        where: { planBorradorId: id, grupo: ot.grupo },
+        where: { planBorradorId: id },
       });
-      const cache = cachePersonalAsignado(ot, miembros as CuadrillaMiembroRow[]);
+      const cache = cachePersonalAsignado(
+        { ...ot, grupoPorDia: ot.grupoPorDia as Record<string, string> | null },
+        miembros as CuadrillaMiembroRow[]
+      );
       ot = await prisma.planBorradorOt.update({ where: { id: otId }, data: cache });
     }
 

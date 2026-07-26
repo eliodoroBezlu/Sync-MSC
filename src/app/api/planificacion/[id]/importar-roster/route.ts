@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
-import { seedMembresiaDesdeAsistencia, cachePersonalAsignado, calcularGrupo } from "@/lib/planificacion/cuadrillas";
+import { seedMembresiaDesdeAsistencia, cachePersonalAsignado, calcularGrupo, type CuadrillaMiembroRow } from "@/lib/planificacion/cuadrillas";
 import { getWeekDates } from "@/lib/semana";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -219,18 +219,18 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     }
 
     // Un técnico puede haber cambiado de turno (o dejado de aparecer) en el
-    // nuevo Excel: reconciliar el cache personalAsignado de las OTs Diurno/
-    // Nocturno para que ninguna quede con gente que ya no cubre ese grupo/día.
-    const otsAfectadas = await prisma.planBorradorOt.findMany({
-      where: { planBorradorId: id, grupo: { in: ["Diurno", "Nocturno"] } },
-    });
+    // nuevo Excel: reconciliar el cache personalAsignado de las OTs que tocan
+    // Diurno/Nocturno (en su grupo base o en un override de grupoPorDia) para
+    // que ninguna quede con gente que ya no cubre ese grupo/día.
+    const otsDelPlan = await prisma.planBorradorOt.findMany({ where: { planBorradorId: id } });
+    const otsAfectadas = otsDelPlan
+      .map(o => ({ ...o, grupoPorDia: o.grupoPorDia as Record<string, string> | null }))
+      .filter(o => o.grupo === "Diurno" || o.grupo === "Nocturno"
+        || Object.values(o.grupoPorDia ?? {}).some(g => g === "Diurno" || g === "Nocturno"));
     if (otsAfectadas.length > 0) {
-      const miembrosVigentes = await prisma.cuadrillaMiembro.findMany({
-        where: { planBorradorId: id, grupo: { in: ["Diurno", "Nocturno"] } },
-      });
+      const miembrosVigentes = await prisma.cuadrillaMiembro.findMany({ where: { planBorradorId: id } });
       for (const ot of otsAfectadas) {
-        const propios = miembrosVigentes.filter(m => m.grupo === ot.grupo);
-        const cache = cachePersonalAsignado(ot, propios);
+        const cache = cachePersonalAsignado(ot, miembrosVigentes as CuadrillaMiembroRow[]);
         if (
           cache.personalAsignado.length !== ot.personalAsignado.length ||
           cache.personalAsignado.some(n => !ot.personalAsignado.includes(n))
