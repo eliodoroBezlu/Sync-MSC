@@ -9,6 +9,8 @@ import SeleccionOts from "./SeleccionOts";
 import AgregarContratistaModal from "./AgregarContratistaModal";
 import type { OtBorrador, Plan, CuadrillaMatriz } from "./types";
 import { CODIGOS_ASISTENCIA, calcularGrupo } from "@/lib/planificacion/cuadrillas";
+import { generarResumenOtsPdf } from "@/lib/planificacion/generarResumenOtsPdf";
+import { generarPlanSemanalPdf } from "@/lib/planificacion/generarPlanSemanalPdf";
 
 const GRUPOS = ["Diurno", "Nocturno", "G1", "G2", "G3", "G4"];
 const DIAS_SEMANA = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"];
@@ -188,6 +190,8 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [balanceando, setBalanceando] = useState(false);
   const [limpiando, setLimpiando] = useState(false);
+  const [generandoResumenPdf, setGenerandoResumenPdf] = useState(false);
+  const [generandoPlanPdf, setGenerandoPlanPdf] = useState(false);
   const [cuadrilla, setCuadrilla] = useState<CuadrillaMatriz>({});
   const [mostrarAgregarContratista, setMostrarAgregarContratista] = useState(false);
   const [quitandoRosterId, setQuitandoRosterId] = useState<string | null>(null);
@@ -433,6 +437,28 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
     setPublicando(false);
   }
 
+  async function verResumenPdf() {
+    if (!plan) return;
+    setGenerandoResumenPdf(true);
+    try {
+      await generarResumenOtsPdf(plan);
+    } catch (err) {
+      setMsg(`Error: ${err instanceof Error ? err.message : "no se pudo generar el PDF"}`);
+    }
+    setGenerandoResumenPdf(false);
+  }
+
+  async function verPlanPdf() {
+    if (!plan) return;
+    setGenerandoPlanPdf(true);
+    try {
+      await generarPlanSemanalPdf(plan, cuadrilla);
+    } catch (err) {
+      setMsg(`Error: ${err instanceof Error ? err.message : "no se pudo generar el PDF"}`);
+    }
+    setGenerandoPlanPdf(false);
+  }
+
   if (loading || !user) return null;
   if (cargando) return (
     <div style={{ minHeight: "100vh", background: "#f1f5f9" }}>
@@ -556,6 +582,28 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
                   fontWeight: 700, fontSize: 13, cursor: "pointer",
                 }}
               >📅 iCal</button>
+              <button
+                onClick={verResumenPdf}
+                disabled={generandoResumenPdf}
+                style={{
+                  padding: "8px 14px", borderRadius: 8, border: "1.5px solid #ea580c",
+                  background: "white", color: "#ea580c",
+                  fontWeight: 700, fontSize: 13,
+                  cursor: generandoResumenPdf ? "not-allowed" : "pointer",
+                  opacity: generandoResumenPdf ? 0.55 : 1,
+                }}
+              >{generandoResumenPdf ? "Generando…" : "🧾 Resumen PDF"}</button>
+              <button
+                onClick={verPlanPdf}
+                disabled={generandoPlanPdf}
+                style={{
+                  padding: "8px 14px", borderRadius: 8, border: "1.5px solid #0f2847",
+                  background: "white", color: "#0f2847",
+                  fontWeight: 700, fontSize: 13,
+                  cursor: generandoPlanPdf ? "not-allowed" : "pointer",
+                  opacity: generandoPlanPdf ? 0.55 : 1,
+                }}
+              >{generandoPlanPdf ? "Generando…" : "🖨️ Plan Semanal PDF"}</button>
             </div>
           </div>
           {msg && (

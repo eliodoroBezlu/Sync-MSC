@@ -1,6 +1,6 @@
 export type OtBorrador = {
   id: string; control: number | null; numeroOT: string; tipoOT: string;
-  tipoTrabajo: string; descripcion: string; tag: string; descripcionEquipo: string;
+  tipoTrabajo: string; prioridad: string | null; descripcion: string; tag: string; descripcionEquipo: string;
   personas: number; hrsTrabajo: number; hhTotal: number;
   fechaInicioOt: string | null; fechaFinOt: string | null;
   diasTexto: string | null; dias: string[];

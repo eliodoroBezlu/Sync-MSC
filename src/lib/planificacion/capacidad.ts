@@ -73,7 +73,7 @@ function ordenarGrupos(presentes: Set<string>): string[] {
 // Reparto de hhTotal en los días de la OT: si el día tiene una entrada en
 // hhPorDiaManual, se usa tal cual; el resto de hhTotal (descontando lo ya
 // reservado en días con override) se reparte parejo entre los días sin override.
-function hhPorDia(ot: OtParaCapacidad, dia: string): number {
+export function hhPorDia(ot: OtParaCapacidad, dia: string): number {
   const manual = ot.hhPorDiaManual?.[dia];
   if (manual != null) return manual;
   const diasSinOverride = ot.dias.filter(d => ot.hhPorDiaManual?.[d] == null);
