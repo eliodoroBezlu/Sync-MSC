@@ -180,9 +180,10 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
   const correctivos = ot.lineas.filter(l => ["CMP", "CMR"].includes(l.tipoOT));
   const preventivos = ot.lineas.filter(l => !["CMP", "CMR"].includes(l.tipoOT));
   const tieneCorrectivos = correctivos.length > 0;
-  // Si la OT tiene avances diarios, el detalle día a día (tareas ejecutadas, HH real)
-  // ya se muestra completo en "3. Avances Diarios" — mostrar "HH Real" por línea de
-  // equipo en el punto 2 es redundante y confunde con el total semanal real.
+  // Si la OT tiene avances diarios, el detalle día a día (tareas ejecutadas, HH
+  // estimadas y reales por jornada) ya se muestra completo en "3. Avances Diarios"
+  // — mostrar HH Est./HH Real por línea de equipo en el punto 2 es redundante y
+  // confunde con el total semanal real.
   const tieneAvancesDiarios = (ot.registrosDiarios ?? []).length > 0;
 
   // Nombre supervisor desde historial (no el CUID guardado en revisadoPor)
@@ -290,7 +291,7 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
         startY: y,
         margin: { left: 15, right: 15 },
         head: tieneAvancesDiarios
-          ? [["TAG / Equipo", "Síntoma / Modo de Falla", "Causa Probable", "Resolución Aplicada", "HH Est."]]
+          ? [["TAG / Equipo", "Síntoma / Modo de Falla", "Causa Probable", "Resolución Aplicada"]]
           : [["TAG / Equipo", "Síntoma / Modo de Falla", "Causa Probable", "Resolución Aplicada", "HH Est.", "HH Real"]],
         body: cmr.map(l => tieneAvancesDiarios
           ? [
@@ -298,7 +299,6 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
             l.sintoma ?? "—",
             l.causaProbable ?? "—",
             l.resolucionAplicada ?? "—",
-            fmtHrs(l.tiempoEstimadoHrs),
           ]
           : [
             `${l.tag}\n${l.descripcionEquipo}`,
@@ -313,11 +313,10 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
         alternateRowStyles: { fillColor: GRIS_L },
         columnStyles: tieneAvancesDiarios
           ? {
-            0: { cellWidth: 32, fontStyle: "bold" },
-            1: { cellWidth: 38 },
-            2: { cellWidth: 35 },
-            3: { cellWidth: 45 },
-            4: { cellWidth: 14, halign: "center" },
+            0: { cellWidth: 34, fontStyle: "bold" },
+            1: { cellWidth: 42 },
+            2: { cellWidth: 38 },
+            3: { cellWidth: 51 },
           }
           : {
             0: { cellWidth: 32, fontStyle: "bold" },
@@ -344,14 +343,13 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
         startY: y,
         margin: { left: 15, right: 15 },
         head: tieneAvancesDiarios
-          ? [["TAG / Equipo", "Descripción del Trabajo", "Resolución / Resultado", "HH Est."]]
+          ? [["TAG / Equipo", "Descripción del Trabajo", "Resolución / Resultado"]]
           : [["TAG / Equipo", "Descripción del Trabajo", "Resolución / Resultado", "HH Est.", "HH Real"]],
         body: cmp.map(l => tieneAvancesDiarios
           ? [
             `${l.tag}\n${l.descripcionEquipo}`,
             l.descripcionTrabajo ?? l.sintoma ?? "—",
             l.resolucionAplicada ?? "—",
-            fmtHrs(l.tiempoEstimadoHrs),
           ]
           : [
             `${l.tag}\n${l.descripcionEquipo}`,
@@ -365,10 +363,9 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
         alternateRowStyles: { fillColor: GRIS_L },
         columnStyles: tieneAvancesDiarios
           ? {
-            0: { cellWidth: 32, fontStyle: "bold" },
-            1: { cellWidth: 68 },
-            2: { cellWidth: 63 },
-            3: { cellWidth: 14, halign: "center" },
+            0: { cellWidth: 40, fontStyle: "bold" },
+            1: { cellWidth: 70 },
+            2: { cellWidth: 65 },
           }
           : {
             0: { cellWidth: 32, fontStyle: "bold" },
