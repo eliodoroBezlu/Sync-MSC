@@ -28,7 +28,7 @@ export default function TecnicosPanel({
 
   useEffect(() => {
     if (!areaCodigo) { setUsuarios([]); return; }
-    fetch(`/api/usuarios?rol=4&area=${areaCodigo}`).then(r => r.json()).then(setUsuarios).catch(() => {});
+    fetch(`/api/usuarios?rol=4,6&area=${areaCodigo}`).then(r => r.json()).then(setUsuarios).catch(() => {});
   }, [areaCodigo]);
 
   function toggleUsuario(u: { _id: string; nombreCompleto: string }) {

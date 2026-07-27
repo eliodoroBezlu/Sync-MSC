@@ -470,7 +470,7 @@ export default function ReporteOTPage() {
     setEditTurno(selected.turno ?? "");
     setEditFecha(selected.fecha ? new Date(selected.fecha).toISOString().split("T")[0] : "");
     setEditTecnicos(selected.tecnicos.map(t => ({ usuarioId: t.usuarioId ?? "", nombreCompleto: t.nombreCompleto })));
-    fetch(`/api/usuarios?rol=4&area=${selected.areaCodigo}&all=true`).then(r => r.json()).then(setUsuariosDisponibles).catch(() => {});
+    fetch(`/api/usuarios?rol=4,6&area=${selected.areaCodigo}&all=true`).then(r => r.json()).then(setUsuariosDisponibles).catch(() => {});
     setEditMode(true);
   }
 

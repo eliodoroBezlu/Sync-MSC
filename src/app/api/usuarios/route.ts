@@ -11,7 +11,12 @@ export async function GET(req: NextRequest) {
 
   const where: Record<string, unknown> = {};
   if (!all) where.activo = true;
-  if (rolParam) where.rol = Number(rolParam);
+  if (rolParam) {
+    // Acepta uno o varios roles separados por coma (p.ej. "4,6" = Técnico + Contratista)
+    const roles = rolParam.split(",").map(Number).filter((n) => !Number.isNaN(n));
+    if (roles.length === 1) where.rol = roles[0];
+    else if (roles.length > 1) where.rol = { in: roles };
+  }
   if (contratistaParam === "true") where.esContratista = true;
 
   const users = await prisma.usuario.findMany({
