@@ -99,9 +99,12 @@ const ESTADO_COLOR: Record<string, [number, number, number]> = {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmt(d?: string | Date) {
   if (!d) return "—";
-  // Añadir T12:00:00 para evitar que la fecha ISO se interprete como UTC medianoche
-  // y aparezca un día antes en zonas horarias negativas (Bolivia = UTC-4)
-  const normalized = typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d + "T12:00:00" : d;
+  // Tomar solo el prefijo YYYY-MM-DD (venga como fecha sola o como timestamp ISO
+  // completo, p.ej. tras un viaje por Prisma) y anclarlo a mediodía local, para que
+  // la medianoche UTC no caiga en el día anterior en zonas horarias negativas
+  // (Bolivia = UTC-4).
+  const match = typeof d === "string" ? d.match(/^(\d{4}-\d{2}-\d{2})/) : null;
+  const normalized = match ? match[1] + "T12:00:00" : d;
   return new Date(normalized).toLocaleDateString("es-BO", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 function fmtHrs(n?: number) {
@@ -348,27 +351,47 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
     doc.setTextColor(...AZUL);
     doc.text("Trabajos Preventivos / Predictivos", 15, y);
     y += 4;
+
+    // Si la OT tiene avances diarios, el detalle de tareas ejecutadas y HH real por
+    // día ya se muestra completo en "3. Avances Diarios" — repetirlo aquí (solo con
+    // el dato del día 1) es redundante y confunde con el total semanal real.
+    const tieneAvancesDiarios = (ot.registrosDiarios ?? []).length > 0;
+
     autoTable(doc, {
       startY: y,
       margin: { left: 15, right: 15 },
-      head: [["TAG / Equipo", "Tipo", "Descripción del Trabajo", "Tareas Ejecutadas", "HH Real"]],
-      body: preventivos.map(l => [
-        `${l.tag}\n${l.descripcionEquipo}`,
-        l.tipoOT,
-        l.descripcionTrabajo ?? "—",
-        (l.tareasEjecutadas ?? []).join("\n") || "—",
-        fmtHrs(l.tiempoRealHrs),
-      ]),
+      head: tieneAvancesDiarios
+        ? [["TAG / Equipo", "Tipo", "Descripción del Trabajo"]]
+        : [["TAG / Equipo", "Tipo", "Descripción del Trabajo", "Tareas Ejecutadas", "HH Real"]],
+      body: preventivos.map(l => tieneAvancesDiarios
+        ? [
+          `${l.tag}\n${l.descripcionEquipo}`,
+          l.tipoOT,
+          l.descripcionTrabajo ?? "—",
+        ]
+        : [
+          `${l.tag}\n${l.descripcionEquipo}`,
+          l.tipoOT,
+          l.descripcionTrabajo ?? "—",
+          (l.tareasEjecutadas ?? []).join("\n") || "—",
+          fmtHrs(l.tiempoRealHrs),
+        ]),
       headStyles: { fillColor: NAVY, textColor: BLANCO, fontSize: 7, fontStyle: "bold", cellPadding: 2.5 },
       bodyStyles: { fontSize: 7.5, cellPadding: 2.5, textColor: NEGRO },
       alternateRowStyles: { fillColor: GRIS_L },
-      columnStyles: {
-        0: { cellWidth: 32, fontStyle: "bold" },
-        1: { cellWidth: 14, halign: "center" },
-        2: { cellWidth: 50 },
-        3: { cellWidth: 50 },
-        4: { cellWidth: 18, halign: "center" },
-      },
+      columnStyles: tieneAvancesDiarios
+        ? {
+          0: { cellWidth: 40, fontStyle: "bold" },
+          1: { cellWidth: 20, halign: "center" },
+          2: { cellWidth: 105 },
+        }
+        : {
+          0: { cellWidth: 32, fontStyle: "bold" },
+          1: { cellWidth: 14, halign: "center" },
+          2: { cellWidth: 50 },
+          3: { cellWidth: 50 },
+          4: { cellWidth: 18, halign: "center" },
+        },
     });
     y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
   }
@@ -541,9 +564,10 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
   const totalEst  = ot.hhEstimadasPlan ?? ot.lineas.reduce((s, l) => s + (l.tiempoEstimadoHrs ?? 0), 0);
   const hhLineas  = ot.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0);
   const hhDiarios = (ot.registrosDiarios ?? []).reduce((s, r) => s + (r.hhTrabajadas ?? 0), 0);
-  // Día 1 → horas en lineas[].tiempoRealHrs. Días 2+ → en registrosDiarios (nunca duplican el día 1).
-  // La suma correcta es siempre hhLineas + hhDiarios.
-  const totalReal = hhLineas + hhDiarios;
+  // El día 1 ya queda registrado como el primer registroDiario (ver POST /api/ordenes),
+  // así que lineas[].tiempoRealHrs solo se suma aparte cuando todavía no hay ningún
+  // registro diario (misma regla que ordenes/reporte/page.tsx para evitar duplicar el día 1).
+  const totalReal = hhDiarios > 0 ? hhDiarios : hhLineas;
   const diff      = Math.round((totalReal - totalEst) * 10) / 10;
   const pct       = totalEst > 0 ? Math.round((totalReal / totalEst) * 100) : 0;
 
