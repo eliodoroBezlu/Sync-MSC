@@ -272,7 +272,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { semana, anio, disciplina, areaCodigo, fechaInicio, fechaFin,
-            personal, otsProgramadas, subidoPor } = body;
+            personal, otsProgramadas, subidoPor, estado } = body;
 
     let hhDisponiblesSemana = 0, hhProgramadasSemana = 0, hhReactivoSemana = 0;
     const diasKeys = ["Lu","Ma","Mi","Ju","Vi","Sa","Do"] as const;
@@ -295,12 +295,25 @@ export async function POST(req: NextRequest) {
                utilizacion: hhDisp > 0 ? Math.round((hhProg / hhDisp) * 100) : 0 };
     });
 
-    const existente = await prisma.programacionSemanal.findFirst({
-      where: { semana, anio, areaCodigo: areaCodigo || null },
+    // El único constraint real en la BD es (semana, anio, disciplina) — ver
+    // @@unique en el schema. "MEC" es un bucket compartido por varias áreas
+    // (Chancado, Recursos Hídricos, Flotación, etc: cualquier área que
+    // areaToDisciplina() no mapea explícitamente), así que dos áreas de esa
+    // disciplina NUNCA pueden tener programas separados la misma semana.
+    // Antes este chequeo filtraba solo por areaCodigo, que no es único --
+    // eso permitía crear un registro con la disciplina equivocada (p. ej.
+    // subir el Excel de Eléctrico con el área activa en una MEC) sin
+    // detectar el choque real, contaminando el programa MEC compartido.
+    const existente = await prisma.programacionSemanal.findUnique({
+      where: { semana_anio_disciplina: { semana, anio, disciplina } },
     });
     if (existente) {
+      const mismaArea = existente.areaCodigo === (areaCodigo || null);
+      const detalleArea = mismaArea
+        ? "en esta área"
+        : `en el área ${existente.areaCodigo ?? "(sin área)"} — la disciplina "${disciplina}" ya tiene un programa esta semana`;
       return Response.json(
-        { ok: false, error: `Ya existe un plan para semana ${semana}/${anio} en esta área. Elimínalo primero si deseas reemplazarlo.` },
+        { ok: false, error: `Ya existe un plan para semana ${semana}/${anio} ${detalleArea}. Elimínalo primero si deseas reemplazarlo.`, existenteId: existente.id },
         { status: 409 }
       );
     }
@@ -310,7 +323,7 @@ export async function POST(req: NextRequest) {
         semana, anio, disciplina, areaCodigo: areaCodigo || null,
         fechaInicio: new Date(fechaInicio), fechaFin: new Date(fechaFin),
         hhDisponiblesSemana, hhProgramadasSemana, hhReactivoSemana,
-        estado: "borrador", subidoPor,
+        estado: estado === "publicado" ? "publicado" : "borrador", subidoPor,
         otsProgramadas: {
           create: (otsProgramadas ?? []).map((o: Record<string, unknown>) => ({
             numeroOT: String(o.numeroOT), tipoOT: String(o.tipoOT),

@@ -978,6 +978,8 @@ function CargaCSVModal({
   const [csv, setCsv] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [conflictoId, setConflictoId] = useState<string | null>(null);
+  const [eliminando, setEliminando] = useState(false);
 
   // Estado Excel
   const [fileName, setFileName]       = useState("");
@@ -1068,7 +1070,7 @@ function CargaCSVModal({
 
   async function handleGuardar() {
     try {
-      setSaving(true); setError("");
+      setSaving(true); setError(""); setConflictoId(null);
       if (!areaCodigo) { setError("Sin área activa — selecciona un área antes de subir el plan"); setSaving(false); return; }
       const ots = modo === "excel" ? preview : parseCSV(csv);
       if (!ots.length) { setError("No se encontraron OTs válidas"); return; }
@@ -1095,12 +1097,35 @@ function CargaCSVModal({
         }),
       });
       const data = await res.json();
-      if (!data.ok) { setError(data.error ?? "Error al importar"); return; }
+      if (!data.ok) {
+        setError(data.error ?? "Error al importar");
+        if (res.status === 409 && data.existenteId) setConflictoId(data.existenteId);
+        return;
+      }
       onSuccess();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error inesperado");
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Habilita cumplir lo que el propio mensaje de error del backend pide
+  // ("elimínalo primero si deseas reemplazarlo") -- antes no existía forma
+  // de hacerlo desde la pantalla, dejando el "ya existe" como callejón sin salida.
+  async function handleEliminarYReemplazar() {
+    if (!conflictoId) return;
+    setEliminando(true); setError("");
+    try {
+      const del = await fetch(`/api/programacion-semanal/${conflictoId}`, { method: "DELETE" });
+      const delData = await del.json();
+      if (!delData.ok) { setError(delData.error ?? "No se pudo eliminar el plan existente"); return; }
+      setConflictoId(null);
+      await handleGuardar();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error inesperado al eliminar");
+    } finally {
+      setEliminando(false);
     }
   }
 
@@ -1266,8 +1291,21 @@ function CargaCSVModal({
         )}
 
         {error && (
-          <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#dc2626" }}>
-            {error}
+          <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#dc2626", display: "flex", flexDirection: "column", gap: 8 }}>
+            <span>{error}</span>
+            {conflictoId && (
+              <button
+                onClick={handleEliminarYReemplazar}
+                disabled={eliminando}
+                style={{
+                  alignSelf: "flex-start", background: "#dc2626", color: "white", border: "none",
+                  borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: 700,
+                  cursor: eliminando ? "not-allowed" : "pointer", opacity: eliminando ? 0.6 : 1,
+                }}
+              >
+                {eliminando ? "Eliminando..." : "Eliminar plan existente y subir este"}
+              </button>
+            )}
           </div>
         )}
 

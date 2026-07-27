@@ -16,6 +16,25 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   return Response.json(serialize(programa as Record<string, unknown>));
 }
 
+// El mensaje de conflicto del POST ("elimínalo primero si deseas
+// reemplazarlo") no tenía forma de cumplirse -- no existía ningún DELETE.
+// Las filas hijas (otsProgramadas/personal/resumenDias) se borran primero
+// porque no tienen onDelete: Cascade en el schema.
+export async function DELETE(_req: NextRequest, { params }: Ctx) {
+  const { id } = await params;
+  const programa = await prisma.programacionSemanal.findUnique({ where: { id } });
+  if (!programa) return Response.json({ ok: false, error: "No encontrado" }, { status: 404 });
+
+  await prisma.$transaction([
+    prisma.otProgramada.deleteMany({ where: { programacionSemanalId: id } }),
+    prisma.personalSemanal.deleteMany({ where: { programacionSemanalId: id } }),
+    prisma.resumenDia.deleteMany({ where: { programacionSemanalId: id } }),
+    prisma.programacionSemanal.delete({ where: { id } }),
+  ]);
+
+  return Response.json({ ok: true });
+}
+
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   try {
     const { id } = await params;
