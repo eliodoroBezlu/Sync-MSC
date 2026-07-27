@@ -24,6 +24,18 @@ function esFondoGuardiaDiurna(cell: XLSX.CellObject | undefined): boolean {
   return !!fg && fg.theme !== 0;
 }
 
+// Un mismo archivo de roster trae todas las disciplinas en bloques
+// verticales dentro de la misma hoja (Instrumentistas, Electricos,
+// Mecanicos, Supervisores), con las mismas columnas de mes/día. Sin este
+// mapeo, el importador siempre leía "Instrumentistas" sin importar la
+// disciplina del plan (ver areaToDisciplina.ts para los códigos válidos).
+const SECCION_POR_DISCIPLINA: Record<string, string> = {
+  INST: "Instrumentistas",
+  ELEC: "Electricos",
+  MEC: "Mecanicos",
+};
+const SECCIONES_CONOCIDAS = Object.values(SECCION_POR_DISCIPLINA).concat("Supervisores");
+
 const MESES_ES: Record<string, number> = {
   enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5,
   julio: 6, agosto: 7, septiembre: 8, octubre: 9, noviembre: 10, diciembre: 11,
@@ -93,24 +105,31 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       );
     }
 
-    // ─── PASO 2: Ubicar la sección "Instrumentistas" bajo ese bloque ──────
+    // ─── PASO 2: Ubicar la sección de la disciplina del plan bajo ese bloque
+    const seccionBuscada = SECCION_POR_DISCIPLINA[plan.disciplina];
+    if (!seccionBuscada) {
+      return NextResponse.json(
+        { error: `No hay una sección de roster configurada para la disciplina "${plan.disciplina}"` },
+        { status: 400 }
+      );
+    }
     let filaEncabezado = -1;
-    let filaInstrumentistas = -1;
+    let filaSeccion = -1;
     for (let i = filaMeses; i < rows.length; i++) {
       const row = rows[i] as unknown[];
       const col3 = String(row[3] ?? "").trim();
-      if (col3 === "Instrumentistas") {
-        filaInstrumentistas = i;
+      if (col3 === seccionBuscada) {
+        filaSeccion = i;
         continue;
       }
-      if (col3 === "NOMBRE" && filaInstrumentistas > 0) {
+      if (col3 === "NOMBRE" && filaSeccion > 0) {
         filaEncabezado = i;
         break;
       }
     }
     if (filaEncabezado < 0) {
       return NextResponse.json(
-        { error: "No se pudo encontrar la sección 'Instrumentistas' en el Excel" },
+        { error: `No se pudo encontrar la sección '${seccionBuscada}' en el Excel` },
         { status: 400 }
       );
     }
@@ -144,8 +163,9 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       const row = rows[i] as unknown[];
       const col3 = String(row[3] ?? "").trim();
 
-      // Parar si encontramos otra sección
-      if (["Supervisores", "Electricos", "Mecanicos"].includes(col3)) break;
+      // Parar si encontramos el inicio de otra sección (cualquiera menos la
+      // que se está leyendo, ya que esa ya quedó atrás en filaSeccion)
+      if (SECCIONES_CONOCIDAS.includes(col3) && col3 !== seccionBuscada) break;
 
       // Excluir filas vacías o de leyenda
       if (!col3 || /^\d+$/.test(col3)) continue;
@@ -183,7 +203,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
             planBorradorId: id,
             nombre: p.nombre,
             usuarioId: p.usuarioId,
-            disciplina: "INST",
+            disciplina: plan.disciplina,
             grupo,
             asistencia: p.asistenciaSemana as unknown as import("@prisma/client").Prisma.InputJsonValue,
             esContratista: false,
