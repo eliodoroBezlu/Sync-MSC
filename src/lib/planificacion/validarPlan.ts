@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { calcularReporteCapacidad, type OtParaCapacidad, type CapacidadOverride } from "./capacidad";
+import { DIAS_SEMANA, type CuadrillaMatriz } from "./cuadrillas";
 
 export interface Alert {
   tipo: "capacidad" | "turno" | "especialista" | "asignacion" | "conflicto" | "prioridad";
@@ -7,7 +9,7 @@ export interface Alert {
   detalles?: Record<string, unknown>;
 }
 
-type OtBorrador = {
+type OtBorrador = OtParaCapacidad & {
   id: string; personas: number; hrsTrabajo: number; grupo: string;
   personalAsignado: string[]; prioridad?: string; esGuardia: boolean;
   numeroOT: string; tipoOT: string; dias: string[]; hhTotal: number;
@@ -21,24 +23,21 @@ export async function validarPlan(
   roster: RosterItem[],
   semana: number,
   anio: number,
-  disciplina: string
+  disciplina: string,
+  cuadrilla: CuadrillaMatriz,
+  capacidadOverride: CapacidadOverride = {}
 ): Promise<Alert[]> {
   const alerts: Alert[] = [];
 
-  // 1. CAPACIDAD: HH disponibles vs programadas
-  const horas_x_dia = 8;
-  const diasSemana = 5; // Lu-Vi por defecto
-  // "D" es descanso (RRHH), no "turno diurno" pese a la letra — solo "T" y
-  // "N" son presencia real en sitio.
-  const activos = roster.filter(r => r.asistencia.some(a => a === "T" || a === "N"));
-  const hhDisponibles = activos.length * diasSemana * horas_x_dia;
-  // hhTotal es el HH real de la OT para toda la semana (del Excel al
-  // importar, o editado a mano) — personas × hrsTrabajo × días asume que
-  // hrsTrabajo es siempre "horas por día", lo cual no es cierto (ver bug de
-  // colapso de hhTotal en api/planificacion/[id]/ots/[otId]/route.ts) y
-  // sobreestima brutalmente OTs multi-día, bloqueando la publicación con una
-  // falsa "sobreprogramación".
-  const hhProgramadas = ots.reduce((s, o) => s + o.hhTotal, 0);
+  // 1. CAPACIDAD: HH disponibles vs programadas — mismo modelo que el
+  // Tablero (calcularReporteCapacidad: 7 días, 10 hrs/persona/día por
+  // grupo, con overrides), no una aproximación aparte. Antes esto usaba
+  // activos × 5 días × 8 horas, un criterio distinto al que el planificador
+  // ve en pantalla, así que el disponible/programado nunca coincidía con
+  // lo que ya había revisado en el Tablero.
+  const reporte = calcularReporteCapacidad(ots, cuadrilla, capacidadOverride, DIAS_SEMANA);
+  const hhDisponibles = reporte.totalDisponible;
+  const hhProgramadas = reporte.totalProgramada;
 
   if (hhProgramadas > hhDisponibles) {
     alerts.push({

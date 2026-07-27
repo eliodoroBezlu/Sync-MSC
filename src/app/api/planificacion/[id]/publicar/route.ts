@@ -2,7 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { validarPlan } from "@/lib/planificacion/validarPlan";
 import { mapEstadoAlPlan } from "@/lib/otEstado";
-import { tecnicosDeCuadrillaEnDia } from "@/lib/planificacion/cuadrillas";
+import { tecnicosDeCuadrillaEnDia, construirMatriz } from "@/lib/planificacion/cuadrillas";
+import type { CapacidadOverride } from "@/lib/planificacion/capacidad";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -65,17 +66,27 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
   const miembrosCuadrilla = await prisma.cuadrillaMiembro.findMany({ where: { planBorradorId: id } });
 
   try {
-    // Validar plan ANTES de publicar
+    // Validar plan ANTES de publicar — misma cuadrilla y capacidadOverride
+    // que ve el planificador en el Tablero, para que el chequeo de
+    // capacidad use exactamente el mismo criterio.
+    const cuadrilla = construirMatriz(miembrosCuadrilla);
+    const capacidadOverride = (borrador.capacidadOverride as CapacidadOverride | null) ?? {};
     const alerts = await validarPlan(
       id,
       otsAProgramar as unknown as Parameters<typeof validarPlan>[1],
       borrador.roster as unknown as Parameters<typeof validarPlan>[2],
       borrador.semana,
       borrador.anio,
-      borrador.disciplina
+      borrador.disciplina,
+      cuadrilla,
+      capacidadOverride
     );
 
-    // Guardar alertas
+    // Cada intento de publicar reemplaza las alertas del intento anterior —
+    // si no se limpian primero, cada click en "Publicar" que falla apila
+    // filas nuevas sobre las viejas y la lista de alertas termina mostrando
+    // advertencias duplicadas o de intentos previos ya superados.
+    await prisma.planConstraintAlert.deleteMany({ where: { planBorradorId: id, resuelto: false } });
     for (const alert of alerts) {
       await prisma.planConstraintAlert.create({
         data: {
