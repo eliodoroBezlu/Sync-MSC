@@ -112,7 +112,7 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
     const resultado = await prisma.$transaction(async (tx) => {
       // Crear o actualizar ProgramacionSemanal
       const ps = await tx.programacionSemanal.upsert({
-        where: { semana_anio_disciplina: { semana: borrador.semana, anio: borrador.anio, disciplina: borrador.disciplina } },
+        where: { semana_anio_disciplina_areaCodigo: { semana: borrador.semana, anio: borrador.anio, disciplina: borrador.disciplina, areaCodigo: borrador.areaCodigo } },
         create: {
           semana: borrador.semana,
           anio: borrador.anio,

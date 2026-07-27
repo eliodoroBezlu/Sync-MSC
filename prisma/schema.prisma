@@ -224,7 +224,16 @@ model ProgramacionSemanal {
   personal       PersonalSemanal[]
   resumenDias    ResumenDia[]
 
-  @@unique([semana, anio, disciplina])
+  // Antes el unique era solo (semana, anio, disciplina). "disciplina" es un
+  // agrupador de solo 4 valores (INST/MEC/ELEC/GENERAL) pero areaToDisciplina()
+  // mapea ~14 áreas físicas distintas (Chancado, Recursos Hídricos, Flotación,
+  // Filtros, Taller General, Equipos Industriales, Contratista TTMB, Molienda,
+  // Lubricación, Generación, etc) al mismo valor por defecto "MEC". Con el
+  // unique viejo, todas esas áreas competían por UNA sola fila por semana:
+  // subir el programa de un área pisaba (o bloqueaba) el de otra área
+  // completamente distinta que compartía disciplina. Se agrega areaCodigo
+  // para que cada área física tenga su propia fila real.
+  @@unique([semana, anio, disciplina, areaCodigo])
   @@index([disciplina, anio, semana(sort: Desc)])
 }
 

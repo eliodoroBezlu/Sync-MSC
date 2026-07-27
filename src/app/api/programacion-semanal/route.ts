@@ -295,25 +295,21 @@ export async function POST(req: NextRequest) {
                utilizacion: hhDisp > 0 ? Math.round((hhProg / hhDisp) * 100) : 0 };
     });
 
-    // El único constraint real en la BD es (semana, anio, disciplina) — ver
-    // @@unique en el schema. "MEC" es un bucket compartido por varias áreas
-    // (Chancado, Recursos Hídricos, Flotación, etc: cualquier área que
-    // areaToDisciplina() no mapea explícitamente), así que dos áreas de esa
-    // disciplina NUNCA pueden tener programas separados la misma semana.
-    // Antes este chequeo filtraba solo por areaCodigo, que no es único --
-    // eso permitía crear un registro con la disciplina equivocada (p. ej.
-    // subir el Excel de Eléctrico con el área activa en una MEC) sin
-    // detectar el choque real, contaminando el programa MEC compartido.
+    // El constraint real en la BD es (semana, anio, disciplina, areaCodigo) --
+    // ver @@unique en el schema. Antes solo incluía disciplina, y como
+    // areaToDisciplina() mapea ~14 áreas físicas distintas (Chancado, Recursos
+    // Hídricos, Flotación, Filtros, Taller General, Equipos Industriales,
+    // Contratista TTMB, Molienda, Lubricación, Generación, etc) al mismo valor
+    // por defecto "MEC", todas esas áreas competían por una sola fila por
+    // semana: subir el programa de un área pisaba o bloqueaba el de otra área
+    // completamente distinta que compartía disciplina. Al incluir areaCodigo
+    // en el constraint, cada área física tiene su propia fila real.
     const existente = await prisma.programacionSemanal.findUnique({
-      where: { semana_anio_disciplina: { semana, anio, disciplina } },
+      where: { semana_anio_disciplina_areaCodigo: { semana, anio, disciplina, areaCodigo: areaCodigo || null } },
     });
     if (existente) {
-      const mismaArea = existente.areaCodigo === (areaCodigo || null);
-      const detalleArea = mismaArea
-        ? "en esta área"
-        : `en el área ${existente.areaCodigo ?? "(sin área)"} — la disciplina "${disciplina}" ya tiene un programa esta semana`;
       return Response.json(
-        { ok: false, error: `Ya existe un plan para semana ${semana}/${anio} ${detalleArea}. Elimínalo primero si deseas reemplazarlo.`, existenteId: existente.id },
+        { ok: false, error: `Ya existe un plan para semana ${semana}/${anio} en esta área. Elimínalo primero si deseas reemplazarlo.`, existenteId: existente.id },
         { status: 409 }
       );
     }

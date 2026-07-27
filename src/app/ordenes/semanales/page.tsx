@@ -1413,16 +1413,13 @@ export default function SemanalesPage() {
       });
       const res  = await fetch(`/api/programacion-semanal?${params}`);
       const data = await res.json();
-      // Si no hay por areaCodigo específico, buscar solo por disciplina (datos compartidos como MEC)
-      if (Array.isArray(data) && data.length > 0) {
-        setPrograma(data[0]);
-      } else {
-        // Fallback: buscar solo por disciplina (para áreas MEC sin programacion propia)
-        const params2 = new URLSearchParams({ semana: String(semana), anio: String(anio), disciplina, limit: "1" });
-        const res2  = await fetch(`/api/programacion-semanal?${params2}`);
-        const data2 = await res2.json();
-        setPrograma(Array.isArray(data2) && data2.length > 0 ? data2[0] : null);
-      }
+      // Ya NO se hace fallback por disciplina sola: ese fallback era lo que
+      // hacía que un área MEC sin programa propio mostrara el de otra área
+      // completamente distinta que compartía disciplina "MEC". Ahora que el
+      // constraint incluye areaCodigo, cada área tiene su propia fila real y
+      // si no existe, corresponde mostrar "sin programa" en vez de tomar
+      // prestado el de otra área.
+      setPrograma(Array.isArray(data) && data.length > 0 ? data[0] : null);
     } finally {
       setLoading(false);
     }
