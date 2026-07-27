@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { validarPlan } from "@/lib/planificacion/validarPlan";
 import { mapEstadoAlPlan } from "@/lib/otEstado";
-import { tecnicosDeCuadrillaEnDia, construirMatriz } from "@/lib/planificacion/cuadrillas";
+import { tecnicosDeCuadrillaEnDia, construirMatriz, grupoDelDia } from "@/lib/planificacion/cuadrillas";
 import type { CapacidadOverride } from "@/lib/planificacion/capacidad";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -155,10 +155,20 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
           const offset = DIA_OFFSET[dia] ?? 0;
           const fechaDiaOt = fechaDia(lunes, offset);
 
+          // Grupo efectivo de ESE día: si la OT tiene un override puntual en
+          // grupoPorDia (ej. reasignada a G3 solo el Domingo, ver
+          // TableroSemanal/moverAGrupoEnDia), hay que usar ese grupo, no el
+          // grupo base de la OT — si no, el día override se publica en el
+          // grupo equivocado y sin la cuadrilla correcta.
+          const grupoDia = grupoDelDia(
+            { ...ot, grupoPorDia: ot.grupoPorDia as Record<string, string> | null },
+            dia
+          );
+
           // Intersección con la cuadrilla vigente de ese día puntual: un
           // técnico que cambió de turno a mitad de semana solo aparece en
           // los días donde realmente cubre este grupo (ver TableroSemanal).
-          const miembrosDia = tecnicosDeCuadrillaEnDia(miembrosCuadrilla, ot.grupo, dia);
+          const miembrosDia = tecnicosDeCuadrillaEnDia(miembrosCuadrilla, grupoDia, dia);
           const nombresDia = ot.personalAsignado.filter(n => miembrosDia.some(t => t.nombre === n));
           const idsDia = nombresDia
             .map(n => miembrosDia.find(t => t.nombre === n)?.usuarioId)
@@ -179,7 +189,7 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
               hhTotal:          hhPorDiaOt(ot, dia),
               personalAsignado:    nombresDia,
               personalAsignadoIds: idsDia,
-              grupo:            ot.grupo,
+              grupo:            grupoDia,
               dia,
               esGuardia:        ot.esGuardia,
               estado:           continuacion ? mapEstadoAlPlan(continuacion.estado) : "no_iniciada",

@@ -434,6 +434,10 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
     } else {
       setMsg(`Error: ${data.error}`);
     }
+    // El servidor limpia y recalcula las alertas en cada intento de
+    // publicar (ok o no) — sin este refetch la pantalla se queda con la
+    // lista cargada al entrar a la página, aunque ya no refleje el estado real.
+    await cargarAlertas();
     setPublicando(false);
   }
 
