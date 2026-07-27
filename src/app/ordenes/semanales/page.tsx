@@ -1371,10 +1371,20 @@ export default function SemanalesPage() {
           : operativas.filter((a) => user.areas.includes(a.codigo));
         if (visible.length === 0) return;
         setAreas(visible);
-        // Priorizar el área del usuario; si no está en la lista, tomar la primera disponible
-        const userPrimaryArea = user.areas?.[0];
-        const defaultArea = visible.find((a) => a.codigo === userPrimaryArea) ?? visible[0];
-        setAreaActiva(defaultArea);
+        // AuthContext.refetch() corre en cada focus/visibilitychange de la
+        // ventana (incluido el que dispara el selector nativo de archivos al
+        // abrir/cerrar el diálogo de subir Excel) y crea un objeto `user`
+        // nuevo cada vez -- este efecto depende de [user], así que se volvía
+        // a ejecutar en pleno medio de una subida y pisaba silenciosamente el
+        // área que el usuario tenía seleccionada por la default (Chancado,
+        // primera de la lista). Resultado: cualquier programa terminaba
+        // subiéndose a Chancado sin importar la pestaña activa. Ahora solo se
+        // fija un área por default si no había ya una selección válida.
+        setAreaActiva((prev) => {
+          if (prev && visible.some((a) => a.codigo === prev.codigo)) return prev;
+          const userPrimaryArea = user.areas?.[0];
+          return visible.find((a) => a.codigo === userPrimaryArea) ?? visible[0];
+        });
       })
       .catch(() => {});
   }, [user]);
