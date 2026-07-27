@@ -618,7 +618,7 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
               fontSize: 13, fontWeight: 600,
             }}>{msg}</div>
           )}
-          {alerts.length > 0 && (
+          {!yaPublicado && alerts.length > 0 && (
             <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
               {alerts.map((a, i) => (
                 <div key={i} style={{
