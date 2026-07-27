@@ -25,6 +25,22 @@ const DIA_OFFSET: Record<string, number> = {
   Lu: 0, Ma: 1, Mi: 2, Ju: 3, Vi: 4, Sa: 5, Do: 6,
 };
 
+// Mismo reparto que hhPorDia() en TableroSemanal.tsx: si el día tiene
+// override manual se usa tal cual, si no el resto de hhTotal se reparte
+// parejo entre los días sin override. Así lo que se publica coincide
+// exactamente con lo que el planificador vio en el Tablero antes de publicar
+// — usar personas×hrsTrabajo por día duplicaría el total de la semana en
+// cada día de una OT multi-día.
+function hhPorDiaOt(ot: { hhTotal: number; dias: string[]; hhPorDiaManual: unknown }, dia: string): number {
+  const manualMap = (ot.hhPorDiaManual ?? {}) as Record<string, number>;
+  const manual = manualMap[dia];
+  if (manual != null) return manual;
+  const diasSinOverride = ot.dias.filter(d => manualMap[d] == null);
+  const hhReservado = ot.dias.reduce((s, d) => s + (manualMap[d] ?? 0), 0);
+  const hhRestante = Math.max(0, ot.hhTotal - hhReservado);
+  return hhRestante / Math.max(1, diasSinOverride.length);
+}
+
 export async function POST(_req: NextRequest, { params }: Ctx) {
   const { id } = await params;
 
@@ -149,7 +165,7 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
               descripcionEquipo: ot.descripcionEquipo ?? "",
               personas:         ot.personas,
               hrsTrabajo:       ot.hrsTrabajo,
-              hhTotal:          ot.personas * ot.hrsTrabajo,
+              hhTotal:          hhPorDiaOt(ot, dia),
               personalAsignado:    nombresDia,
               personalAsignadoIds: idsDia,
               grupo:            ot.grupo,

@@ -10,7 +10,7 @@ export interface Alert {
 type OtBorrador = {
   id: string; personas: number; hrsTrabajo: number; grupo: string;
   personalAsignado: string[]; prioridad?: string; esGuardia: boolean;
-  numeroOT: string; tipoOT: string; dias: string[];
+  numeroOT: string; tipoOT: string; dias: string[]; hhTotal: number;
 };
 
 type RosterItem = { nombre: string; asistencia: string[]; grupo: string };
@@ -32,7 +32,13 @@ export async function validarPlan(
   // "N" son presencia real en sitio.
   const activos = roster.filter(r => r.asistencia.some(a => a === "T" || a === "N"));
   const hhDisponibles = activos.length * diasSemana * horas_x_dia;
-  const hhProgramadas = ots.reduce((s, o) => s + o.personas * o.hrsTrabajo * o.dias.length, 0);
+  // hhTotal es el HH real de la OT para toda la semana (del Excel al
+  // importar, o editado a mano) — personas × hrsTrabajo × días asume que
+  // hrsTrabajo es siempre "horas por día", lo cual no es cierto (ver bug de
+  // colapso de hhTotal en api/planificacion/[id]/ots/[otId]/route.ts) y
+  // sobreestima brutalmente OTs multi-día, bloqueando la publicación con una
+  // falsa "sobreprogramación".
+  const hhProgramadas = ots.reduce((s, o) => s + o.hhTotal, 0);
 
   if (hhProgramadas > hhDisponibles) {
     alerts.push({
