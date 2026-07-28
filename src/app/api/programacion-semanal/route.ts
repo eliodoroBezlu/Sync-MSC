@@ -33,45 +33,74 @@ type OtProgramadaRow = Record<string, unknown> & {
 // salvo que se haya marcado cerradaDefinitiva (la OT no va a continuar).
 const ESTADOS_BLOQUEAN_TECNICO = ["pendiente_revision", "revisado", "concluido"];
 
-async function reconciliarContinuaciones(
-  programas: Array<{ otsProgramadas: OtProgramadaRow[] }>
+async function reabrirSiBloqueada(
+  existente: { id: string; numeroOT: string; estado: string; otJdeNumero: string | null }
 ): Promise<void> {
-  const pendientes = programas
-    .flatMap(p => p.otsProgramadas)
-    .filter(o => !o.ordenTrabajoId && o.estado !== "completada" && o.estado !== "en_revision");
-  if (pendientes.length === 0) return;
+  if (!ESTADOS_BLOQUEAN_TECNICO.includes(existente.estado)) return;
+  const estadoAnterior = existente.estado;
+  await prisma.ordenTrabajo.update({ where: { id: existente.id }, data: { estado: "en_proceso" } });
+  await prisma.otHistorial.create({
+    data: {
+      ordenTrabajoId: existente.id,
+      usuarioId: "system",
+      nombreUsuario: "Sistema",
+      cambio: `Reabierta automáticamente: OT recurrente con nueva semana programada (venía en "${estadoAnterior}")`,
+    },
+  });
+  existente.estado = "en_proceso"; // se comparte por referencia: el resto de filas de esta OT en el mismo lote ya no reabren de nuevo
+}
 
+async function reconciliarContinuaciones(
+  programas: Array<{ fechaFin: Date | string; otsProgramadas: OtProgramadaRow[] }>
+): Promise<void> {
   // OtProgramada.numeroOT guarda el N° de OT del JDE (lo que se ve en la
   // tarjeta del plan), NO el numeroOT interno de OrdenTrabajo (correlativo
   // generado por siguienteNumeroOT(), único por registro). Por eso el match
   // debe hacerse contra OrdenTrabajo.otJdeNumero — comparar contra
   // OrdenTrabajo.numeroOT nunca encontraba coincidencias y esta reconciliación
   // quedaba sin efecto en la práctica para cualquier OT de origen JDE.
+  const pendientes = programas
+    .flatMap(p => p.otsProgramadas)
+    .filter(o => !o.ordenTrabajoId && o.estado !== "completada" && o.estado !== "en_revision");
+
+  // Filas YA enlazadas que muestran "completada"/"en_revision": si la semana
+  // ya pasó, es un cierre legítimo y no se toca. Si es la semana actual o una
+  // futura, ese estado solo puede venir de "Propagar al plan semanal" en
+  // api/ordenes/[id]/route.ts, que al cambiar el estado de una OT recurrente
+  // actualiza TODAS sus filas de OtProgramada sin distinguir semana — por eso
+  // una semana que el técnico nunca tocó puede aparecer ya "cerrada". Se
+  // revalida contra el estado real (ya reabierto o no) de la OT.
+  const inicioSemanaActual = new Date();
+  inicioSemanaActual.setUTCDate(inicioSemanaActual.getUTCDate() - ((inicioSemanaActual.getUTCDay() + 6) % 7));
+  inicioSemanaActual.setUTCHours(4, 0, 0, 0);
+  const vinculadasCerradas = programas
+    .filter(p => new Date(p.fechaFin) >= inicioSemanaActual)
+    .flatMap(p => p.otsProgramadas)
+    .filter(o => !!o.ordenTrabajoId && (o.estado === "completada" || o.estado === "en_revision"));
+
+  if (pendientes.length === 0 && vinculadasCerradas.length === 0) return;
+
   const numeros = [...new Set(pendientes.map(o => o.numeroOT))];
+  const ids = [...new Set(vinculadasCerradas.map(o => o.ordenTrabajoId as string))];
   const existentes = await prisma.ordenTrabajo.findMany({
-    where: { otJdeNumero: { in: numeros }, cerradaDefinitiva: false },
+    where: {
+      cerradaDefinitiva: false,
+      OR: [
+        ...(numeros.length ? [{ otJdeNumero: { in: numeros } }] : []),
+        ...(ids.length ? [{ id: { in: ids } }] : []),
+      ],
+    },
     select: { id: true, numeroOT: true, estado: true, otJdeNumero: true },
   });
   if (existentes.length === 0) return;
 
   const porNumero = new Map(existentes.map(o => [o.otJdeNumero as string, o]));
+  const porId = new Map(existentes.map(o => [o.id, o]));
+
   for (const row of pendientes) {
     const existente = porNumero.get(row.numeroOT);
     if (!existente) continue;
-
-    if (ESTADOS_BLOQUEAN_TECNICO.includes(existente.estado)) {
-      const estadoAnterior = existente.estado;
-      await prisma.ordenTrabajo.update({ where: { id: existente.id }, data: { estado: "en_proceso" } });
-      await prisma.otHistorial.create({
-        data: {
-          ordenTrabajoId: existente.id,
-          usuarioId: "system",
-          nombreUsuario: "Sistema",
-          cambio: `Reabierta automáticamente: OT recurrente con nueva semana programada (venía en "${estadoAnterior}")`,
-        },
-      });
-      existente.estado = "en_proceso"; // se comparte por referencia: el resto de filas de esta OT en el mismo lote ya no reabren de nuevo
-    }
+    await reabrirSiBloqueada(existente);
 
     const nuevoEstado = mapEstadoAlPlan(existente.estado);
     await prisma.otProgramada.update({
@@ -81,6 +110,18 @@ async function reconciliarContinuaciones(
     row.ordenTrabajoId = existente.id;
     row.ordenTrabajoNum = existente.numeroOT;
     row.estado = nuevoEstado;
+  }
+
+  for (const row of vinculadasCerradas) {
+    const existente = porId.get(row.ordenTrabajoId as string);
+    if (!existente) continue;
+    await reabrirSiBloqueada(existente);
+
+    const nuevoEstado = mapEstadoAlPlan(existente.estado);
+    if (nuevoEstado !== row.estado) {
+      await prisma.otProgramada.update({ where: { id: row.id }, data: { estado: nuevoEstado } });
+      row.estado = nuevoEstado;
+    }
   }
 }
 
@@ -165,7 +206,7 @@ export async function GET(req: NextRequest) {
       const { NextResponse } = await import("next/server");
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    await reconciliarContinuaciones([programa as unknown as { otsProgramadas: OtProgramadaRow[] }]);
+    await reconciliarContinuaciones([programa as unknown as { fechaFin: Date; otsProgramadas: OtProgramadaRow[] }]);
     const { NextResponse } = await import("next/server");
     return NextResponse.json(serializePrograma(programa as Parameters<typeof serializePrograma>[0], {}, {}));
   }
@@ -196,7 +237,7 @@ export async function GET(req: NextRequest) {
     take: limit,
   });
 
-  await reconciliarContinuaciones(programas as unknown as { otsProgramadas: OtProgramadaRow[] }[]);
+  await reconciliarContinuaciones(programas as unknown as { fechaFin: Date; otsProgramadas: OtProgramadaRow[] }[]);
 
   // Construir mapa de bitácora desde ReporteTurno técnicos del período
   // usando HH reales (tiempoRealHrs de sub-OTs registrados), NO el hhTotal planificado
