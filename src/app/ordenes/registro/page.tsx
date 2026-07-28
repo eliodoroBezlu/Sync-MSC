@@ -656,6 +656,8 @@ function LineaEditor({
   const [showInsp, setShowInsp] = useState(!!linea.inspeccion);
   const [modosList, setModosList] = useState<ModoEntry[]>([]);
   const [causas, setCausas] = useState<FaultEntry[]>([]);
+  const [sintomaOtro, setSintomaOtro] = useState(false);
+  const [causaOtro, setCausaOtro] = useState(false);
   const [checklists, setChecklists] = useState<ChecklistItem[]>([]);
   const [loadingCl, setLoadingCl] = useState(false);
   const [cargandoAdj, setCargandoAdj] = useState(false);
@@ -751,6 +753,20 @@ function LineaEditor({
       .then(setCausas)
       .catch(() => setCausas([]));
   }, [L.sintoma, L.categoriaISO, L.tipoOT, modosList]);
+
+  // Si la línea ya trae un síntoma/causa (ej. al editar una OT guardada) que no
+  // está en el árbol de fallas cargado, es porque se guardó como texto libre
+  // ("Otro") — mostrar el campo de texto en vez del select para no perder el dato.
+  useEffect(() => {
+    if (L.sintoma && modosList.length > 0 && !modosList.some(m => m.sintoma === L.sintoma)) {
+      setSintomaOtro(true);
+    }
+  }, [modosList, L.sintoma]);
+  useEffect(() => {
+    if (L.causaProbable && causas.length > 0 && !causas.some(c => c.causaProbable === L.causaProbable)) {
+      setCausaOtro(true);
+    }
+  }, [causas, L.causaProbable]);
 
   const adjSinComentario = L.adjuntos.some(a => !a.comentario.trim());
   const canConfirm = !!L.tag && !!L.tipoOT && !adjSinComentario && !!L.descripcionTrabajo.trim() && !!L.estadoFinal;
@@ -881,31 +897,61 @@ function LineaEditor({
         <>
           <div style={{ marginBottom: 13 }}>
             <label style={S.label}>Síntoma observado</label>
-            <select value={L.sintoma} onChange={e => patch({ sintoma: e.target.value, causaProbable: "", resolucionAplicada: "" })} style={S.select}>
-              <option value="">— Seleccionar modo de falla —</option>
-              {modosList.map(m => (
-                <option key={m.codigoModo || m.sintoma} value={m.sintoma}>
-                  {m.codigoModo ? `[${m.codigoModo}] ` : ""}{m.sintoma}
-                </option>
-              ))}
-            </select>
+            {sintomaOtro ? (
+              <div>
+                <input value={L.sintoma} onChange={e => patch({ sintoma: e.target.value })}
+                  placeholder="Describe el síntoma observado" style={S.input} autoFocus />
+                <button type="button"
+                  onClick={() => { setSintomaOtro(false); setCausaOtro(false); patch({ sintoma: "", causaProbable: "", resolucionAplicada: "" }); }}
+                  style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontSize: 12, padding: "5px 0", fontWeight: 600 }}>
+                  ← Volver a la lista del árbol de fallas
+                </button>
+              </div>
+            ) : (
+              <select value={L.sintoma} onChange={e => {
+                if (e.target.value === "__otro__") { setSintomaOtro(true); patch({ sintoma: "", causaProbable: "", resolucionAplicada: "" }); return; }
+                patch({ sintoma: e.target.value, causaProbable: "", resolucionAplicada: "" });
+              }} style={S.select}>
+                <option value="">— Seleccionar modo de falla —</option>
+                {modosList.map(m => (
+                  <option key={m.codigoModo || m.sintoma} value={m.sintoma}>
+                    {m.codigoModo ? `[${m.codigoModo}] ` : ""}{m.sintoma}
+                  </option>
+                ))}
+                <option value="__otro__">Otro (no está en la lista)</option>
+              </select>
+            )}
           </div>
           {L.sintoma && (
             <div style={{ marginBottom: 13 }}>
               <label style={S.label}>Causa probable</label>
-              <select value={L.causaProbable}
-                onChange={e => {
-                  const entry = causas.find(c => c.causaProbable === e.target.value);
-                  patch({ causaProbable: e.target.value, resolucionAplicada: entry?.resolucionSugerida ?? "", tiempoEstimadoHrs: entry?.tiempoEstimadoHrs ? String(entry.tiempoEstimadoHrs) : L.tiempoEstimadoHrs });
-                }}
-                style={S.select}>
-                <option value="">— Seleccionar causa —</option>
-                {causas.map(c => (
-                  <option key={c.codigoCausa || c.causaProbable} value={c.causaProbable}>
-                    {c.codigoCausa ? `[${c.codigoCausa}] ` : ""}{c.causaProbable}
-                  </option>
-                ))}
-              </select>
+              {causaOtro ? (
+                <div>
+                  <input value={L.causaProbable} onChange={e => patch({ causaProbable: e.target.value })}
+                    placeholder="Describe la causa probable" style={S.input} autoFocus />
+                  <button type="button"
+                    onClick={() => { setCausaOtro(false); patch({ causaProbable: "", resolucionAplicada: "" }); }}
+                    style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontSize: 12, padding: "5px 0", fontWeight: 600 }}>
+                    ← Volver a la lista del árbol de fallas
+                  </button>
+                </div>
+              ) : (
+                <select value={L.causaProbable}
+                  onChange={e => {
+                    if (e.target.value === "__otro__") { setCausaOtro(true); patch({ causaProbable: "", resolucionAplicada: "" }); return; }
+                    const entry = causas.find(c => c.causaProbable === e.target.value);
+                    patch({ causaProbable: e.target.value, resolucionAplicada: entry?.resolucionSugerida ?? "", tiempoEstimadoHrs: entry?.tiempoEstimadoHrs ? String(entry.tiempoEstimadoHrs) : L.tiempoEstimadoHrs });
+                  }}
+                  style={S.select}>
+                  <option value="">— Seleccionar causa —</option>
+                  {causas.map(c => (
+                    <option key={c.codigoCausa || c.causaProbable} value={c.causaProbable}>
+                      {c.codigoCausa ? `[${c.codigoCausa}] ` : ""}{c.causaProbable}
+                    </option>
+                  ))}
+                  <option value="__otro__">Otro (no está en la lista)</option>
+                </select>
+              )}
             </div>
           )}
           <div style={{ marginBottom: 13 }}>
