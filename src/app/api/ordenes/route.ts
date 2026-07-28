@@ -22,6 +22,7 @@ function serializeOT(ot: Record<string, unknown> & {
     turno: ot.turno,
     areaCodigo: ot.areaCodigo,
     estado: ot.estado,
+    cerradaDefinitiva: ot.cerradaDefinitiva ?? false,
     origenPlan: ot.origenPlan,
     programacionSemanalId: ot.programacionSemanalId,
     otJdeNumero: ot.otJdeNumero,

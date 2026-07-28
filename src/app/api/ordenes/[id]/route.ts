@@ -25,6 +25,7 @@ function serializeOT(ot: Record<string, unknown> & {
     turno: ot.turno,
     areaCodigo: ot.areaCodigo,
     estado: ot.estado,
+    cerradaDefinitiva: ot.cerradaDefinitiva ?? false,
     origenPlan: ot.origenPlan,
     programacionSemanalId: ot.programacionSemanalId,
     otJdeNumero: ot.otJdeNumero,
@@ -142,7 +143,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   try {
     const { id } = await params;
     const body = await req.json();
-    const { estado, datosSupervision, cambio, cambios, lineas, tecnicos, turno, fecha, registroDiario, otJdeNumero } = body;
+    const { estado, datosSupervision, cambio, cambios, lineas, tecnicos, turno, fecha, registroDiario, otJdeNumero, cerradaDefinitiva } = body;
     // usuarioId/nombreUsuario para historial y firma de supervisor vienen de la
     // sesión verificada, no del body — evita que un cliente falsifique la autoría.
     const usuarioId = session.id;
@@ -150,6 +151,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 
     const updateData: Record<string, unknown> = {};
     if (estado) updateData.estado = estado;
+    if (typeof cerradaDefinitiva === "boolean") updateData.cerradaDefinitiva = cerradaDefinitiva;
     if (otJdeNumero !== undefined) updateData.otJdeNumero = otJdeNumero || null;
     if (turno) updateData.turno = turno;
     if (fecha) updateData.fecha = new Date(fecha);

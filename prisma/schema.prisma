@@ -107,6 +107,12 @@ model OrdenTrabajo {
   turno                 String   // Diurno|Nocturno|Parada de Planta|Planta|Otro
   areaCodigo            String
   estado                String   @default("borrador")
+  // OT recurrente (largo aliento, se reprograma semana tras semana bajo el mismo
+  // otJdeNumero): al llegar a "true" deja de reabrirse sola cuando aparece una
+  // nueva semana programada. Ver reconciliarContinuaciones en
+  // api/programacion-semanal/route.ts. Por defecto false: no afecta a las OTs
+  // normales, que nunca vuelven a coincidir con una semana futura.
+  cerradaDefinitiva     Boolean  @default(false)
   // Supervisión
   supCodigoModoFallaISO String?
   supClasificacionRCM   String?

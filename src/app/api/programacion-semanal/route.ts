@@ -23,6 +23,16 @@ type OtProgramadaRow = Record<string, unknown> & {
 // quedó en "completada" bloquea la semana entera. Por eso aquí no se filtra
 // solo "no_iniciada": cualquier fila sin ordenTrabajoId que aún no esté
 // completada/en revisión es candidata a enlazarse con la OT abierta.
+//
+// OTs de largo aliento (misma OT JDE reprogramada semana tras semana, p. ej.
+// 949186): el ciclo de revisión semanal (pendiente_revision → revisado →
+// concluido) deja la OrdenTrabajo maestra bloqueada para el técnico apenas el
+// supervisor cierra el reporte de esa semana. Antes esto exigía que un admin
+// la reabriera a mano cada lunes ("Reabrir OT"). Ahora, si vuelve a aparecer
+// una fila de plan programada para el mismo otJdeNumero, se reabre sola —
+// salvo que se haya marcado cerradaDefinitiva (la OT no va a continuar).
+const ESTADOS_BLOQUEAN_TECNICO = ["pendiente_revision", "revisado", "concluido"];
+
 async function reconciliarContinuaciones(
   programas: Array<{ otsProgramadas: OtProgramadaRow[] }>
 ): Promise<void> {
@@ -39,7 +49,7 @@ async function reconciliarContinuaciones(
   // quedaba sin efecto en la práctica para cualquier OT de origen JDE.
   const numeros = [...new Set(pendientes.map(o => o.numeroOT))];
   const existentes = await prisma.ordenTrabajo.findMany({
-    where: { otJdeNumero: { in: numeros }, estado: { not: "concluido" } },
+    where: { otJdeNumero: { in: numeros }, cerradaDefinitiva: false },
     select: { id: true, numeroOT: true, estado: true, otJdeNumero: true },
   });
   if (existentes.length === 0) return;
@@ -48,6 +58,21 @@ async function reconciliarContinuaciones(
   for (const row of pendientes) {
     const existente = porNumero.get(row.numeroOT);
     if (!existente) continue;
+
+    if (ESTADOS_BLOQUEAN_TECNICO.includes(existente.estado)) {
+      const estadoAnterior = existente.estado;
+      await prisma.ordenTrabajo.update({ where: { id: existente.id }, data: { estado: "en_proceso" } });
+      await prisma.otHistorial.create({
+        data: {
+          ordenTrabajoId: existente.id,
+          usuarioId: "system",
+          nombreUsuario: "Sistema",
+          cambio: `Reabierta automáticamente: OT recurrente con nueva semana programada (venía en "${estadoAnterior}")`,
+        },
+      });
+      existente.estado = "en_proceso"; // se comparte por referencia: el resto de filas de esta OT en el mismo lote ya no reabren de nuevo
+    }
+
     const nuevoEstado = mapEstadoAlPlan(existente.estado);
     await prisma.otProgramada.update({
       where: { id: row.id },

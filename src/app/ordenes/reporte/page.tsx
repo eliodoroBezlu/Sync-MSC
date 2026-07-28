@@ -97,6 +97,7 @@ type OTDoc = {
   tecnicos: { usuarioId: string; nombreCompleto: string }[];
   lineas: Linea[];
   estado: EstadoOT;
+  cerradaDefinitiva?: boolean;
   datosSupervision: Partial<SupForm> & { codigoModoFallaISO?: string; revisadoPor?: string; revisadoEn?: string };
   historialCambios: { fechaHora: string; usuarioId: string; nombreUsuario: string; cambio: string }[];
   registrosDiarios?: RegistroDiario[];
@@ -341,6 +342,9 @@ export default function ReporteOTPage() {
   const [reabrirRazon, setReabrirRazon] = useState("");
   const [savingReabrir, setSavingReabrir] = useState(false);
 
+  // Cierre definitivo al concluir (OT recurrente que ya no va a continuar)
+  const [cierreDefinitivo, setCierreDefinitivo] = useState(false);
+
   // Modal agregar evidencia (foto/documento) desde panel supervisor
   const [evidenciaModal, setEvidenciaModal] = useState<{ lineaTag: string; lineaTipoOT: string } | null>(null);
   const [evidenciaComentario, setEvidenciaComentario] = useState("");
@@ -425,6 +429,7 @@ export default function ReporteOTPage() {
     });
     setSaveErr("");
     setEditMode(false);
+    setCierreDefinitivo(false);
     // Refrescar datos de la OT para mostrar avances actualizados
     const id = selected._id;
     fetch(`/api/ordenes/${id}`)
@@ -619,7 +624,7 @@ export default function ReporteOTPage() {
     finally { setSaving(false); }
   }
 
-  async function cambiarEstado(nuevoEstado: EstadoOT, descripcion: string) {
+  async function cambiarEstado(nuevoEstado: EstadoOT, descripcion: string, cerrarDefinitivo = false) {
     if (!selected) return;
     setSaving(true); setSaveErr("");
     try {
@@ -628,6 +633,7 @@ export default function ReporteOTPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           estado: nuevoEstado, datosSupervision: supForm,
+          ...(cerrarDefinitivo ? { cerradaDefinitiva: true } : {}),
           cambio: descripcion, usuarioId: user?.id ?? "sistema", nombreUsuario: user?.nombre ?? "Sistema",
         }),
       });
@@ -1571,6 +1577,15 @@ export default function ReporteOTPage() {
                 ⏳ Esta OT es del plan semanal. El envío a revisión se habilita el <strong>domingo</strong> al finalizar la semana.
               </p>
             )}
+            {canConcluir && ot.origenPlan && ot.otJdeNumero && (
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: "#0f2847", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 12px", marginBottom: 10, cursor: "pointer" }}>
+                <input type="checkbox" checked={cierreDefinitivo} onChange={e => setCierreDefinitivo(e.target.checked)} style={{ marginTop: 2 }} />
+                <span>
+                  Esta OT no va a continuar (cierre definitivo).<br />
+                  <span style={{ color: "#64748b" }}>Si es una OT recurrente (aparece semana tras semana), déjalo sin marcar para que se reabra sola cuando el plan la vuelva a programar.</span>
+                </span>
+              </label>
+            )}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {canSendToReview && (
                 <button onClick={() => cambiarEstado("pendiente_revision", "OT enviada a revisión por " + (user?.nombre ?? "técnico"))} disabled={saving} style={{ ...S.btnPrimary, opacity: saving ? 0.6 : 1 }}>
@@ -1588,7 +1603,7 @@ export default function ReporteOTPage() {
                 </>
               )}
               {canConcluir && (
-                <button onClick={() => cambiarEstado("concluido", "OT concluida y cerrada")} disabled={saving} style={{ ...S.btnGreen, opacity: saving ? 0.6 : 1 }}>
+                <button onClick={() => cambiarEstado("concluido", "OT concluida y cerrada", cierreDefinitivo)} disabled={saving} style={{ ...S.btnGreen, opacity: saving ? 0.6 : 1 }}>
                   {saving ? "Guardando…" : "Concluir OT ✓"}
                 </button>
               )}
