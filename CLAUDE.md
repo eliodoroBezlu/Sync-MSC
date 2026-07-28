@@ -1,5 +1,9 @@
 @AGENTS.md
 
+# Idioma
+
+Responder SIEMPRE en español de Bolivia, en todas las respuestas de esta conversación y sesiones futuras en este proyecto. No responder en inglés salvo que el usuario lo pida explícitamente.
+
 # Deploy y respaldo en git
 
 Cada vez que el usuario pida commitear/subir cambios, después de crear el commit hacer push automáticamente a **ambos** remotos, sin pedir confirmación adicional:

@@ -38,7 +38,7 @@ export default function PrintClient({
   todasOTs: OTDisplay[];
 }) {
   const fecha = new Date(reporte.fecha);
-  const fechaStr = fecha.toLocaleDateString("es-BO", { day: "2-digit", month: "long", year: "numeric" });
+  const fechaStr = fecha.toLocaleDateString("es-BO", { day: "2-digit", month: "long", year: "numeric", timeZone: "UTC" });
   const res = reporte.resumenEjecutivo;
 
   const criticas = todasOTs.filter(o => o.critica);

@@ -75,7 +75,7 @@ export default function PrintClientTecnico({
 }) {
   const [zoom, setZoom] = useState(100);
   const fecha = new Date(reporte.fecha);
-  const fechaStr = fecha.toLocaleDateString("es-BO", { day: "2-digit", month: "long", year: "numeric" });
+  const fechaStr = fecha.toLocaleDateString("es-BO", { day: "2-digit", month: "long", year: "numeric", timeZone: "UTC" });
   const res = reporte.resumenEjecutivo;
 
   const criticas      = ots.filter(o => o.critica);
