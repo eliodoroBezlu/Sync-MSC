@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
 import { mapEstadoAlPlan } from "@/lib/otEstado";
 import { verifyToken, COOKIE_NAME } from "@/lib/auth";
+import { calcularOtsRecurrentes } from "@/lib/otRecurrente";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -17,7 +18,7 @@ function serializeOT(ot: Record<string, unknown> & {
   lineas?: Record<string, unknown>[];
   historial?: Record<string, unknown>[];
   registrosDiarios?: Record<string, unknown>[];
-}) {
+}, esRecurrente = false) {
   return {
     _id: ot.id,
     numeroOT: ot.numeroOT,
@@ -26,6 +27,7 @@ function serializeOT(ot: Record<string, unknown> & {
     areaCodigo: ot.areaCodigo,
     estado: ot.estado,
     cerradaDefinitiva: ot.cerradaDefinitiva ?? false,
+    esRecurrente,
     origenPlan: ot.origenPlan,
     programacionSemanalId: ot.programacionSemanalId,
     otJdeNumero: ot.otJdeNumero,
@@ -91,7 +93,8 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   }
   if (!ot) return Response.json({ error: "No encontrado" }, { status: 404 });
 
-  const serialized = serializeOT(ot as Parameters<typeof serializeOT>[0]);
+  const esRecurrente = (await calcularOtsRecurrentes([id])).get(id) ?? false;
+  const serialized = serializeOT(ot as Parameters<typeof serializeOT>[0], esRecurrente);
   // Si usamos el fallback sin ORM, inyectar los registros diarios leídos con SQL
   if (registrosDiariosRaw.length > 0) {
     serialized.registrosDiarios = registrosDiariosRaw.map(r => ({
@@ -372,7 +375,8 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       }
     }
 
-    const serializedPatch = serializeOT(ot as Parameters<typeof serializeOT>[0]);
+    const esRecurrentePatch = (await calcularOtsRecurrentes([id])).get(id) ?? false;
+    const serializedPatch = serializeOT(ot as Parameters<typeof serializeOT>[0], esRecurrentePatch);
     if (patchRegistrosDiariosRaw.length > 0) {
       serializedPatch.registrosDiarios = patchRegistrosDiariosRaw.map(r => ({
         _id: r.id, fecha: r.fecha, turno: r.turno, tecnico: r.tecnico, usuarioId: r.usuarioId,

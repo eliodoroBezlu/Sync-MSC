@@ -98,6 +98,7 @@ type OTDoc = {
   lineas: Linea[];
   estado: EstadoOT;
   cerradaDefinitiva?: boolean;
+  esRecurrente?: boolean;
   datosSupervision: Partial<SupForm> & { codigoModoFallaISO?: string; revisadoPor?: string; revisadoEn?: string };
   historialCambios: { fechaHora: string; usuarioId: string; nombreUsuario: string; cambio: string }[];
   registrosDiarios?: RegistroDiario[];
@@ -816,6 +817,9 @@ export default function ReporteOTPage() {
                         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 4 }}>
                           <span style={{ fontWeight: 800, fontSize: 15, color: "#0f2847" }}>{ot.otJdeNumero ? `OT ${ot.otJdeNumero}` : `#${ot.numeroOT}`}</span>
                           <span style={S.badge(color)}>{ESTADO_LABEL[ot.estado]}</span>
+                          {ot.esRecurrente && (
+                            <span style={{ ...S.badge("#7c3aed"), fontSize: 10 }} title="Ya se programó en más de una semana">🔁 Recurrente</span>
+                          )}
                           {esSemanaAnterior && (
                             <span style={{ ...S.badge("#92400e"), background: "#fef3c7", color: "#92400e", fontSize: 10, fontWeight: 700, letterSpacing: "0.03em" }}>
                               ⏳ Sem. ant.
@@ -1061,6 +1065,11 @@ export default function ReporteOTPage() {
                 </span>
               ) : (
                 <span style={{ ...S.badge("#dc2626"), fontSize: 11 }}>⚡ Reactiva</span>
+              )}
+              {ot.esRecurrente && (
+                <span style={{ ...S.badge("#7c3aed"), fontSize: 11 }} title="Ya se programó en más de una semana: se reabre sola cuando el plan la vuelve a programar">
+                  🔁 OT recurrente (largo aliento)
+                </span>
               )}
               {(() => {
                 const lunes = new Date();
@@ -1582,7 +1591,11 @@ export default function ReporteOTPage() {
                 <input type="checkbox" checked={cierreDefinitivo} onChange={e => setCierreDefinitivo(e.target.checked)} style={{ marginTop: 2 }} />
                 <span>
                   Esta OT no va a continuar (cierre definitivo).<br />
-                  <span style={{ color: "#64748b" }}>Si es una OT recurrente (aparece semana tras semana), déjalo sin marcar para que se reabra sola cuando el plan la vuelva a programar.</span>
+                  <span style={{ color: "#64748b" }}>
+                    {ot.esRecurrente
+                      ? "Esta OT ya se detectó como recurrente (apareció en más de una semana): déjalo sin marcar para que se reabra sola cuando el plan la vuelva a programar."
+                      : "Si es una OT recurrente (aparece semana tras semana), déjalo sin marcar para que se reabra sola cuando el plan la vuelva a programar."}
+                  </span>
                 </span>
               </label>
             )}

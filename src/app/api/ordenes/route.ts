@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { checkOpeplant } from "@/lib/opeplant";
+import { calcularOtsRecurrentes } from "@/lib/otRecurrente";
 
 const include = {
   tecnicos: true,
@@ -14,7 +15,7 @@ function serializeOT(ot: Record<string, unknown> & {
   lineas?: Record<string, unknown>[];
   historial?: Record<string, unknown>[];
   registrosDiarios?: Record<string, unknown>[];
-}) {
+}, esRecurrente = false) {
   return {
     _id: ot.id,
     numeroOT: ot.numeroOT,
@@ -23,6 +24,7 @@ function serializeOT(ot: Record<string, unknown> & {
     areaCodigo: ot.areaCodigo,
     estado: ot.estado,
     cerradaDefinitiva: ot.cerradaDefinitiva ?? false,
+    esRecurrente,
     origenPlan: ot.origenPlan,
     programacionSemanalId: ot.programacionSemanalId,
     otJdeNumero: ot.otJdeNumero,
@@ -161,7 +163,8 @@ export async function GET(req: NextRequest) {
       }
       return true;
     });
-    return NextResponse.json(deduped.map(o => serializeOT(o as Parameters<typeof serializeOT>[0])));
+    const recurrentesBuscadas = await calcularOtsRecurrentes(deduped.map(o => o.id));
+    return NextResponse.json(deduped.map(o => serializeOT(o as Parameters<typeof serializeOT>[0], recurrentesBuscadas.get(o.id))));
   }
 
   // Ocultar OTs hijas de OPEPLANT del Reporte principal, EXCEPTO las de turno especial
@@ -227,7 +230,8 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  return NextResponse.json(resultado.map(o => serializeOT(o as Parameters<typeof serializeOT>[0])));
+  const recurrentes = await calcularOtsRecurrentes(resultado.map(o => o.id));
+  return NextResponse.json(resultado.map(o => serializeOT(o as Parameters<typeof serializeOT>[0], recurrentes.get(o.id))));
 }
 
 async function siguienteNumeroOT(): Promise<string> {
