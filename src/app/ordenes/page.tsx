@@ -220,6 +220,7 @@ export default function OrdenesPage() {
 
   const esAdmin   = user?.rol === 1;
   const esInst    = user?.disciplina === "INST";
+  const esElec    = user?.disciplina === "ELEC";
   const puedeConf = user ? user.rol <= 3 : false;
   const esTESA    = user?.rol === 6 && user?.areas?.includes("3348");
   const esElecInst = (user?.areas ?? []).some((a) => AREAS_ELEC_INST.includes(a));
@@ -230,7 +231,7 @@ export default function OrdenesPage() {
   const modulos = TODOS_MODULOS.filter((m) => {
     if (esAdmin) return true;
     if (esTESA) return MODULOS_TESA.includes(m.href);
-    if (m.soloAdmin && !esAdmin && !(esInst && puedeConf)) return false;
+    if (m.soloAdmin && !esAdmin && !((esInst || esElec) && puedeConf)) return false;
     if (m.soloInst && !esInst) return false;
     if (m.soloSup  && !puedeConf) return false;
     if (m.soloElecInst && !esElecInst) return false;
