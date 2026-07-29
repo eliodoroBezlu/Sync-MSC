@@ -185,18 +185,40 @@ export async function GET(req: NextRequest) {
     andConditions.push({ NOT: { estado: "concluido", fecha: { lt: fechaArchivoCorte } } });
   }
 
-  // OTs de larga duración (varias semanas): su "fecha" queda fija en el día de creación,
-  // así que un filtro fechaDesde/fechaHasta (p. ej. "últimas 3 semanas") las hace
-  // desaparecer de la lista aunque sigan activas y se les siga registrando avance.
-  // Se mantienen visibles solo si además tienen un registro diario dentro del rango
-  // filtrado (avance real en ese período) — de lo contrario "no concluida" por sí solo
-  // bypasseaba el filtro de fecha para CUALQUIER OT abierta, sin importar su antigüedad,
-  // rompiendo filtros como "Esta semana" o "Semana pasada".
+  // OTs de larga duración / OPEPLANT (varias semanas): su "fecha" queda fija en el día
+  // de creación, así que un filtro fechaDesde/fechaHasta las hace desaparecer aunque el
+  // plan las siga programando semana tras semana (cada semana crea un OtProgramada nuevo
+  // que apunta a la MISMA OT consolidada, sin tocar su campo "fecha" original).
+  // "Pertenece a la semana filtrada" se decide por CUALQUIERA de estas señales:
+  //   1) su propia fecha cae en el rango (OT reactiva normal, no recurrente)
+  //   2) tiene un registro diario (avance real) dentro del rango
+  //   3) el plan la programó esa semana (OtProgramada.ordenTrabajoId vinculado a una
+  //      ProgramacionSemanal cuyo rango [fechaInicio, fechaFin] se solapa con el filtro)
+  // Antes se usaba "NOT concluido" como comodín, lo que mostraba CUALQUIER OT abierta
+  // sin importar su antigüedad (rompía "Esta semana"/"Semana pasada") y a la vez ocultaba
+  // OTs concluidas que sí pertenecían a la semana pero cuyo único registro de esa semana
+  // no alcanzaba a marcarse a tiempo.
+  let idsProgramadosEnRango: string[] = [];
   if (Object.keys(fechaFilter).length) {
+    const solapaSemana: Record<string, unknown> = {};
+    if (fechaFilter.gte) solapaSemana.fechaFin = { gte: fechaFilter.gte };
+    if (fechaFilter.lt) solapaSemana.fechaInicio = { lt: fechaFilter.lt };
+    const planesEnRango = await prisma.programacionSemanal.findMany({
+      where: solapaSemana,
+      select: { id: true },
+    });
+    if (planesEnRango.length) {
+      const vinculos = await prisma.otProgramada.findMany({
+        where: { programacionSemanalId: { in: planesEnRango.map(p => p.id) }, ordenTrabajoId: { not: null } },
+        select: { ordenTrabajoId: true },
+      });
+      idsProgramadosEnRango = [...new Set(vinculos.map(v => v.ordenTrabajoId).filter((v): v is string => !!v))];
+    }
     andConditions.push({
       OR: [
         { fecha: fechaFilter },
-        { AND: [{ NOT: { estado: "concluido" } }, { registrosDiarios: { some: { fecha: fechaFilter } } }] },
+        { registrosDiarios: { some: { fecha: fechaFilter } } },
+        ...(idsProgramadosEnRango.length ? [{ id: { in: idsProgramadosEnRango } }] : []),
       ],
     });
   }
