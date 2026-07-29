@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { renderizarPaginasPdf } from "./pdfToImages";
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 interface AdjuntoItem {
@@ -147,6 +148,135 @@ function estadoBadge(doc: jsPDF, estado: string, x: number, y: number) {
   doc.text(label, x, y + 0.5, { align: "center" });
 }
 
+interface ItemGridImagen {
+  dataUrl: string;
+  etiqueta: string;
+  comentarios: string[];
+  size: { w: number; h: number };
+}
+
+// Dibuja imágenes en una cuadrícula de 2 columnas con etiqueta y observaciones
+// debajo de cada una. Compartido entre fotos, avances diarios y páginas
+// renderizadas de documentos PDF, para no triplicar el mismo layout.
+function dibujarGridImagenes(doc: jsPDF, items: ItemGridImagen[], y: number, PW: number): number {
+  const COLS   = 2;
+  const MARGIN = 15;
+  const GAP    = 8;
+  const COL_W  = (PW - MARGIN * 2 - GAP * (COLS - 1)) / COLS;
+  const MAX_H  = 65;
+  const OBS_H  = 28;
+
+  for (let i = 0; i < items.length; i++) {
+    const col  = i % COLS;
+    const xImg = MARGIN + col * (COL_W + GAP);
+
+    if (col === 0 && i > 0) y += MAX_H + OBS_H + 8;
+    y = checkPage(doc, y, MAX_H + OBS_H + 10);
+
+    const item = items[i];
+    let imgW = COL_W;
+    let imgH = (imgW * item.size.h) / item.size.w;
+    if (imgH > MAX_H) { imgH = MAX_H; imgW = (imgH * item.size.w) / item.size.h; }
+    const xCentered = xImg + (COL_W - imgW) / 2;
+
+    doc.setDrawColor(...BORDE);
+    doc.setLineWidth(0.5);
+    doc.rect(xCentered - 1, y - 1, imgW + 2, imgH + 2, "S");
+    try {
+      const ext = item.dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
+      doc.addImage(item.dataUrl, ext, xCentered, y, imgW, imgH);
+    } catch {
+      doc.setFillColor(...GRIS_L);
+      doc.rect(xCentered, y, imgW, imgH, "F");
+      doc.setFontSize(7);
+      doc.setTextColor(...GRIS);
+      doc.text("[imagen no disponible]", xCentered + imgW / 2, y + imgH / 2, { align: "center" });
+    }
+
+    const yObs = y + imgH + 3;
+    doc.setFillColor(248, 250, 252);
+    doc.rect(xImg, yObs, COL_W, OBS_H - 4, "F");
+    doc.setDrawColor(...BORDE);
+    doc.setLineWidth(0.3);
+    doc.rect(xImg, yObs, COL_W, OBS_H - 4, "S");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.5);
+    doc.setTextColor(...NAVY);
+    doc.text(item.etiqueta, xImg + 2, yObs + 4);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6);
+    doc.setTextColor(...GRIS);
+    doc.text("Observaciones:", xImg + 2, yObs + 8.5);
+
+    const textoObs = item.comentarios.filter(Boolean).join(" · ") || "Sin observaciones";
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.5);
+    doc.setTextColor(...NEGRO);
+    doc.text(doc.splitTextToSize(textoObs, COL_W - 4).slice(0, 3), xImg + 2, yObs + 13);
+  }
+
+  if (items.length > 0) y += MAX_H + OBS_H + 6;
+  return y;
+}
+
+// Dibuja una página de documento PDF a tamaño completo (una hoja del informe por
+// cada página del PDF), a diferencia de dibujarGridImagenes: el grid a 2 columnas
+// achica demasiado el contenido de un documento y lo vuelve ilegible.
+function dibujarPaginaPdfCompleta(doc: jsPDF, item: ItemGridImagen, PW: number): void {
+  doc.addPage();
+  const PH = doc.internal.pageSize.getHeight();
+  const MARGIN = 15;
+  let y = 20;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(...GRIS);
+  doc.text("VISTA PREVIA DE DOCUMENTO PDF", MARGIN, y);
+  y += 6;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(...NAVY);
+  doc.text(item.etiqueta, MARGIN, y);
+  y += 6;
+
+  const OBS_H  = 22;
+  const maxW   = PW - MARGIN * 2;
+  const maxH   = PH - y - OBS_H - 15;
+
+  let imgW = maxW;
+  let imgH = (imgW * item.size.h) / item.size.w;
+  if (imgH > maxH) { imgH = maxH; imgW = (imgH * item.size.w) / item.size.h; }
+  const xCentered = MARGIN + (maxW - imgW) / 2;
+
+  doc.setDrawColor(...BORDE);
+  doc.setLineWidth(0.5);
+  doc.rect(xCentered - 1, y - 1, imgW + 2, imgH + 2, "S");
+  try {
+    const ext = item.dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
+    doc.addImage(item.dataUrl, ext, xCentered, y, imgW, imgH);
+  } catch {
+    doc.setFillColor(...GRIS_L);
+    doc.rect(xCentered, y, imgW, imgH, "F");
+    doc.setFontSize(8);
+    doc.setTextColor(...GRIS);
+    doc.text("[imagen no disponible]", xCentered + imgW / 2, y + imgH / 2, { align: "center" });
+  }
+
+  const yObs = y + imgH + 5;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.setTextColor(...GRIS);
+  doc.text("Observaciones:", MARGIN, yObs);
+
+  const textoObs = item.comentarios.filter(Boolean).join(" · ") || "Sin observaciones";
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...NEGRO);
+  doc.text(doc.splitTextToSize(textoObs, maxW), MARGIN, yObs + 5);
+}
+
 function checkPage(doc: jsPDF, y: number, espacio: number): number {
   const PH = doc.internal.pageSize.getHeight();
   if (y + espacio > PH - 18) { doc.addPage(); return 20; }
@@ -214,6 +344,31 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
   // Pre-cargar dimensiones reales de todas las fotos (async, antes de generar el PDF)
   const fotoSizes        = await Promise.all(fotos.map(f => getImgSize(f.dataUrl)));
   const fotoSizesDiarios = await Promise.all(fotosDiarios.map(f => getImgSize(f.dataUrl)));
+
+  // Documentos PDF: se renderiza cada página como imagen para incrustar el
+  // contenido visual en el informe, igual que las fotos. Si el render falla
+  // (PDF corrupto, protegido, etc.) el documento igual queda listado en la
+  // tabla de "Documentos adjuntos" más abajo.
+  async function renderizarDocumentosPdf<T extends { tipo: string; nombre: string; dataUrl: string; comentario: string; comentariosExtra: string[]; tag: string }>(
+    docs: T[]
+  ) {
+    const resultado: { tag: string; nombre: string; comentario: string; comentariosExtra: string[]; imagen: string; pagina: number; totalPaginas: number }[] = [];
+    for (const d of docs) {
+      if (!d.dataUrl.startsWith("data:application/pdf")) continue;
+      try {
+        const paginas = await renderizarPaginasPdf(d.dataUrl);
+        paginas.forEach((imagen, idx) => {
+          resultado.push({ tag: d.tag, nombre: d.nombre, comentario: d.comentario, comentariosExtra: d.comentariosExtra, imagen, pagina: idx + 1, totalPaginas: paginas.length });
+        });
+      } catch { /* se mantiene solo en la tabla de documentos */ }
+    }
+    return resultado;
+  }
+
+  const paginasDocumentos        = await renderizarDocumentosPdf(documentos);
+  const paginasDocumentosDiarios = await renderizarDocumentosPdf(docsDiarios);
+  const sizesPaginasDocumentos        = await Promise.all(paginasDocumentos.map(p => getImgSize(p.imagen)));
+  const sizesPaginasDocumentosDiarios = await Promise.all(paginasDocumentosDiarios.map(p => getImgSize(p.imagen)));
 
   // ── Encabezado ───────────────────────────────────────────────────────────────
   doc.setFillColor(...HDR_TOP);
@@ -470,59 +625,24 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
       y += 7;
 
       if (fotosDiarios.length > 0) {
-        const COLS   = 2;
-        const MARGIN = 15;
-        const GAP    = 8;
-        const COL_W  = (PW - MARGIN * 2 - GAP * (COLS - 1)) / COLS;
-        const MAX_H  = 65;
-        const OBS_H  = 28;
+        y = dibujarGridImagenes(doc, fotosDiarios.map((adj, i) => ({
+          dataUrl: adj.dataUrl,
+          etiqueta: `Avance: ${adj.tag}`,
+          comentarios: [adj.comentario, ...(adj.comentariosExtra ?? [])],
+          size: fotoSizesDiarios[i] ?? { w: 4, h: 3 },
+        })), y, PW);
+      }
 
-        for (let i = 0; i < fotosDiarios.length; i++) {
-          const col  = i % COLS;
-          const xImg = MARGIN + col * (COL_W + GAP);
-
-          if (col === 0 && i > 0) y += MAX_H + OBS_H + 8;
-          y = checkPage(doc, y, MAX_H + OBS_H + 10);
-
-          const adj  = fotosDiarios[i];
-          const size = fotoSizesDiarios[i] ?? { w: 4, h: 3 };
-
-          let imgW = COL_W;
-          let imgH = (imgW * size.h) / size.w;
-          if (imgH > MAX_H) { imgH = MAX_H; imgW = (imgH * size.w) / size.h; }
-          const xCentered = xImg + (COL_W - imgW) / 2;
-
-          doc.setDrawColor(...BORDE);
-          doc.setLineWidth(0.5);
-          doc.rect(xCentered - 1, y - 1, imgW + 2, imgH + 2, "S");
-          try {
-            const ext = adj.dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
-            doc.addImage(adj.dataUrl, ext, xCentered, y, imgW, imgH);
-          } catch {
-            doc.setFillColor(...GRIS_L);
-            doc.rect(xCentered, y, imgW, imgH, "F");
-            doc.setFontSize(7); doc.setTextColor(...GRIS);
-            doc.text("[imagen no disponible]", xCentered + imgW / 2, y + imgH / 2, { align: "center" });
-          }
-
-          const yObs = y + imgH + 3;
-          doc.setFillColor(248, 250, 252);
-          doc.rect(xImg, yObs, COL_W, OBS_H - 4, "F");
-          doc.setDrawColor(...BORDE); doc.setLineWidth(0.3);
-          doc.rect(xImg, yObs, COL_W, OBS_H - 4, "S");
-
-          doc.setFont("helvetica", "bold"); doc.setFontSize(6.5); doc.setTextColor(...NAVY);
-          doc.text(`Avance: ${adj.tag}`, xImg + 2, yObs + 4);
-
-          doc.setFont("helvetica", "bold"); doc.setFontSize(6); doc.setTextColor(...GRIS);
-          doc.text("Observaciones:", xImg + 2, yObs + 8.5);
-
-          const todosComentarios = [adj.comentario, ...(adj.comentariosExtra ?? [])].filter(Boolean);
-          const textoObs = todosComentarios.join(" · ") || "Sin observaciones";
-          doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(...NEGRO);
-          doc.text(doc.splitTextToSize(textoObs, COL_W - 4).slice(0, 3), xImg + 2, yObs + 13);
-        }
-        y += MAX_H + OBS_H + 6;
+      if (paginasDocumentosDiarios.length > 0) {
+        paginasDocumentosDiarios.forEach((p, i) => {
+          dibujarPaginaPdfCompleta(doc, {
+            dataUrl: p.imagen,
+            etiqueta: p.totalPaginas > 1 ? `${p.tag} · ${p.nombre} (pág. ${p.pagina}/${p.totalPaginas})` : `${p.tag} · ${p.nombre}`,
+            comentarios: [p.comentario, ...(p.comentariosExtra ?? [])],
+            size: sizesPaginasDocumentosDiarios[i] ?? { w: 4, h: 3 },
+          }, PW);
+        });
+        y = doc.internal.pageSize.getHeight(); // forzar nueva página para lo que sigue
       }
 
       if (docsDiarios.length > 0) {
@@ -648,88 +768,26 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
       doc.text(`Registro fotográfico — ${fotos.length} imagen${fotos.length > 1 ? "es" : ""}`, 15, y);
       y += 7;
 
-      // Layout: 2 fotos por fila (más espacio para cada una y sus observaciones)
-      const COLS    = 2;
-      const MARGIN  = 15;
-      const GAP     = 8;
-      const COL_W   = (PW - MARGIN * 2 - GAP * (COLS - 1)) / COLS; // ~84mm cada col
-      const MAX_H   = 65; // altura máxima por foto en mm
-      const OBS_H   = 28; // espacio para observaciones debajo de la foto
+      y = dibujarGridImagenes(doc, fotos.map((adj, i) => ({
+        dataUrl: adj.dataUrl,
+        etiqueta: `TAG: ${adj.tag}`,
+        comentarios: [adj.comentario, ...(adj.comentariosExtra ?? [])],
+        size: fotoSizes[i] ?? { w: 4, h: 3 },
+      })), y, PW);
+    }
 
-      for (let i = 0; i < fotos.length; i++) {
-        const col  = i % COLS;
-        const xImg = MARGIN + col * (COL_W + GAP);
-
-        // Nueva fila: salto de Y
-        if (col === 0 && i > 0) {
-          y += MAX_H + OBS_H + 8;
-        }
-        y = checkPage(doc, y, MAX_H + OBS_H + 10);
-
-        const adj  = fotos[i];
-        const size = fotoSizes[i] ?? { w: 4, h: 3 };
-
-        // Calcular dimensiones manteniendo proporción, sin superar COL_W ni MAX_H
-        let imgW = COL_W;
-        let imgH = (imgW * size.h) / size.w;
-        if (imgH > MAX_H) {
-          imgH = MAX_H;
-          imgW = (imgH * size.w) / size.h;
-        }
-        // Centrar horizontalmente dentro de la columna
-        const xCentered = xImg + (COL_W - imgW) / 2;
-
-        // Marco exterior (borde gris claro)
-        doc.setDrawColor(...BORDE);
-        doc.setLineWidth(0.5);
-        doc.rect(xCentered - 1, y - 1, imgW + 2, imgH + 2, "S");
-
-        // Imagen con proporciones correctas
-        try {
-          const ext = adj.dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
-          doc.addImage(adj.dataUrl, ext, xCentered, y, imgW, imgH);
-        } catch {
-          doc.setFillColor(...GRIS_L);
-          doc.rect(xCentered, y, imgW, imgH, "F");
-          doc.setFontSize(7);
-          doc.setTextColor(...GRIS);
-          doc.text("[imagen no disponible]", xCentered + imgW / 2, y + imgH / 2, { align: "center" });
-        }
-
-        // Área de observaciones — fondo gris muy claro
-        const yObs = y + imgH + 3;
-        doc.setFillColor(248, 250, 252);
-        doc.rect(xImg, yObs, COL_W, OBS_H - 4, "F");
-        doc.setDrawColor(...BORDE);
-        doc.setLineWidth(0.3);
-        doc.rect(xImg, yObs, COL_W, OBS_H - 4, "S");
-
-        // TAG del equipo
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(6.5);
-        doc.setTextColor(...NAVY);
-        doc.text(`TAG: ${adj.tag}`, xImg + 2, yObs + 4);
-
-        // Etiqueta "Observaciones:"
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(6);
-        doc.setTextColor(...GRIS);
-        doc.text("Observaciones:", xImg + 2, yObs + 8.5);
-
-        // Texto del comentario principal
-        const todosComentarios = [adj.comentario, ...(adj.comentariosExtra ?? [])].filter(Boolean);
-        const textoObs = todosComentarios.join(" · ") || "Sin observaciones";
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(6.5);
-        doc.setTextColor(...NEGRO);
-        const lineasObs = doc.splitTextToSize(textoObs, COL_W - 4);
-        doc.text(lineasObs.slice(0, 3), xImg + 2, yObs + 13);
-      }
-
-      // Avanzar Y tras la última fila de fotos
-      const lastCol = (fotos.length - 1) % COLS;
-      void lastCol; // la y ya apunta al inicio de la última fila
-      y += MAX_H + OBS_H + 6;
+    // ── Vista previa de documentos PDF (contenido incrustado como imagen,
+    //    una hoja del informe por cada página del PDF para que sea legible) ──
+    if (paginasDocumentos.length > 0) {
+      paginasDocumentos.forEach((p, i) => {
+        dibujarPaginaPdfCompleta(doc, {
+          dataUrl: p.imagen,
+          etiqueta: p.totalPaginas > 1 ? `${p.tag} · ${p.nombre} (pág. ${p.pagina}/${p.totalPaginas})` : `${p.tag} · ${p.nombre}`,
+          comentarios: [p.comentario, ...(p.comentariosExtra ?? [])],
+          size: sizesPaginasDocumentos[i] ?? { w: 4, h: 3 },
+        }, PW);
+      });
+      y = doc.internal.pageSize.getHeight(); // forzar nueva página para lo que sigue
     }
 
     // ── Documentos ─────────────────────────────────────────────────────────
