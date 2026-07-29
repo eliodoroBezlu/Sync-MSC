@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
+import { calcularReporteCapacidad, type CapacidadOverride, type OtParaCapacidad } from "@/lib/planificacion/capacidad";
+import { construirMatriz, DIAS_SEMANA } from "@/lib/planificacion/cuadrillas";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -101,6 +103,55 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     ];
     const wsResumen = XLSX.utils.aoa_to_sheet(resumenData);
     XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen");
+
+    // Sheet 4: Capacidad — mismo cálculo de HH por grupo/día que el
+    // Tablero y la Lista (calcularReporteCapacidad), para que el Excel
+    // exportado coincida exactamente con lo que el planificador vio en pantalla.
+    const miembrosCuadrilla = await prisma.cuadrillaMiembro.findMany({ where: { planBorradorId: id } });
+    const cuadrilla = construirMatriz(miembrosCuadrilla);
+    const otsSeleccionadas = plan.ots.filter(o => o.seleccionada || o.esGuardia);
+    const capacidadOverride = (plan.capacidadOverride as CapacidadOverride | null) ?? {};
+    const reporte = calcularReporteCapacidad(
+      otsSeleccionadas.map(o => ({ ...o, grupoPorDia: o.grupoPorDia as Record<string, string> | null, hhPorDiaManual: o.hhPorDiaManual as Record<string, number> | null })) as OtParaCapacidad[],
+      cuadrilla,
+      capacidadOverride,
+      DIAS_SEMANA
+    );
+
+    const DIA_LARGO: Record<string, string> = { Lu: "Lunes", Ma: "Martes", Mi: "Miércoles", Ju: "Jueves", Vi: "Viernes", Sa: "Sábado", Do: "Domingo" };
+
+    const capacidadRows: (string | number)[][] = [
+      ["CAPACIDAD HH POR GRUPO Y DÍA"],
+      [],
+      ["Disponible semana:", reporte.totalDisponible.toFixed(0)],
+      ["Programada semana:", reporte.totalProgramada.toFixed(0)],
+      ["Atención reactivo:", reporte.horasReactivo.toFixed(0)],
+      ["Utilización semana:", `${(reporte.utilizacionSemana * 100).toFixed(0)}%`],
+      [],
+      ["Grupo", "Detalle", ...DIAS_SEMANA.map(d => DIA_LARGO[d] ?? d), "Total"],
+    ];
+
+    for (const grupo of reporte.grupos) {
+      const filas = DIAS_SEMANA.map(dia => reporte.porGrupoDia.find(f => f.grupo === grupo && f.dia === dia));
+      const totalDisp = filas.reduce((s, f) => s + (f?.horasDisponibles ?? 0), 0);
+      const totalProg = filas.reduce((s, f) => s + (f?.horasProgramadas ?? 0), 0);
+      const utilProm = reporte.porGrupo.find(g => g.grupo === grupo)?.utilizacionPromedio ?? 0;
+
+      capacidadRows.push([grupo, "Headcount", ...filas.map(f => f?.headcount ?? 0), ""]);
+      capacidadRows.push([grupo, "HH disponible", ...filas.map(f => Number((f?.horasDisponibles ?? 0).toFixed(1))), Number(totalDisp.toFixed(1))]);
+      capacidadRows.push([grupo, "HH programada", ...filas.map(f => Number((f?.horasProgramadas ?? 0).toFixed(1))), Number(totalProg.toFixed(1))]);
+      capacidadRows.push([grupo, "Utilización %", ...filas.map(f => `${Math.round((f?.utilizacion ?? 0) * 100)}%`), `${Math.round(utilProm * 100)}%`]);
+    }
+
+    capacidadRows.push([]);
+    capacidadRows.push(["UTILIZACIÓN TOTAL", "", ...DIAS_SEMANA.map(dia => {
+      const d = reporte.porDia.find(x => x.dia === dia);
+      return d ? `${Math.round(d.utilizacion * 100)}%` : "0%";
+    }), `${Math.round(reporte.utilizacionSemana * 100)}%`]);
+
+    const wsCapacidad = XLSX.utils.aoa_to_sheet(capacidadRows);
+    wsCapacidad["!cols"] = [{ wch: 10 }, { wch: 16 }, ...Array(7).fill({ wch: 10 }), { wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, wsCapacidad, "Capacidad");
 
     const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
     return new NextResponse(buffer, {

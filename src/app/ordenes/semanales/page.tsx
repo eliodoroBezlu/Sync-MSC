@@ -55,8 +55,55 @@ type BitacoraEntry = { turno: string; supervisor: string; nota: string; hhAtendi
 type Vista = "tabla" | "kanban" | "tecnico";
 
 // ─── HH Estimadas vs Reales ───────────────────────────────────────────────────
-function HHBar({ estimadas, reales }: { estimadas: number; reales: number | null | undefined }) {
+function HHEstimadasEditable({ estimadas, onEditEstimadas }: { estimadas: number; onEditEstimadas: (n: number) => void }) {
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState(String(estimadas));
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { if (editando) inputRef.current?.focus(); }, [editando]);
+
+  function confirmar() {
+    const n = Number(valor);
+    setEditando(false);
+    if (Number.isFinite(n) && n >= 0 && n !== estimadas) onEditEstimadas(n);
+    else setValor(String(estimadas));
+  }
+
+  if (editando) {
+    return (
+      <input
+        ref={inputRef}
+        type="number"
+        step="0.01"
+        min={0}
+        value={valor}
+        onChange={e => setValor(e.target.value)}
+        onBlur={confirmar}
+        onKeyDown={e => {
+          if (e.key === "Enter") confirmar();
+          if (e.key === "Escape") { setValor(String(estimadas)); setEditando(false); }
+        }}
+        onClick={e => e.stopPropagation()}
+        style={{ width: 52, fontSize: 10, border: "1px solid #93c5fd", borderRadius: 4, padding: "1px 3px" }}
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={e => { e.stopPropagation(); setValor(String(estimadas)); setEditando(true); }}
+      title="Editar HH estimadas"
+      style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "inline-flex", alignItems: "baseline", gap: 3 }}
+    >
+      <span style={{ fontSize: 11, color: "#94a3b8" }}>{estimadas}HH est.</span>
+      <span style={{ fontSize: 9, color: "#93c5fd" }}>✎</span>
+    </button>
+  );
+}
+
+function HHBar({ estimadas, reales, onEditEstimadas }: { estimadas: number; reales: number | null | undefined; onEditEstimadas?: (n: number) => void }) {
   if (reales === null || reales === undefined) {
+    if (onEditEstimadas) return <HHEstimadasEditable estimadas={estimadas} onEditEstimadas={onEditEstimadas} />;
     return <span style={{ fontSize: 11, color: "#94a3b8" }}>{estimadas}HH est.</span>;
   }
   const ratio = estimadas > 0 ? reales / estimadas : 0;
@@ -67,7 +114,14 @@ function HHBar({ estimadas, reales }: { estimadas: number; reales: number | null
     <div style={{ minWidth: 88 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 10, marginBottom: 2, fontWeight: 700 }}>
         <span style={{ color }}>{reales}HH</span>
-        <span style={{ color: "#94a3b8", fontWeight: 400 }}>/ {estimadas}HH</span>
+        {onEditEstimadas ? (
+          <span style={{ display: "inline-flex", alignItems: "baseline", gap: 3 }}>
+            <span style={{ color: "#94a3b8", fontWeight: 400 }}>/</span>
+            <HHEstimadasEditable estimadas={estimadas} onEditEstimadas={onEditEstimadas} />
+          </span>
+        ) : (
+          <span style={{ color: "#94a3b8", fontWeight: 400 }}>/ {estimadas}HH</span>
+        )}
       </div>
       <div style={{ height: 5, background: "#e2e8f0", borderRadius: 3, overflow: "hidden" }}>
         <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 3, transition: "width 0.4s" }} />
@@ -551,7 +605,7 @@ const GRUPO_COLOR: Record<string, { bg: string; color: string }> = {
 
 function VistaTabla({
   ots, diaActivo, setDiaActivo, fechasDias, programa,
-  filtros, programaId, onEstadoChange, isAdmin, areaCodigo, onPersonalChange,
+  filtros, programaId, onEstadoChange, isAdmin, areaCodigo, onPersonalChange, onHHChange,
 }: {
   ots: IOTProgramada[];
   diaActivo: DiaSemana;
@@ -564,6 +618,7 @@ function VistaTabla({
   isAdmin?: boolean;
   areaCodigo?: string;
   onPersonalChange?: (updated: IOTProgramada) => void;
+  onHHChange?: (numeroOT: string, dia: DiaSemana, grupo: string, hhTotal: number) => void;
 }) {
   const [asignandoOT, setAsignandoOT] = useState<IOTProgramada | null>(null);
   const allOts = programa.otsProgramadas ?? [];
@@ -735,7 +790,13 @@ function VistaTabla({
                           )}
                         </td>
                         <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
-                          <HHBar estimadas={ot.hhTotal} reales={ot.hhReales} />
+                          <HHBar
+                            estimadas={ot.hhTotal}
+                            reales={ot.hhReales}
+                            onEditEstimadas={isAdmin && onHHChange
+                              ? (n) => onHHChange(ot.numeroOT, ot.dia, ot.grupo, n)
+                              : undefined}
+                          />
                         </td>
                       </tr>
                     );
@@ -1449,6 +1510,18 @@ export default function SemanalesPage() {
     if (data.ok) setPrograma(data.programa);
   }
 
+  async function handleHHChange(numeroOT: string, dia: DiaSemana, grupo: string, hhTotal: number) {
+    if (!programa) return;
+    const res = await fetch(`/api/programacion-semanal/${programaId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ numeroOT, dia, grupo, hhTotal }),
+    });
+    const data = await res.json();
+    if (data.ok) setPrograma(data.programa);
+    else alert(data.error ?? "No se pudo actualizar las HH");
+  }
+
   function handlePersonalChange(updated: IOTProgramada) {
     if (!programa) return;
     setPrograma({
@@ -1696,6 +1769,7 @@ export default function SemanalesPage() {
                 isAdmin={user?.rol === 1 || user?.rol === 3}
                 areaCodigo={areaActiva?.codigo}
                 onPersonalChange={handlePersonalChange}
+                onHHChange={handleHHChange}
               />
             )}
             {vista === "kanban" && (

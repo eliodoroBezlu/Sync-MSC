@@ -9,7 +9,14 @@
       "Bash(python scripts/analizar_fallas.py)",
       "Bash(set PYTHONIOENCODING=utf-8)",
       "Bash(npx tsc *)",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(git diff *)",
+      "Bash(ls .env*)",
+      "Bash(grep -c \"DATABASE_URL\" .env)",
+      "Bash(which psql *)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/@prisma/client/package.json'\\).version\\)\")",
+      "Bash(node \"C:\\\\Users\\\\ovica\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-ovica-OneDrive-Documents-Programas-Json-sync-msc\\\\858db15d-30a4-4ccc-8555-aaf2cfc4a4bf\\\\scratchpad\\\\check-ots.js\")",
+      "mcp__plugin_claude-mem_mcp-search__get_observations"
     ]
   }
 }

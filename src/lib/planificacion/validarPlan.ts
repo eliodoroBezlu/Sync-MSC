@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { calcularReporteCapacidad, type OtParaCapacidad, type CapacidadOverride } from "./capacidad";
+import { calcularReporteCapacidad, hhPorDia, HORAS_POR_PERSONA_DIA, type OtParaCapacidad, type CapacidadOverride } from "./capacidad";
 import { DIAS_SEMANA, type CuadrillaMatriz } from "./cuadrillas";
 
 export interface Alert {
@@ -104,7 +104,39 @@ export async function validarPlan(
     });
   }
 
-  // 5. CONFLICTO: Mismo técnico en múltiples OTs mismo día
+  // 5. SOBRECARGA INDIVIDUAL: técnico con más de 10HH/día repartidas entre
+  // las OTs que tiene asignadas ese día. La capacidad de grupo (punto 1)
+  // puede verse sana en conjunto aunque una sola persona esté sobrecargada
+  // si la OT tiene pocos asignados — por eso este chequeo va por persona,
+  // no por grupo. Reparte hhPorDia(ot, dia) en partes iguales entre los
+  // técnicos de personalAsignado, igual criterio que usa el planificador al
+  // repartir OTs en la semana.
+  const hhPorTecnicoDia: Map<string, Map<string, number>> = new Map();
+  for (const ot of ots) {
+    for (const dia of ot.dias) {
+      if (ot.personalAsignado.length === 0) continue;
+      const horasOt = hhPorDia(ot, dia) / ot.personalAsignado.length;
+      const porDia = hhPorTecnicoDia.get(dia) ?? new Map<string, number>();
+      for (const tecnico of ot.personalAsignado) {
+        porDia.set(tecnico, (porDia.get(tecnico) ?? 0) + horasOt);
+      }
+      hhPorTecnicoDia.set(dia, porDia);
+    }
+  }
+  for (const [dia, porTecnico] of hhPorTecnicoDia) {
+    for (const [tecnico, horas] of porTecnico) {
+      if (horas > HORAS_POR_PERSONA_DIA) {
+        alerts.push({
+          tipo: "capacidad",
+          severidad: "warning",
+          mensaje: `${tecnico}: ${horas.toFixed(1)}HH el ${dia} (> ${HORAS_POR_PERSONA_DIA}HH/día)`,
+          detalles: { tecnico, dia, horas },
+        });
+      }
+    }
+  }
+
+  // 6. CONFLICTO: Mismo técnico en múltiples OTs mismo día
   const asignacionesPorDia: Map<string, Map<string, number>> = new Map();
   for (const ot of ots) {
     for (const dia of ot.dias) {

@@ -5,21 +5,15 @@ import type { DragEvent, RefObject } from "react";
 import type { OtBorrador, Plan, RosterItem, CuadrillaMatriz, CapacidadOverride } from "./types";
 import type { TecnicoRef } from "./types";
 import { tipoOtDisplay } from "@/lib/tiposOt";
-import { calcularDiasNecesarios, distribuirEnDias, DIAS_LABORALES } from "@/lib/planificacion/balanceador";
 import { calcularReporteCapacidad, horasDisponiblesGrupoDia } from "@/lib/planificacion/capacidad";
 import { grupoDelDia } from "@/lib/planificacion/cuadrillas";
+import { DIAS_INFO, GRUPOS_ORDEN, grupoColor } from "@/lib/planificacion/personal";
 import CuadrillaEditor from "./CuadrillaEditor";
-
-type EditCuadrillaFn = (
-  grupo: string,
-  dias: string[],
-  agregar?: { nombre: string; usuarioId?: string | null }[],
-  quitar?: string[],
-) => Promise<void>;
-
-type EditCapacidadFn = (grupo: string, dia: string, horas: number | null) => void;
-
-type EditHHDiaFn = (otId: string, diaCode: string, horas: number | null) => void;
+import PersonalRail from "./PersonalRail";
+import { useProgramacionDnd } from "./useProgramacionDnd";
+import type { EditCuadrillaFn, EditHHDiaFn, AlcanceGrupo } from "./useProgramacionDnd";
+import { colorUtilizacion, CapacidadEditor, ResumenSemanal, AsignarGrupoPopover } from "./ResumenCapacidad";
+import type { EditCapacidadFn } from "./ResumenCapacidad";
 
 // Reparto de hhTotal en los días de la OT: si el día tiene una entrada en
 // hhPorDiaManual (fijada a mano desde la tarjeta), se usa tal cual; el resto
@@ -34,30 +28,6 @@ function hhPorDia(ot: Pick<OtBorrador, "hhTotal" | "dias" | "hhPorDiaManual">, d
   return hhRestante / Math.max(1, diasSinOverride.length);
 }
 
-const DIAS_INFO = [
-  { code: "Lu", largo: "Lunes" },
-  { code: "Ma", largo: "Martes" },
-  { code: "Mi", largo: "Miércoles" },
-  { code: "Ju", largo: "Jueves" },
-  { code: "Vi", largo: "Viernes" },
-  { code: "Sa", largo: "Sábado" },
-  { code: "Do", largo: "Domingo" },
-] as const;
-
-// Mismo orden y colores que el Plan Semanal publicado (src/app/ordenes/semanales)
-// para que la agrupación por turno se vea consistente en ambas pantallas.
-const GRUPOS_ORDEN = ["G1", "G2", "G3", "G4", "Diurno", "Nocturno"];
-const GRUPO_COLOR: Record<string, { bg: string; color: string }> = {
-  G1: { bg: "#dbeafe", color: "#1d4ed8" },
-  G2: { bg: "#dcfce7", color: "#166534" },
-  G3: { bg: "#fef3c7", color: "#92400e" },
-  G4: { bg: "#ede9fe", color: "#5b21b6" },
-  Diurno: { bg: "#ffedd5", color: "#9a3412" },
-  Nocturno: { bg: "#1e293b", color: "#e2e8f0" },
-};
-function grupoColor(g: string) {
-  return GRUPO_COLOR[g] ?? { bg: "#f1f5f9", color: "#475569" };
-}
 // En los días (no en Sin programar) los 6 grupos siempre se muestran, aunque
 // no tengan ninguna OT ese día — así el planificador puede asignar
 // manualmente (vía el formulario de edición de la OT) a un grupo vacío,
@@ -76,74 +46,6 @@ function agruparPorGrupo(ots: OtBorrador[], incluirVacios: boolean, diaCode: str
   return ordenados.map(grupo => ({ grupo, ots: ots.filter(o => grupoDelDia(o, diaCode) === grupo) }));
 }
 
-function colorUtilizacion(pct: number, disponible: number): { bg: string; color: string } {
-  if (disponible <= 0) return { bg: "#f1f5f9", color: "#94a3b8" };
-  if (pct > 1) return { bg: "#fee2e2", color: "#dc2626" };
-  if (pct >= 0.85) return { bg: "#fef3c7", color: "#b45309" };
-  return { bg: "#dcfce7", color: "#15803d" };
-}
-
-// Popover para ajustar manualmente las horas-hombre disponibles de un
-// grupo en un día puntual (ej. alguien avisó que hoy solo vienen 3 de 4).
-// Sin ajuste, la capacidad sale automática: headcount de la cuadrilla × 10h.
-function CapacidadEditor({
-  grupo, dia, headcount, horasAuto, horasActual, esManual, disabled, onClose, onEdit,
-}: {
-  grupo: string; dia: string; headcount: number; horasAuto: number; horasActual: number; esManual: boolean;
-  disabled: boolean; onClose: () => void; onEdit: EditCapacidadFn;
-}) {
-  const [valor, setValor] = useState(String(horasActual));
-
-  function guardar() {
-    const n = Number(valor);
-    if (Number.isFinite(n) && n >= 0) onEdit(grupo, dia, n);
-    onClose();
-  }
-  function volverAutomatico() {
-    onEdit(grupo, dia, null);
-    onClose();
-  }
-
-  return (
-    <div
-      onClick={e => e.stopPropagation()}
-      style={{
-        position: "absolute", zIndex: 30, top: "100%", left: 0, marginTop: 4,
-        width: 190, background: "white", borderRadius: 10, border: "1px solid #e2e8f0",
-        boxShadow: "0 8px 24px rgba(15,40,71,0.18)", padding: 10,
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <span style={{ fontSize: 11, fontWeight: 800, color: "#374151" }}>{grupo} · {dia} · HH disp.</span>
-        <button onClick={onClose} style={{ border: "none", background: "none", color: "#94a3b8", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
-      </div>
-      <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 6 }}>
-        Automático: {headcount} pers. × 10h = {horasAuto.toFixed(0)}HH
-      </div>
-      {disabled ? (
-        <div style={{ fontSize: 11, color: "#374151" }}>{horasActual.toFixed(0)}HH {esManual ? "(manual)" : "(automático)"}</div>
-      ) : (
-        <>
-          <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
-            <input
-              type="number" min={0} step={1} autoFocus value={valor}
-              onChange={e => setValor(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") guardar(); if (e.key === "Escape") onClose(); }}
-              style={{ flex: 1, fontSize: 11, borderRadius: 6, border: "1.5px solid #7c3aed", padding: "3px 6px" }}
-            />
-            <button onClick={guardar} style={{ padding: "3px 10px", borderRadius: 6, border: "none", background: "#7c3aed", color: "white", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>OK</button>
-          </div>
-          {esManual && (
-            <button onClick={volverAutomatico} style={{ border: "none", background: "none", color: "#0891b2", cursor: "pointer", fontSize: 10, fontWeight: 700, padding: 0 }}>
-              ↺ Volver a automático
-            </button>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
 function getMondayOfIsoWeek(anio: number, semana: number): Date {
   const jan4 = new Date(anio, 0, 4);
   const dow = jan4.getDay() || 7;
@@ -152,46 +54,12 @@ function getMondayOfIsoWeek(anio: number, semana: number): Date {
   return monday;
 }
 
-type DragPayload = { tipo: "ot"; id: string } | { tipo: "tecnico"; nombre: string };
-
-function leerPayload(e: DragEvent): DragPayload | null {
-  const raw = e.dataTransfer.getData("application/json");
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as DragPayload;
-  } catch {
-    return null;
-  }
-}
-
-function iniciales(nombre: string): string {
-  const partes = nombre.trim().split(/\s+/);
-  return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase();
-}
-
-// Un técnico está "en sitio" esta semana si tiene T (turno normal/guardia
-// diurna) o N (turno nocturno) al menos un día — D es descanso (código de
-// RRHH, no "diurno" pese a la letra) y V/CS/L/"" son ausencias (vacación,
-// comisión de servicio, licencia). Los ausentes toda la semana no se pueden
-// arrastrar.
-function estaEnSitio(asistencia: string[]): boolean {
-  return asistencia.some(a => a === "T" || a === "N");
-}
-
-// Mismo criterio T/N que estaEnSitio, pero para un día puntual — usado para
-// bloquear el drop de un técnico sobre un día en el que no está en sitio
-// (entra/sale a mitad de semana, o tiene descanso ese día).
-function trabajaEseDia(asistencia: string[], diaCode: string): boolean {
-  const idx = DIAS_INFO.findIndex(d => d.code === diaCode);
-  if (idx === -1) return true;
-  const a = asistencia[idx];
-  return a === "T" || a === "N";
-}
+type AsignarGrupoFn = (otId: string, diaCode: string, alcance: AlcanceGrupo) => void;
 
 // ─── Tarjeta de OT ──────────────────────────────────────────────────────────
 function OtCard({
   ot, enBacklog, disabled, isDragging, tecnicosDia, diaCode,
-  onDragStart, onDragEnd, onDropTecnico, onQuitarTecnico, onClickBacklog, onDevolverABacklog, onEditarHH, onEditarHHDia,
+  onDragStart, onDragEnd, onDropTecnico, onQuitarTecnico, onClickBacklog, onDevolverABacklog, onEditarHH, onEditarHHDia, onAsignarGrupo,
 }: {
   ot: OtBorrador; enBacklog: boolean; disabled: boolean; isDragging: boolean;
   tecnicosDia: TecnicoRef[]; diaCode: string;
@@ -203,6 +71,7 @@ function OtCard({
   onDevolverABacklog: (otId: string) => void;
   onEditarHH: (otId: string, hhTotal: number) => void;
   onEditarHHDia: EditHHDiaFn;
+  onAsignarGrupo: AsignarGrupoFn;
 }) {
   const s = tipoOtDisplay(ot.tipoOT);
   const multiDia = ot.dias.length > 1;
@@ -212,6 +81,7 @@ function OtCard({
   const manualEsteDia = ot.hhPorDiaManual?.[diaCode] != null;
   const [editandoHH, setEditandoHH] = useState(false);
   const [valorHH, setValorHH] = useState(String(multiDia ? horasEsteDia : ot.hhTotal));
+  const [asignandoGrupo, setAsignandoGrupo] = useState(false);
 
   function empezarEdicion() {
     setValorHH(String(multiDia ? horasEsteDia : ot.hhTotal));
@@ -330,7 +200,23 @@ function OtCard({
         </div>
       )}
       {!disabled && !enBacklog && (
-        <div style={{ fontSize: 9, color: "#cbd5e1", marginTop: 4, fontStyle: "italic" }}>Arrastra personal aquí →</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+          <span style={{ fontSize: 9, color: "#cbd5e1", fontStyle: "italic" }}>Arrastra personal aquí →</span>
+          <button
+            onClick={e => { e.stopPropagation(); setAsignandoGrupo(v => !v); }}
+            title={`Asignar todos los miembros de ${grupoEsteDia} a esta OT`}
+            style={{
+              border: "none", background: "none", color: "#7c3aed", cursor: "pointer",
+              fontSize: 9, fontWeight: 700, padding: 0, flexShrink: 0,
+            }}
+          >+ Grupo</button>
+        </div>
+      )}
+      {asignandoGrupo && (
+        <AsignarGrupoPopover
+          onClose={() => setAsignandoGrupo(false)}
+          onElegir={alcance => onAsignarGrupo(ot.id, diaCode, alcance)}
+        />
       )}
     </div>
   );
@@ -340,7 +226,7 @@ function OtCard({
 function DiaColumn({
   titulo, subtitulo, ots, esBacklog, diaCode, cuadrilla, roster, capacidadOverride, dragOverActivo, disabled,
   onDragOverColumna, onDragLeaveColumna, onDropColumna, onDropGrupo,
-  draggingOtId, onDragStartOt, onDragEndOt, onDropTecnicoEnOt, onQuitarTecnico, onClickBacklog, onDevolverABacklog, onEditarHH, onEditarHHDia, onEditCuadrilla, onEditCapacidad,
+  draggingOtId, onDragStartOt, onDragEndOt, onDropTecnicoEnOt, onQuitarTecnico, onClickBacklog, onDevolverABacklog, onEditarHH, onEditarHHDia, onEditCuadrilla, onEditCapacidad, onAsignarGrupo,
 }: {
   titulo: string; subtitulo: string; ots: OtBorrador[]; esBacklog: boolean;
   diaCode: string; cuadrilla: CuadrillaMatriz; roster: RosterItem[]; capacidadOverride: CapacidadOverride;
@@ -357,6 +243,7 @@ function DiaColumn({
   onEditarHHDia: EditHHDiaFn;
   onEditCuadrilla: EditCuadrillaFn;
   onEditCapacidad: EditCapacidadFn;
+  onAsignarGrupo: AsignarGrupoFn;
 }) {
   const [editandoGrupo, setEditandoGrupo] = useState<string | null>(null);
   const [editandoCapacidad, setEditandoCapacidad] = useState<string | null>(null);
@@ -399,7 +286,10 @@ function DiaColumn({
           </div>
         )}
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 8, minHeight: 140, flex: 1 }}>
+      <div style={{
+        display: "flex", flexDirection: "column", gap: 10, padding: 8, minHeight: 140, flex: 1,
+        maxHeight: esBacklog ? "80vh" : undefined, overflowY: esBacklog ? "auto" : undefined,
+      }}>
         {esBacklog && ots.length === 0 && (
           <p style={{ fontSize: 10, color: "#cbd5e1", textAlign: "center", padding: "18px 0", fontStyle: "italic" }}>
             Sin OTs pendientes
@@ -488,134 +378,9 @@ function DiaColumn({
                   onDevolverABacklog={onDevolverABacklog}
                   onEditarHH={onEditarHH}
                   onEditarHHDia={onEditarHHDia}
+                  onAsignarGrupo={onAsignarGrupo}
                 />
               ))}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ─── Riel de personal ───────────────────────────────────────────────────────
-function PersonalRail({ plan, disabled }: { plan: Plan; disabled: boolean }) {
-  const [draggingNombre, setDraggingNombre] = useState<string | null>(null);
-  const visibles = plan.roster.filter(r => estaEnSitio(r.asistencia));
-  const ausentes = plan.roster.length - visibles.length;
-  return (
-    <div style={{ width: 172, flexShrink: 0, position: "sticky", top: 0 }}>
-      <div style={{ fontSize: 11, fontWeight: 800, color: "#374151", marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.03em" }}>
-        Personal ({visibles.length})
-      </div>
-      {ausentes > 0 && (
-        <div style={{ fontSize: 9, color: "#94a3b8", marginBottom: 6 }}>
-          {ausentes} ausente{ausentes !== 1 ? "s" : ""} toda la semana (no se muestran)
-        </div>
-      )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 5, maxHeight: "70vh", overflowY: "auto", paddingRight: 4 }}>
-        {plan.roster.length === 0 && (
-          <p style={{ fontSize: 11, color: "#cbd5e1", fontStyle: "italic" }}>Importa el roster para asignar técnicos.</p>
-        )}
-        {visibles.map(r => {
-          const asignaciones = plan.ots.filter(o => o.personalAsignado.includes(r.nombre)).length;
-          const diasTrabaja = DIAS_INFO.map(d => trabajaEseDia(r.asistencia, d.code));
-          const semanaCompleta = diasTrabaja.every(Boolean);
-          const bloqueado = disabled;
-          return (
-            <div
-              key={r.id}
-              draggable={!bloqueado}
-              onDragStart={e => {
-                setDraggingNombre(r.nombre);
-                e.dataTransfer.effectAllowed = "copy";
-                e.dataTransfer.setData("application/json", JSON.stringify({ tipo: "tecnico", nombre: r.nombre }));
-              }}
-              onDragEnd={() => setDraggingNombre(null)}
-              style={{
-                display: "flex", alignItems: "center", gap: 7,
-                background: "white", border: "1px solid #f1f5f9", borderRadius: 8, padding: "6px 8px",
-                opacity: draggingNombre === r.nombre ? 0.35 : 1,
-                cursor: bloqueado ? "default" : "grab",
-              }}
-              title={
-                !semanaCompleta ? `${r.nombre} solo está en sitio: ${DIAS_INFO.filter((_, i) => diasTrabaja[i]).map(d => d.largo).join(", ")}`
-                : disabled ? undefined : "Arrastra sobre una OT para asignar"
-              }
-            >
-              <span style={{
-                width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
-                background: r.grupo === "Nocturno" ? "#1e1b4b" : "#ede9fe",
-                color: r.grupo === "Nocturno" ? "white" : "#7c3aed",
-                fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
-              }}>{iniciales(r.nombre)}</span>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#0f2847", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.nombre}</div>
-                <div style={{ fontSize: 9, color: "#94a3b8" }}>
-                  {r.grupo} · {asignaciones} OT{asignaciones !== 1 ? "s" : ""}
-                </div>
-                {!semanaCompleta && (
-                  <div style={{ display: "flex", gap: 2, marginTop: 3 }}>
-                    {DIAS_INFO.map((d, i) => (
-                      <span
-                        key={d.code}
-                        title={`${d.largo}${diasTrabaja[i] ? "" : " (no está en sitio)"}`}
-                        style={{
-                          width: 12, height: 12, borderRadius: 3, fontSize: 7, fontWeight: 800,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          background: diasTrabaja[i] ? "#ddd6fe" : "#f1f5f9",
-                          color: diasTrabaja[i] ? "#5b21b6" : "#cbd5e1",
-                        }}
-                      >{d.code[0]}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ─── Resumen semanal de HH (réplica de las filas 1-8 de la hoja I-XX) ─────
-function ResumenSemanal({ reporte }: { reporte: ReturnType<typeof calcularReporteCapacidad> }) {
-  const uc = colorUtilizacion(reporte.utilizacionSemana, reporte.totalDisponible);
-  return (
-    <div style={{
-      display: "flex", flexWrap: "wrap", alignItems: "center", gap: 14,
-      background: "white", border: "1px solid #f1f5f9", borderRadius: 10,
-      padding: "9px 14px", marginBottom: 10,
-    }}>
-      <div style={{ display: "flex", gap: 16 }}>
-        <div>
-          <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Disponible</div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: "#0f2847" }}>{reporte.totalDisponible.toFixed(0)}HH</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Programada</div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: "#0f2847" }}>{reporte.totalProgramada.toFixed(0)}HH</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Atención reactivo</div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: reporte.horasReactivo >= 0 ? "#0f2847" : "#dc2626" }}>{reporte.horasReactivo.toFixed(0)}HH</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Utilización semana</div>
-          <div style={{ display: "inline-block", background: uc.bg, color: uc.color, borderRadius: 6, padding: "1px 8px", fontSize: 13, fontWeight: 800 }}>
-            {(reporte.utilizacionSemana * 100).toFixed(0)}%
-          </div>
-        </div>
-      </div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginLeft: "auto" }}>
-        {reporte.porGrupo.map(g => {
-          const gc = grupoColor(g.grupo);
-          const guc = colorUtilizacion(g.utilizacionPromedio, 1);
-          return (
-            <div key={g.grupo} style={{ display: "flex", alignItems: "center", gap: 4, background: gc.bg, borderRadius: 6, padding: "3px 8px" }}>
-              <span style={{ fontSize: 9, fontWeight: 800, color: gc.color }}>{g.grupo.toUpperCase()}</span>
-              <span style={{ fontSize: 10, fontWeight: 800, color: guc.color }}>{(g.utilizacionPromedio * 100).toFixed(0)}%</span>
             </div>
           );
         })}
@@ -685,168 +450,31 @@ export default function TableroSemanal({
   onEditCapacidad: EditCapacidadFn;
   disabled: boolean;
 }) {
-  const [draggingOtId, setDraggingOtId] = useState<string | null>(null);
   const [dragOverDia, setDragOverDia] = useState<string | null>(null);
   const diasScrollRef = useRef<HTMLDivElement>(null);
 
   const monday = getMondayOfIsoWeek(plan.anio, plan.semana);
   const reporte = calcularReporteCapacidad(plan.ots, cuadrilla, plan.capacidadOverride);
 
+  const {
+    draggingOtId, setDraggingOtId, moverADia, editarHH, editarHHDia,
+    asignarGrupoCompleto, quitarTecnico,
+    handleDragStartOt, handleDropColumna, handleDropGrupo, handleDropTecnicoEnOt,
+  } = useProgramacionDnd({ plan, cuadrilla, onPatchOt, onEditCuadrilla });
+
   function otsDelDia(code: string): OtBorrador[] {
     if (code === "") return plan.ots.filter(o => !o.dias || o.dias.length === 0);
     return plan.ots.filter(o => o.dias?.includes(code));
   }
 
-  function moverADia(otId: string, dia: string) {
-    if (dia === "") { onPatchOt(otId, { dias: [] }); return; }
-    const ot = plan.ots.find(o => o.id === otId);
-    // OTs de guardia u OPEPLANT quedan en el día exacto donde se soltaron;
-    // el resto se reparte automáticamente en tantos días hábiles como haga
-    // falta según personas/hrsTrabajo y el turno (8h/10h por persona/día).
-    if (ot && !ot.esGuardia && DIAS_LABORALES.includes(dia)) {
-      const diasNecesarios = calcularDiasNecesarios(ot.hhTotal, ot.personas, ot.grupo);
-      onPatchOt(otId, { dias: distribuirEnDias(dia, diasNecesarios) });
-    } else {
-      onPatchOt(otId, { dias: [dia] });
-    }
-  }
-
-  function editarHH(otId: string, hhTotal: number) {
-    onPatchOt(otId, { hhTotal });
-  }
-
-  // Fija (o quita, con horas=null) el reparto manual de HH de un día puntual
-  // de una OT multi-día — el resto de hhTotal se sigue repartiendo parejo
-  // entre los días sin override, ver hhPorDia().
-  function editarHHDia(otId: string, diaCode: string, horas: number | null) {
-    const ot = plan.ots.find(o => o.id === otId);
-    if (!ot) return;
-    const actual = { ...(ot.hhPorDiaManual ?? {}) };
-    if (horas == null) {
-      delete actual[diaCode];
-    } else {
-      actual[diaCode] = horas;
-    }
-    onPatchOt(otId, { hhPorDiaManual: Object.keys(actual).length > 0 ? actual : null });
-  }
-
-  // Arrastrar una OT y soltarla sobre la sección de un grupo (G1-G4/Diurno/
-  // Nocturno) dentro de un día. Si ese día YA es parte de la OT, es un ajuste
-  // puntual: solo ESE día pasa al grupo elegido (grupoPorDia), el resto de
-  // los días de la OT se mantienen en su grupo actual — así una OT dividida
-  // en varios días (ej. Lu-Vi en Diurno) puede tener un día suelto (ej.
-  // Jueves) reasignado a otro grupo (ej. G2) sin mover el resto. Si la OT
-  // viene de otro día o de Sin programar, es la primera vez que se ubica: se
-  // fija el grupo base y los días, igual que antes.
-  function moverAGrupoEnDia(otId: string, dia: string, grupo: string) {
-    const ot = plan.ots.find(o => o.id === otId);
-    if (!ot) return;
-    const yaEnEsteDia = ot.dias?.includes(dia) ?? false;
-    if (yaEnEsteDia) {
-      const actual = { ...(ot.grupoPorDia ?? {}) };
-      if (grupo === ot.grupo) delete actual[dia];
-      else actual[dia] = grupo;
-      onPatchOt(otId, { grupoPorDia: Object.keys(actual).length > 0 ? actual : null });
-      return;
-    }
-    if (!ot.esGuardia && DIAS_LABORALES.includes(dia)) {
-      const diasNecesarios = calcularDiasNecesarios(ot.hhTotal, ot.personas, grupo);
-      onPatchOt(otId, { dias: distribuirEnDias(dia, diasNecesarios), grupo });
-    } else {
-      onPatchOt(otId, { dias: [dia], grupo });
-    }
-  }
-
-  async function asignarTecnico(otId: string, nombre: string, diaCode: string) {
-    const ot = plan.ots.find(o => o.id === otId);
-    if (!ot) return;
-    const tecnico = plan.roster.find(r => r.nombre === nombre);
-    if (diaCode && tecnico && !trabajaEseDia(tecnico.asistencia, diaCode)) {
-      const dia = DIAS_INFO.find(d => d.code === diaCode)?.largo ?? diaCode;
-      alert(`${nombre} no está en sitio el ${dia}. No se puede asignar ese día.`);
-      return;
-    }
-    // No usar early-return por "ya está en personalAsignado": una OT de
-    // guardia (OPEPLANT) abarca toda la semana en un solo registro, así que
-    // dropear al mismo técnico en un día distinto debe seguir registrando su
-    // membresía de cuadrilla para ESE día aunque ya figure en la OT.
-    //
-    // Si la OT abarca varios días, registrar al técnico en la cuadrilla del
-    // grupo para TODOS los días que la OT tiene programados (no solo el día
-    // donde se soltó) — evita repetir el arrastre día por día para una OT de
-    // una sola persona en toda la semana, y hace que la capacidad/"tecnicosDia"
-    // reflejen su presencia en cada día real de la OT. Cada día se registra en
-    // SU grupo efectivo (grupoDelDia): con grupoPorDia, días distintos de la
-    // misma OT pueden pertenecer a grupos distintos.
-    const diasParaRegistrar = diaCode
-      ? ot.dias.filter(d => {
-          if (tecnico && !trabajaEseDia(tecnico.asistencia, d)) return false;
-          const yaEnCrew = (cuadrilla[grupoDelDia(ot, d)]?.[d] ?? []).some(t => t.nombre === nombre);
-          return !yaEnCrew;
-        })
-      : [];
-    if (diasParaRegistrar.length > 0) {
-      const r = plan.roster.find(x => x.nombre === nombre);
-      const diasPorGrupo = new Map<string, string[]>();
-      for (const d of diasParaRegistrar) {
-        const g = grupoDelDia(ot, d);
-        diasPorGrupo.set(g, [...(diasPorGrupo.get(g) ?? []), d]);
-      }
-      for (const [g, dias] of diasPorGrupo) {
-        await onEditCuadrilla(g, dias, [{ nombre, usuarioId: r?.usuarioId ?? null }]);
-      }
-    }
-    if (!ot.personalAsignado.includes(nombre)) {
-      onPatchOt(otId, { personalAsignado: [...ot.personalAsignado, nombre] });
-    }
-  }
-
-  async function quitarTecnico(otId: string, nombre: string, diaCode: string) {
-    const ot = plan.ots.find(o => o.id === otId);
-    if (!ot) return;
-    if (ot.esGuardia && diaCode) {
-      // OT de guardia (OPEPLANT): abarca toda la semana en un solo registro
-      // (dias = Lu-Do), así que sacar a alguien de un día puntual debe tocar
-      // solo la membresía de cuadrilla de ESE día — nunca personalAsignado
-      // directo, que lo sacaría de la OT los 7 días a la vez. El PATCH de
-      // cuadrillas ya reconcilia personalAsignado en el servidor dejándolo
-      // solo si sigue siendo elegible en algún otro día de la semana.
-      await onEditCuadrilla(grupoDelDia(ot, diaCode), [diaCode], undefined, [nombre]);
-      return;
-    }
-    onPatchOt(otId, { personalAsignado: ot.personalAsignado.filter(n => n !== nombre) });
-  }
-
-  function handleDragStartOt(e: DragEvent, otId: string) {
-    setDraggingOtId(otId);
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("application/json", JSON.stringify({ tipo: "ot", id: otId }));
-  }
-
-  function handleDropColumna(e: DragEvent, dia: string) {
-    e.preventDefault();
+  function onDropColumnaWrap(e: DragEvent, dia: string) {
     setDragOverDia(null);
-    const payload = leerPayload(e);
-    if (payload?.tipo === "ot") moverADia(payload.id, dia);
+    handleDropColumna(e, dia);
   }
 
-  function handleDropGrupo(e: DragEvent, dia: string, grupo: string) {
-    e.preventDefault();
-    e.stopPropagation();
+  function onDropGrupoWrap(e: DragEvent, dia: string, grupo: string) {
     setDragOverDia(null);
-    const payload = leerPayload(e);
-    if (payload?.tipo === "ot") moverAGrupoEnDia(payload.id, dia, grupo);
-  }
-
-  function handleDropTecnicoEnOt(e: DragEvent, otId: string, diaCode: string) {
-    const payload = leerPayload(e);
-    if (payload?.tipo === "tecnico") {
-      e.preventDefault();
-      e.stopPropagation();
-      asignarTecnico(otId, payload.nombre, diaCode);
-    }
-    // Si es una OT arrastrada sobre otra tarjeta, dejar que el evento burbujee
-    // hasta la columna para que se procese como un cambio de día.
+    handleDropGrupo(e, dia, grupo);
   }
 
   function clickAgregarBacklog(ot: OtBorrador) {
@@ -868,14 +496,19 @@ export default function TableroSemanal({
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
         <PersonalRail plan={plan} disabled={disabled} />
 
-        <div ref={diasScrollRef} style={{ display: "flex", gap: 10, overflowX: "auto", flex: 1, minWidth: 0, paddingBottom: 10 }}>
+        {/* Fuera del riel de scroll horizontal (diasScrollRef) y sticky como
+        PersonalRail: si el backlog viviera dentro de ese riel, se iría hacia
+        la izquierda con el resto de columnas al hacer scroll vertical largo
+        (tablero con muchas OTs por grupo), y el planificador perdería de
+        vista justo las OTs sin programar que necesita arrastrar. */}
+        <div style={{ position: "sticky", top: 60, flexShrink: 0 }}>
           <DiaColumn
             titulo="Sin programar" subtitulo="OTs importadas sin día"
             ots={otsDelDia("")} esBacklog diaCode="" cuadrilla={cuadrilla} roster={plan.roster} capacidadOverride={plan.capacidadOverride} disabled={disabled}
             dragOverActivo={dragOverDia === ""}
             onDragOverColumna={() => setDragOverDia("")}
             onDragLeaveColumna={() => setDragOverDia(null)}
-            onDropColumna={e => handleDropColumna(e, "")}
+            onDropColumna={e => onDropColumnaWrap(e, "")}
             onDropGrupo={() => {}}
             draggingOtId={draggingOtId}
             onDragStartOt={handleDragStartOt}
@@ -888,7 +521,11 @@ export default function TableroSemanal({
             onEditarHHDia={editarHHDia}
             onEditCuadrilla={onEditCuadrilla}
             onEditCapacidad={onEditCapacidad}
+            onAsignarGrupo={asignarGrupoCompleto}
           />
+        </div>
+
+        <div ref={diasScrollRef} style={{ display: "flex", gap: 10, overflowX: "auto", flex: 1, minWidth: 0, paddingBottom: 10 }}>
           {DIAS_INFO.map((d, i) => {
             const date = new Date(monday);
             date.setDate(monday.getDate() + i);
@@ -901,8 +538,8 @@ export default function TableroSemanal({
                 dragOverActivo={dragOverDia === d.code}
                 onDragOverColumna={() => setDragOverDia(d.code)}
                 onDragLeaveColumna={() => setDragOverDia(null)}
-                onDropColumna={e => handleDropColumna(e, d.code)}
-                onDropGrupo={(e, grupo) => handleDropGrupo(e, d.code, grupo)}
+                onDropColumna={e => onDropColumnaWrap(e, d.code)}
+                onDropGrupo={(e, grupo) => onDropGrupoWrap(e, d.code, grupo)}
                 draggingOtId={draggingOtId}
                 onDragStartOt={handleDragStartOt}
                 onDragEndOt={() => setDraggingOtId(null)}
@@ -914,6 +551,7 @@ export default function TableroSemanal({
                 onEditarHHDia={editarHHDia}
                 onEditCuadrilla={onEditCuadrilla}
                 onEditCapacidad={onEditCapacidad}
+                onAsignarGrupo={asignarGrupoCompleto}
               />
             );
           })}

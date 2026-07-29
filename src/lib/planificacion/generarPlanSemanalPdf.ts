@@ -3,6 +3,7 @@ import autoTable, { type RowInput } from "jspdf-autotable";
 import type { Plan, CuadrillaMatriz, OtBorrador } from "@/app/planificacion/[id]/types";
 import { DIAS_SEMANA, grupoDelDia } from "./cuadrillas";
 import { calcularReporteCapacidad, hhPorDia } from "./capacidad";
+import { MESES, lunesDeSemana, fechaLarga } from "./fechaSemana";
 
 // Misma paleta que src/lib/generarInformeOT.ts, para que ambos documentos
 // se vean como parte del mismo sistema (nada de amarillos ni colores Excel).
@@ -39,28 +40,6 @@ function etiquetaGrupo(grupo: string): string {
   if (grupo === "Diurno") return "TURNO DIURNO";
   if (grupo === "Nocturno") return "TURNO NOCTURNO";
   return `GRUPO ${grupo.replace(/^G/, "")}`;
-}
-
-const DIA_NOMBRE: Record<string, string> = {
-  Lu: "lunes", Ma: "martes", Mi: "miércoles", Ju: "jueves", Vi: "viernes", Sa: "sábado", Do: "domingo",
-};
-
-const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
-
-function lunesDeSemana(semana: number, anio: number): Date {
-  const jan4 = new Date(anio, 0, 4);
-  const lunes = new Date(jan4);
-  const dow = jan4.getDay() || 7;
-  lunes.setDate(jan4.getDate() - dow + 1 + (semana - 1) * 7);
-  return lunes;
-}
-
-function fechaLarga(semana: number, anio: number, diaCodigo: string): string {
-  const lunes = lunesDeSemana(semana, anio);
-  const offset = DIAS_SEMANA.indexOf(diaCodigo);
-  const fecha = new Date(lunes);
-  fecha.setDate(lunes.getDate() + offset);
-  return `${DIA_NOMBRE[diaCodigo]}, ${fecha.getDate()} de ${MESES[fecha.getMonth()]} de ${fecha.getFullYear()}`;
 }
 
 function rangoSemana(semana: number, anio: number): string {

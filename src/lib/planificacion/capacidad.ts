@@ -12,7 +12,7 @@
 import type { CuadrillaMatriz } from "./cuadrillas";
 import { DIAS_SEMANA, grupoDelDia } from "./cuadrillas";
 
-const HORAS_POR_PERSONA_DIA = 10;
+export const HORAS_POR_PERSONA_DIA = 10;
 
 /** {grupo: {dia: horasDisponiblesOverride}} — ausente = automático (headcount x 10). */
 export type CapacidadOverride = Record<string, Record<string, number>>;

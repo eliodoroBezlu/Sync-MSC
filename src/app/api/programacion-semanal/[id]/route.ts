@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
+import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -59,10 +60,24 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     const body = await req.json();
     const { numeroOT, dia, estado, observaciones,
             pasarNoche, pasarNocheMotivo, pasarNocheNota, pasarNochePor,
-            personalAsignado, personalAsignadoIds, todosLosDias } = body;
+            personalAsignado, personalAsignadoIds, todosLosDias, hhTotal } = body;
 
     if (!numeroOT || (!dia && !todosLosDias))
       return Response.json({ ok: false, error: "numeroOT y dia son requeridos" }, { status: 400 });
+
+    // Editar hhTotal es una corrección administrativa (afecta HH publicadas ya
+    // usadas en estadísticas) — a diferencia de estado/personal, que cualquier
+    // rol autenticado puede tocar desde el plan semanal.
+    if (hhTotal !== undefined) {
+      const token = req.cookies.get(COOKIE_NAME)?.value;
+      const session = token ? verifyToken(token) : null;
+      if (!session || (session.rol !== 1 && session.rol !== 3)) {
+        return Response.json({ ok: false, error: "No autorizado para editar HH" }, { status: 403 });
+      }
+      if (typeof hhTotal !== "number" || !Number.isFinite(hhTotal) || hhTotal < 0) {
+        return Response.json({ ok: false, error: "hhTotal inválido" }, { status: 400 });
+      }
+    }
 
     // todosLosDias: una OT recurrente ocupa varias filas (una por día programado) que
     // comparten numeroOT. Al cerrar el ciclo semanal (enviar a revisión) hay que marcarlas
@@ -83,6 +98,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
         ...(personalAsignado    !== undefined ? { personalAsignado } : {}),
         ...(personalAsignadoIds !== undefined ? { personalAsignadoIds } : {}),
         ...(body.nuevoGrupo ? { grupo: String(body.nuevoGrupo) } : {}),
+        ...(hhTotal             !== undefined ? { hhTotal } : {}),
         ...(pasarNoche         !== undefined ? {
           pasarNoche,
           pasarNocheMotivo: pasarNocheMotivo ?? "",
