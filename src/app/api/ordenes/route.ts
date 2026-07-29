@@ -188,10 +188,17 @@ export async function GET(req: NextRequest) {
   // OTs de larga duración (varias semanas): su "fecha" queda fija en el día de creación,
   // así que un filtro fechaDesde/fechaHasta (p. ej. "últimas 3 semanas") las hace
   // desaparecer de la lista aunque sigan activas y se les siga registrando avance.
-  // Mientras la OT no esté concluida, se mantiene visible sin importar su fecha —
-  // el filtro de fecha solo restringe el historial de OTs ya cerradas.
+  // Se mantienen visibles solo si además tienen un registro diario dentro del rango
+  // filtrado (avance real en ese período) — de lo contrario "no concluida" por sí solo
+  // bypasseaba el filtro de fecha para CUALQUIER OT abierta, sin importar su antigüedad,
+  // rompiendo filtros como "Esta semana" o "Semana pasada".
   if (Object.keys(fechaFilter).length) {
-    andConditions.push({ OR: [{ fecha: fechaFilter }, { NOT: { estado: "concluido" } }] });
+    andConditions.push({
+      OR: [
+        { fecha: fechaFilter },
+        { AND: [{ NOT: { estado: "concluido" } }, { registrosDiarios: { some: { fecha: fechaFilter } } }] },
+      ],
+    });
   }
 
   const programacionSemanalId = searchParams.get("programacionSemanalId");
