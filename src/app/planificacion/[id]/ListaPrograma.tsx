@@ -436,7 +436,7 @@ export default function ListaPrograma({ plan, cuadrilla, onPatchOt, onDeleteOt, 
         <td style={{ ...td, position: "relative" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
             <PersonalChips
-              nombres={ot.personalAsignado}
+              nombres={ot.personalAsignado.filter(n => (cuadrilla[grupoDelDia(ot, dia)]?.[dia] ?? []).some(t => t.nombre === n))}
               disabled={disabled}
               onQuitar={nombre => quitarTecnico(ot.id, nombre, dia)}
             />
