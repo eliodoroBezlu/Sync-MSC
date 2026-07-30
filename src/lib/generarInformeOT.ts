@@ -1,6 +1,5 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { renderizarPaginasPdf } from "./pdfToImages";
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 interface AdjuntoItem {
@@ -356,6 +355,10 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
     for (const d of docs) {
       if (!d.dataUrl.startsWith("data:application/pdf")) continue;
       try {
+        // Import dinámico: pdfjs-dist toca APIs de navegador (DOMMatrix, canvas)
+        // al evaluarse. Un import estático rompe el prerenderizado en el
+        // servidor de cualquier página que use generarInformeOT.
+        const { renderizarPaginasPdf } = await import("./pdfToImages");
         const paginas = await renderizarPaginasPdf(d.dataUrl);
         paginas.forEach((imagen, idx) => {
           resultado.push({ tag: d.tag, nombre: d.nombre, comentario: d.comentario, comentariosExtra: d.comentariosExtra, imagen, pagina: idx + 1, totalPaginas: paginas.length });
