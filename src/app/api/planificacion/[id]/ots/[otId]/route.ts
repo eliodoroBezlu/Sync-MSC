@@ -79,6 +79,30 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 
     let ot = await prisma.planBorradorOt.update({ where: { id: otId }, data });
 
+    // Las OTs guardia (OPEPLANT) viven como 2 filas gemelas (Diurno y
+    // Nocturno) con el mismo N° OT, creadas juntas al importar (ver
+    // importar/route.ts). Personas y Hrs/día describen la misma tarea física
+    // programada en ambos turnos, así que editarlas en una fila sin propagar
+    // a la gemela las deja divergiendo en silencio — el HH Total de cada una
+    // sigue viviendo aparte, así que si cambió acá también hay que
+    // recalcularlo en la gemela con SU propia cantidad de días.
+    if (ot.esGuardia && ("personas" in data || "hrsTrabajo" in data)) {
+      const gemelas = await prisma.planBorradorOt.findMany({
+        where: { planBorradorId: id, numeroOT: ot.numeroOT, esGuardia: true, id: { not: otId } },
+      });
+      for (const gemela of gemelas) {
+        const numDiasGemela = Math.max(1, gemela.dias?.length ?? 1);
+        await prisma.planBorradorOt.update({
+          where: { id: gemela.id },
+          data: {
+            personas: ot.personas,
+            hrsTrabajo: ot.hrsTrabajo,
+            hhTotal: ot.personas * ot.hrsTrabajo * numDiasGemela,
+          },
+        });
+      }
+    }
+
     // Grupo/días/grupoPorDia/personalAsignado cambiaron: reconciliar contra la
     // cuadrilla vigente (filtra nombres que ya no son miembros del grupo
     // efectivo de cada día — nunca agrega miembros nuevos que el usuario no
