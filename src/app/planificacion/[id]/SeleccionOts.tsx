@@ -4,6 +4,8 @@ import { useState } from "react";
 import type { OtBorrador, Plan } from "./types";
 import { tipoOtDisplay } from "@/lib/tiposOt";
 
+const GRUPOS = ["Diurno", "Nocturno", "G1", "G2", "G3", "G4"];
+
 function MotivoForm({ ot, onPatch }: {
   ot: OtBorrador;
   onPatch: (otId: string, patch: Partial<OtBorrador>) => void;
@@ -94,6 +96,9 @@ export default function SeleccionOts({ plan, onPatchOt, disabled }: {
   onPatchOt: (otId: string, patch: Partial<OtBorrador>) => void;
   disabled: boolean;
 }) {
+  const [filtroTexto, setFiltroTexto] = useState("");
+  const [filtroGrupo, setFiltroGrupo] = useState("");
+
   function toggle(ot: OtBorrador) {
     if (disabled) return;
     onPatchOt(ot.id, {
@@ -114,8 +119,50 @@ export default function SeleccionOts({ plan, onPatchOt, disabled }: {
   const seleccionadas = plan.ots.filter(o => o.seleccionada);
   const hhSeleccionadas = seleccionadas.reduce((s, o) => s + o.hhTotal, 0);
 
+  const q = filtroTexto.trim().toLowerCase();
+  const otsFiltradas = plan.ots.filter(ot => {
+    const coincideTexto = !q
+      || ot.numeroOT.toLowerCase().includes(q)
+      || ot.tag.toLowerCase().includes(q)
+      || ot.descripcion.toLowerCase().includes(q);
+    const coincideGrupo = !filtroGrupo || ot.grupo === filtroGrupo;
+    return coincideTexto && coincideGrupo;
+  });
+
   return (
     <div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "4px 4px 14px" }}>
+        <input
+          value={filtroTexto}
+          onChange={e => setFiltroTexto(e.target.value)}
+          placeholder="Buscar por # OT, TAG o descripción…"
+          style={{
+            flex: "1 1 240px", padding: "7px 12px", borderRadius: 8,
+            border: "1.5px solid #e2e8f0", fontSize: 12.5, boxSizing: "border-box" as const,
+          }}
+        />
+        <select
+          value={filtroGrupo}
+          onChange={e => setFiltroGrupo(e.target.value)}
+          style={{
+            padding: "7px 10px", borderRadius: 8, border: "1.5px solid #e2e8f0",
+            fontSize: 12.5, color: "#374151", background: "white",
+          }}
+        >
+          <option value="">Todos los grupos</option>
+          {GRUPOS.map(g => <option key={g} value={g}>{g}</option>)}
+        </select>
+        {(filtroTexto || filtroGrupo) && (
+          <button
+            onClick={() => { setFiltroTexto(""); setFiltroGrupo(""); }}
+            style={{
+              padding: "7px 12px", borderRadius: 8, border: "1px solid #e2e8f0",
+              background: "white", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer",
+            }}
+          >Limpiar</button>
+        )}
+      </div>
+
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "10px 4px 14px", flexWrap: "wrap", gap: 10,
@@ -137,11 +184,17 @@ export default function SeleccionOts({ plan, onPatchOt, disabled }: {
         )}
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {plan.ots.map(ot => (
-          <SeleccionCard key={ot.id} ot={ot} onToggle={toggle} onPatch={onPatchOt} />
-        ))}
-      </div>
+      {otsFiltradas.length === 0 ? (
+        <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
+          Ninguna OT coincide con el filtro.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {otsFiltradas.map(ot => (
+            <SeleccionCard key={ot.id} ot={ot} onToggle={toggle} onPatch={onPatchOt} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
