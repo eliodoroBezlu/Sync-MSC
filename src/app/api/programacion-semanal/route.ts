@@ -416,6 +416,11 @@ export async function POST(req: NextRequest) {
             personas: Number(o.personas ?? 1), hrsTrabajo: Number(o.hrsTrabajo ?? 0),
             hhTotal: Number(o.hhTotal ?? 0),
             personalAsignado: (o.personalAsignado as string[]) ?? [],
+            // La columna es NOT NULL en producción sin default real (ver
+            // docker-start.sh: el ADD COLUMN ... DEFAULT solo aplica si la
+            // columna no existía, y ya existía de antes sin default) — hay
+            // que mandarla siempre explícita o el insert revienta.
+            personalAsignadoIds: (o.personalAsignadoIds as string[]) ?? [],
             grupo: String(o.grupo), dia: String(o.dia),
             estado: (o.estado as string) ?? "no_iniciada",
             esGuardia: Boolean(o.esGuardia),

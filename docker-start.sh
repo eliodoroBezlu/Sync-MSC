@@ -22,6 +22,12 @@ const migraciones = [
   "ALTER TABLE \"Usuario\" ADD COLUMN IF NOT EXISTS \"esContratista\" BOOLEAN NOT NULL DEFAULT false",
   "ALTER TABLE \"Usuario\" ADD COLUMN IF NOT EXISTS \"fechaExpiracion\" TIMESTAMP(3)",
   "ALTER TABLE \"OtProgramada\" ADD COLUMN IF NOT EXISTS \"personalAsignadoIds\" TEXT[] NOT NULL DEFAULT '{}'",
+  // La línea de arriba no aplica el DEFAULT si la columna ya existía (el
+  // ADD COLUMN IF NOT EXISTS es un no-op en ese caso) -- causó un
+  // NOT NULL sin default real en producción que rompía cualquier insert
+  // que no mandara el campo explícito (ver import Excel de Programación
+  // Semanal, 2026-08).
+  "ALTER TABLE \"OtProgramada\" ALTER COLUMN \"personalAsignadoIds\" SET DEFAULT '{}'",
   "ALTER TABLE \"OtProgramada\" ADD COLUMN IF NOT EXISTS bitacora JSONB NOT NULL DEFAULT '[]'",
 
   // ── Competencias y Desempeño (2026-06) ──────────────────────────────────────
