@@ -340,6 +340,27 @@ export async function POST(req: NextRequest) {
     const { semana, anio, disciplina, areaCodigo, fechaInicio, fechaFin,
             personal, otsProgramadas, subidoPor, estado } = body;
 
+    // Validación de borde: semana/anio/disciplina/fechas/subidoPor son NOT
+    // NULL en ProgramacionSemanal sin default. Con el adaptador @prisma/adapter-pg
+    // el P2011 (null constraint violation) llega sin nombre de columna
+    // ("Null constraint violation on the (not available)"), así que un campo
+    // faltante del body es indistinguible de cualquier otro null a simple
+    // vista — mejor cortarlo acá con un mensaje que sí dice qué falta.
+    const faltantes = [
+      !semana ? "semana" : null,
+      !anio ? "anio" : null,
+      !disciplina ? "disciplina" : null,
+      !fechaInicio ? "fechaInicio" : null,
+      !fechaFin ? "fechaFin" : null,
+    ].filter((f): f is string => f !== null);
+    if (faltantes.length) {
+      return Response.json(
+        { ok: false, error: `Faltan campos requeridos: ${faltantes.join(", ")}` },
+        { status: 400 }
+      );
+    }
+    const subidoPorSeguro = (typeof subidoPor === "string" && subidoPor.trim()) ? subidoPor : "system";
+
     let hhDisponiblesSemana = 0, hhProgramadasSemana = 0, hhReactivoSemana = 0;
     const diasKeys = ["Lu","Ma","Mi","Ju","Vi","Sa","Do"] as const;
 
@@ -385,7 +406,7 @@ export async function POST(req: NextRequest) {
         semana, anio, disciplina, areaCodigo: areaCodigo || null,
         fechaInicio: new Date(fechaInicio), fechaFin: new Date(fechaFin),
         hhDisponiblesSemana, hhProgramadasSemana, hhReactivoSemana,
-        estado: estado === "publicado" ? "publicado" : "borrador", subidoPor,
+        estado: estado === "publicado" ? "publicado" : "borrador", subidoPor: subidoPorSeguro,
         otsProgramadas: {
           create: (otsProgramadas ?? []).map((o: Record<string, unknown>) => ({
             numeroOT: String(o.numeroOT), tipoOT: String(o.tipoOT),
@@ -420,6 +441,15 @@ export async function POST(req: NextRequest) {
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error interno";
-    return Response.json({ ok: false, error: message }, { status: 400 });
+    // code/meta de PrismaClientKnownRequestError: con el adaptador pg el P2011
+    // suele llegar sin el nombre de columna en el mensaje ("(not available)"),
+    // pero meta a veces sí trae algo aprovechable -- se loguea completo en
+    // servidor (Railway) y se agrega al mensaje de vuelta al usuario para no
+    // depender de un segundo ida-y-vuelta de deploy para diagnosticar.
+    const meta = (err as { meta?: unknown })?.meta;
+    const code = (err as { code?: string })?.code;
+    console.error("[POST /api/programacion-semanal]", { message, code, meta });
+    const detalle = meta && Object.keys(meta as object).length ? ` — ${JSON.stringify(meta)}` : "";
+    return Response.json({ ok: false, error: `${message}${detalle}` }, { status: 400 });
   }
 }
