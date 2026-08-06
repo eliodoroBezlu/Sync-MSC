@@ -1180,6 +1180,12 @@ export default function RegistroOTPage() {
 
   // ── Plan del Día ──
   const [planRefs, setPlanRefs] = useState<PlanRef[]>([]);
+  // numeroOT → recurrente, calculado sobre TODOS los días del plan (sin filtrar
+  // por personal asignado). Si se calculara sobre planRefs ya filtrado, un
+  // técnico asignado solo el jueves de una OT lunes+jueves vería un solo día
+  // en su propio planRefs y el sistema la trataría como "no recurrente",
+  // ocultándole el botón "+Avance del día" aunque la OT ya esté en_proceso.
+  const [recurrentesNums, setRecurrentesNums] = useState<Set<string>>(new Set());
   const [diaSeleccionado, setDiaSeleccionado] = useState<DiaSem>(todayDia);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [filtroOT, setFiltroOT] = useState("");
@@ -1238,13 +1244,6 @@ export default function RegistroOTPage() {
       } catch { setOtMadreInfo(null); }
     }, 400);
   }
-
-  // ── OTs recurrentes: misma numeroOT en 2+ días del plan ──
-  const recurrentesNums = React.useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const r of planRefs) counts[r.ot.numeroOT] = (counts[r.ot.numeroOT] || 0) + 1;
-    return new Set(Object.entries(counts).filter(([, c]) => c >= 2).map(([n]) => n));
-  }, [planRefs]);
 
   // ── Para recurrentes: mapa numeroOT → ref del día que YA tiene ordenTrabajoId ──
   // Permite que días sin vínculo directo usen el mismo OrdenTrabajo del hermano registrado.
@@ -1537,6 +1536,17 @@ export default function RegistroOTPage() {
     fetch(`/api/programacion-semanal?${p}`)
       .then(r => r.json())
       .then((planes: PlanDoc[]) => {
+        // Contar ocurrencias de numeroOT sobre TODOS los días/personal del plan
+        // (antes de filtrar por usuario) para que la recurrencia sea la misma
+        // sin importar quién esté mirando.
+        const counts: Record<string, number> = {};
+        for (const plan of planes) {
+          for (const ot of plan.otsProgramadas) {
+            counts[ot.numeroOT] = (counts[ot.numeroOT] || 0) + 1;
+          }
+        }
+        setRecurrentesNums(new Set(Object.entries(counts).filter(([, c]) => c >= 2).map(([n]) => n)));
+
         const refs: PlanRef[] = [];
         for (const plan of planes) {
           // Cargar TODAS las OTs de la semana (todos los días)
