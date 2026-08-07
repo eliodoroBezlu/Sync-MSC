@@ -308,7 +308,12 @@ function Dashboard({
   const atrasadas   = ots.filter((o) => o.estado === "atrasada").length;
   const bloqueadas  = ots.filter((o) => o.estado === "bloqueada").length;
   const hhProg      = programa.hhProgramadasSemana ?? 0;
-  // HH ejecutadas: OTs regulares por estado; OPEPLANT por bitácora de reportes de turno
+  // HH ejecutadas: OTs regulares por HH real registrada (si aún no hay avance
+  // registrado usamos la HH programada como aproximación, igual que antes) — usar
+  // siempre la HH programada en cuanto la OT pasa a "activa" ocultaba cualquier
+  // sobrecosto o subejecución real (una OT con +67% de HH sobre lo estimado
+  // igual sumaba su HH programada como "100% ejecutado"). OPEPLANT por bitácora
+  // de reportes de turno.
   const hhEjec      = ots
     .filter(o => diaPasado(o.dia as DiaSemana))
     .reduce((s, o) => {
@@ -316,7 +321,7 @@ function Dashboard({
       if (isOpeplant) {
         return s + ((o as { bitacora?: BitacoraEntry[] }).bitacora ?? []).reduce((bs, b) => bs + (b.hhAtendidas ?? 0), 0);
       }
-      return ESTADOS_ACTIVOS.includes(o.estado) ? s + (o.hhTotal ?? 0) : s;
+      return ESTADOS_ACTIVOS.includes(o.estado) ? s + (o.hhReales ?? o.hhTotal ?? 0) : s;
     }, 0);
   const progreso    = pct(hhEjec, hhProg);
   const sinTecnico  = ots.filter((o) => !o.personalAsignado?.length).length;
@@ -335,7 +340,7 @@ function Dashboard({
           </span>
         </div>
         <div style={{ height: 10, background: "#f1f5f9", borderRadius: 6, overflow: "hidden" }}>
-          <div style={{ height: "100%", width: `${progreso}%`, background: barColor, borderRadius: 6, transition: "width 0.5s" }} />
+          <div style={{ height: "100%", width: `${Math.min(progreso, 100)}%`, background: barColor, borderRadius: 6, transition: "width 0.5s" }} />
         </div>
       </div>
 
@@ -352,7 +357,7 @@ function Dashboard({
                   if (isOpeplant) {
                     return s + ((o as { bitacora?: BitacoraEntry[] }).bitacora ?? []).reduce((bs, b) => bs + (b.hhAtendidas ?? 0), 0);
                   }
-                  return ESTADOS_ACTIVOS.includes(o.estado) ? s + (o.hhTotal ?? 0) : s;
+                  return ESTADOS_ACTIVOS.includes(o.estado) ? s + (o.hhReales ?? o.hhTotal ?? 0) : s;
                 }, 0)
               : 0;
             const concluidas = otsDia.filter((o) => o.estado === "completada").length;
@@ -642,7 +647,7 @@ function VistaTabla({
   const otsDelDia   = otsDia(diaActivo);
   const completadas = otsDelDia.filter((o) => o.estado === "completada").length;
   const hhProg      = otsDelDia.reduce((s, o) => s + (o.hhTotal ?? 0), 0);
-  const hhEjec      = otsDelDia.filter((o) => o.estado === "completada").reduce((s, o) => s + (o.hhTotal ?? 0), 0);
+  const hhEjec      = otsDelDia.filter((o) => o.estado === "completada").reduce((s, o) => s + (o.hhReales ?? o.hhTotal ?? 0), 0);
 
   // Agrupar OTs del día por grupo en orden definido: G1→G2→G3→G4→Diurno→Nocturno
   const gruposPresentes = new Set(otsDelDia.map((o) => o.grupo));

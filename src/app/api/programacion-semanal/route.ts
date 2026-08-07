@@ -135,7 +135,8 @@ function serializePrograma(
     resumenDias?: Record<string, unknown>[];
   },
   bitacoraMap: Record<string, BitacoraEntry[]> = {},
-  hhRealesPorOrdenId: Record<string, number> = {}
+  hhRealesPorOrdenId: Record<string, number> = {},
+  hhRegistroPorOrdenIdYFecha: Record<string, Record<string, number>> = {}
 ) {
   const fechaIni = p.fechaInicio instanceof Date ? p.fechaInicio : p.fechaInicio ? new Date(p.fechaInicio as string) : null;
 
@@ -149,17 +150,26 @@ function serializePrograma(
     hhReactivoSemana: p.hhReactivoSemana,
     otsProgramadas: (p.otsProgramadas ?? []).map((o) => {
       const isOpeplant = Boolean(o.esGuardia) || String(o.tag ?? "").includes("OPEPLANT");
-      // Clave exacta por OT + turno + fecha del día específico de esta fila
-      let key: string | null = null;
-      if (isOpeplant && fechaIni) {
+      // Fecha calendario real de esta fila (lunes + offset del día) — se usa tanto
+      // para la clave de bitácora OPEPLANT como para leer el avance diario de OTs
+      // regulares en esa fecha exacta.
+      let fechaOTStr: string | null = null;
+      if (fechaIni) {
         const offset = DIA_OFFSET[String(o.dia ?? "")] ?? -1;
         if (offset >= 0) {
-          const fechaOT = new Date(fechaIni.getTime() + offset * 86400000).toISOString().slice(0, 10);
-          // o.grupo es "Diurno"/"Nocturno" para OTs OPEPLANT — coincide con rep.turno en el mapa
-          const grupoUp = String(o.grupo ?? "").toUpperCase();
-          key = `${String(o.numeroOT ?? "").toUpperCase()}|${grupoUp}|${fechaOT}`;
+          fechaOTStr = new Date(fechaIni.getTime() + offset * 86400000).toISOString().slice(0, 10);
         }
       }
+      // Clave exacta por OT + turno + fecha del día específico de esta fila
+      let key: string | null = null;
+      if (isOpeplant && fechaOTStr) {
+        // o.grupo es "Diurno"/"Nocturno" para OTs OPEPLANT — coincide con rep.turno en el mapa
+        const grupoUp = String(o.grupo ?? "").toUpperCase();
+        key = `${String(o.numeroOT ?? "").toUpperCase()}|${grupoUp}|${fechaOTStr}`;
+      }
+      const registrosOT = o.ordenTrabajoId
+        ? hhRegistroPorOrdenIdYFecha[o.ordenTrabajoId as string]
+        : undefined;
       return {
         numeroOT: o.numeroOT, tipoOT: o.tipoOT, tipoTrabajo: o.tipoTrabajo,
         prioridad: o.prioridad, descripcion: o.descripcion, tag: o.tag,
@@ -175,12 +185,20 @@ function serializePrograma(
         bitacora: key && bitacoraMap[key]
           ? bitacoraMap[key]
           : (Array.isArray(o.bitacora) ? o.bitacora : []),
-        // HH reales: desde bitácora (OPEPLANT) o desde OrdenTrabajo.lineas (OT regular)
+        // HH reales, en orden de preferencia:
+        // 1) bitácora de reportes de turno (OPEPLANT)
+        // 2) avance diario (OtRegistroDiario) de la fecha exacta de esta fila — es la
+        //    fuente que se actualiza día a día vía "+Avance del día"
+        // 3) checklist (OtLinea) como fallback para OTs que no usan avance diario —
+        //    ojo: esto NO varía por día, solo sirve cuando la OT no es recurrente
+        //    o aún no tiene ningún registro diario
         hhReales: key && bitacoraMap[key]
           ? bitacoraMap[key].reduce((s, b) => s + (b.hhAtendidas ?? 0), 0)
-          : (o.ordenTrabajoId && hhRealesPorOrdenId[o.ordenTrabajoId as string] !== undefined)
-            ? hhRealesPorOrdenId[o.ordenTrabajoId as string]
-            : null,
+          : registrosOT
+            ? (fechaOTStr ? (registrosOT[fechaOTStr] ?? 0) : null)
+            : (o.ordenTrabajoId && hhRealesPorOrdenId[o.ordenTrabajoId as string] !== undefined)
+              ? hhRealesPorOrdenId[o.ordenTrabajoId as string]
+              : null,
       };
     }),
     personal: (p.personal ?? []).map((per) => ({
@@ -315,22 +333,36 @@ export async function GET(req: NextRequest) {
   )];
 
   const hhRealesPorOrdenId: Record<string, number> = {};
+  // ordenTrabajoId -> "YYYY-MM-DD" -> HH trabajadas registradas ese día
+  const hhRegistroPorOrdenIdYFecha: Record<string, Record<string, number>> = {};
   if (allOrdenIds.length) {
     const ordenes = await prisma.ordenTrabajo.findMany({
       where: { id: { in: allOrdenIds } },
-      include: { lineas: { select: { tiempoRealHrs: true } } },
+      include: {
+        lineas: { select: { tiempoRealHrs: true } },
+        registrosDiarios: { select: { fecha: true, hhTrabajadas: true } },
+      },
     });
     for (const ot of ordenes) {
       hhRealesPorOrdenId[ot.id] = Math.round(
         ot.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0) * 10
       ) / 10;
+      if (ot.registrosDiarios.length) {
+        const porFecha: Record<string, number> = {};
+        for (const r of ot.registrosDiarios) {
+          const fechaStr = r.fecha.toISOString().slice(0, 10);
+          porFecha[fechaStr] = Math.round(((porFecha[fechaStr] ?? 0) + (r.hhTrabajadas ?? 0)) * 10) / 10;
+        }
+        hhRegistroPorOrdenIdYFecha[ot.id] = porFecha;
+      }
     }
   }
 
   return Response.json(programas.map(p => serializePrograma(
     p as Parameters<typeof serializePrograma>[0],
     bitacoraMap,
-    hhRealesPorOrdenId
+    hhRealesPorOrdenId,
+    hhRegistroPorOrdenIdYFecha
   )));
 }
 
