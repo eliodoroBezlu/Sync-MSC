@@ -208,8 +208,22 @@ export async function GET(req: NextRequest) {
       select: { id: true },
     });
     if (planesEnRango.length) {
+      const whereVinculos: Record<string, unknown> = {
+        programacionSemanalId: { in: planesEnRango.map(p => p.id) },
+        ordenTrabajoId: { not: null },
+      };
+      // "fecha" (día puntual, p. ej. Reporte de turno técnico) es distinto de
+      // fechaDesde/fechaHasta (rango de semana, p. ej. pestaña "Reporte"): el
+      // plan de la semana entera solapa con CUALQUIER día de esa semana, así
+      // que sin acotar por "dia" esto traía OTs programadas para otros días
+      // de la misma semana (p. ej. el reporte del viernes mostraba OTs del
+      // martes/miércoles porque comparten el mismo plan semanal).
+      if (fecha) {
+        const DIA_SEMANA = ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"];
+        whereVinculos.dia = DIA_SEMANA[new Date(fecha + "T12:00:00").getDay()];
+      }
       const vinculos = await prisma.otProgramada.findMany({
-        where: { programacionSemanalId: { in: planesEnRango.map(p => p.id) }, ordenTrabajoId: { not: null } },
+        where: whereVinculos,
         select: { ordenTrabajoId: true },
       });
       idsProgramadosEnRango = [...new Set(vinculos.map(v => v.ordenTrabajoId).filter((v): v is string => !!v))];
