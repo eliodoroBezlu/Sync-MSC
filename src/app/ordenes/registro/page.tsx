@@ -1541,7 +1541,7 @@ export default function RegistroOTPage() {
           continuar: true,
           continuaMotivo: continuarMotivo,
           continuaNota: continuarNota,
-          continuaPor: user?.nombre ?? "Supervisor",
+          continuaPor: user?.nombre ?? "",
         }),
       });
       setContinuarRef(null);
@@ -2119,7 +2119,7 @@ export default function RegistroOTPage() {
                                   🔁 Continúa mañana {ot.continuaMotivo ? `· ${ot.continuaMotivo}` : ""}
                                 </span>
                               ) : (
-                                user && user.rol <= 3 && ot.estado !== "completada" && ot.estado !== "en_revision" && (
+                                user && ot.estado !== "completada" && ot.estado !== "en_revision" && (
                                   <button
                                     onClick={() => { setContinuarRef(ref); setContinuarMotivo("Falta de tiempo"); setContinuarNota(""); }}
                                     style={{ fontSize: 11, fontWeight: 700, color: "#c2410c", background: "none", border: "1px solid #fed7aa", borderRadius: 6, padding: "4px 10px", cursor: "pointer", whiteSpace: "nowrap" as const }}>
