@@ -28,6 +28,7 @@ type OTRegistrada = {
   estado: string; otJdeNumero?: string | null;
   tecnicos: { nombreCompleto: string }[];
   lineas: { tag: string; tipoOT: string; tiempoRealHrs?: number; descripcionEquipo?: string; sintoma?: string; resolucionAplicada?: string; descripcionTrabajo?: string }[];
+  registrosDiarios?: { fecha: string }[];
 };
 
 // OT del plan semanal (desde /api/programacion-semanal)
@@ -299,11 +300,22 @@ export default function ReporteTurnoTecnicoPage() {
     if (area) paramsCont.set("area", area);
     const dataCont: OTRegistrada[] = await fetch(`/api/ordenes?${paramsCont}`).then(r => r.json()).catch(() => []);
     const hoy = form.fecha;
+    // Números de OT del JDE que ya tienen su propia fila programada para hoy —
+    // una OT recurrente (p. ej. lunes+jueves) sigue en_proceso toda la semana
+    // porque el estado solo cambia al cerrar el ciclo semanal completo, no
+    // día por día. Sin este chequeo, cualquier OT recurrente tocada esta
+    // semana reaparecía en "En continuación" aunque hoy ya tenga su propia
+    // tarjeta en el plan del día, duplicando la entrada.
+    const numerosPlanHoy = new Set(planes.map(p => p.numeroOT));
     const continuacion = (Array.isArray(dataCont) ? dataCont : []).filter(o => {
       // Solo OTs de días anteriores esta semana (no de hoy)
       if (o.fecha.slice(0, 10) >= hoy) return false;
       // Solo OTs del plan (tienen otJdeNumero)
       if (!o.otJdeNumero) return false;
+      // Ya programada para hoy: se muestra en "Plan de hoy", no acá
+      if (numerosPlanHoy.has(o.otJdeNumero)) return false;
+      // Ya se registró el avance de hoy para esta OT: nada pendiente que continuar
+      if ((o.registrosDiarios ?? []).some(r => r.fecha.slice(0, 10) === hoy)) return false;
       // Si es técnico (rol=4), solo sus OTs
       if (user?.rol === 4) {
         return o.tecnicos.some(t =>
