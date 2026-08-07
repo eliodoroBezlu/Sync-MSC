@@ -10,6 +10,97 @@ function serialize(p: Record<string, unknown>) {
   return { ...p, _id: p.id };
 }
 
+const DIA_ORDEN = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"];
+
+// Motivos que implican que el trabajo quedó parado esperando algo externo
+// (no depende del técnico) -> la fila del día siguiente nace "bloqueada" para
+// que el supervisor la note. "Falta de tiempo" es una continuación normal,
+// nace "en_proceso" como cualquier OT en curso.
+const MOTIVOS_BLOQUEAN = new Set([
+  "Falta de materiales",
+  "Coordinación pendiente",
+  "Equipo no disponible",
+]);
+
+type OtProgramadaRow = {
+  id: string; programacionSemanalId: string; numeroOT: string; tipoOT: string;
+  tipoTrabajo: string; prioridad: string | null; descripcion: string; tag: string;
+  descripcionEquipo: string | null; personas: number; hrsTrabajo: number; hhTotal: number;
+  personalAsignado: string[]; personalAsignadoIds: string[]; grupo: string; dia: string;
+  ordenTrabajoId: string | null; ordenTrabajoNum: string | null; esGuardia: boolean;
+};
+
+// Crea (best-effort) la fila del día siguiente enlazada a la misma OrdenTrabajo,
+// para que la continuación aparezca programada sin que el técnico tenga que
+// buscarla manualmente. Si el día siguiente cruza a la próxima semana y esa
+// semana todavía no tiene plan publicado, no se crea nada (se seguirá
+// pudiendo registrar el avance a mano, como ya funcionaba antes de esta
+// función) — es deliberadamente best-effort, no debe romper el flujo principal.
+async function crearFilaContinuacion(
+  fila: OtProgramadaRow,
+  estadoNueva: string
+): Promise<void> {
+  const idxActual = DIA_ORDEN.indexOf(fila.dia);
+  if (idxActual < 0) return;
+
+  let programacionSemanalId = fila.programacionSemanalId;
+  let diaSiguiente: string;
+
+  if (idxActual < DIA_ORDEN.length - 1) {
+    diaSiguiente = DIA_ORDEN[idxActual + 1];
+  } else {
+    // Do -> Lu de la próxima semana: buscar el siguiente plan publicado de la
+    // misma disciplina/área.
+    diaSiguiente = "Lu";
+    const actual = await prisma.programacionSemanal.findUnique({
+      where: { id: fila.programacionSemanalId },
+      select: { disciplina: true, areaCodigo: true, fechaFin: true },
+    });
+    if (!actual) return;
+    const siguiente = await prisma.programacionSemanal.findFirst({
+      where: {
+        disciplina: actual.disciplina,
+        areaCodigo: actual.areaCodigo,
+        fechaInicio: { gt: actual.fechaFin },
+      },
+      orderBy: { fechaInicio: "asc" },
+      select: { id: true },
+    });
+    if (!siguiente) return;
+    programacionSemanalId = siguiente.id;
+  }
+
+  const yaExiste = await prisma.otProgramada.findFirst({
+    where: { programacionSemanalId, numeroOT: fila.numeroOT, dia: diaSiguiente, grupo: fila.grupo },
+    select: { id: true },
+  });
+  if (yaExiste) return;
+
+  await prisma.otProgramada.create({
+    data: {
+      programacionSemanalId,
+      numeroOT: fila.numeroOT,
+      tipoOT: fila.tipoOT,
+      tipoTrabajo: fila.tipoTrabajo,
+      prioridad: fila.prioridad,
+      descripcion: fila.descripcion,
+      tag: fila.tag,
+      descripcionEquipo: fila.descripcionEquipo,
+      personas: fila.personas,
+      hrsTrabajo: fila.hrsTrabajo,
+      hhTotal: fila.hhTotal,
+      personalAsignado: fila.personalAsignado,
+      personalAsignadoIds: fila.personalAsignadoIds,
+      grupo: fila.grupo,
+      dia: diaSiguiente,
+      estado: estadoNueva,
+      ordenTrabajoId: fila.ordenTrabajoId,
+      ordenTrabajoNum: fila.ordenTrabajoNum,
+      esGuardia: fila.esGuardia,
+    },
+  });
+}
+
 export async function GET(_req: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const programa = await prisma.programacionSemanal.findUnique({ where: { id }, include });
@@ -60,6 +151,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     const body = await req.json();
     const { numeroOT, dia, estado, observaciones,
             pasarNoche, pasarNocheMotivo, pasarNocheNota, pasarNochePor,
+            continuar, continuaMotivo, continuaNota, continuaPor,
             personalAsignado, personalAsignadoIds, todosLosDias, hhTotal } = body;
 
     if (!numeroOT || (!dia && !todosLosDias))
@@ -90,6 +182,10 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
       ? { ...whereBase, grupo: String(body.grupo) }
       : whereBase;
 
+    const estadoContinua = continuar
+      ? (continuaMotivo && MOTIVOS_BLOQUEAN.has(continuaMotivo) ? "bloqueada" : "en_proceso")
+      : undefined;
+
     await prisma.otProgramada.updateMany({
       where: whereGrupo,
       data: {
@@ -106,8 +202,22 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
           pasarNochePor:    pasarNochePor     ?? "",
           pasarNocheAt:     pasarNoche ? new Date() : null,
         } : {}),
+        ...(continuar ? {
+          continuaMotivo: continuaMotivo ?? "",
+          continuaNota:   continuaNota   ?? "",
+          continuaPor:    continuaPor    ?? "",
+          continuaAt:     new Date(),
+          estado:         estado ?? estadoContinua,
+        } : {}),
       },
     });
+
+    if (continuar) {
+      const filas = await prisma.otProgramada.findMany({ where: whereGrupo });
+      for (const fila of filas) {
+        await crearFilaContinuacion(fila as OtProgramadaRow, estadoContinua ?? "en_proceso");
+      }
+    }
 
     const programa = await prisma.programacionSemanal.findUnique({ where: { id }, include });
     if (!programa) return Response.json({ ok: false, error: "No encontrado" }, { status: 404 });

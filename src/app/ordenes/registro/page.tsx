@@ -120,6 +120,7 @@ type OTPlan = {
   personalAsignadoIds?: string[];
   ordenTrabajoId?: string; ordenTrabajoNum?: string;
   pasarNoche?: boolean; pasarNocheMotivo?: string; pasarNocheNota?: string; pasarNochePor?: string;
+  continuaMotivo?: string; continuaNota?: string; continuaPor?: string; continuaAt?: string;
   esGuardia?: boolean;
   bitacora?: BitacoraEntry[];
 };
@@ -1521,6 +1522,38 @@ export default function RegistroOTPage() {
     }
   }
 
+  // ── Continúa Mañana (OT de un día que no se terminó en el turno) ──
+  const [continuarRef, setContinuarRef] = useState<PlanRef | null>(null);
+  const [continuarMotivo, setContinuarMotivo] = useState("Falta de tiempo");
+  const [continuarNota, setContinuarNota] = useState("");
+  const [savingContinuar, setSavingContinuar] = useState(false);
+
+  async function confirmarContinuar() {
+    if (!continuarRef) return;
+    setSavingContinuar(true);
+    try {
+      await fetch(`/api/programacion-semanal/${continuarRef.planId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          numeroOT: continuarRef.ot.numeroOT,
+          dia: continuarRef.ot.dia,
+          continuar: true,
+          continuaMotivo: continuarMotivo,
+          continuaNota: continuarNota,
+          continuaPor: user?.nombre ?? "Supervisor",
+        }),
+      });
+      setContinuarRef(null);
+      setContinuarNota("");
+      // Se creó una fila nueva (día siguiente) enlazada a la misma OT: recargar
+      // para que recurrentesNums la detecte y el plan la muestre programada.
+      recargarPlan();
+    } finally {
+      setSavingContinuar(false);
+    }
+  }
+
   function patchForm(patch: Partial<FormData>) { setForm(f => ({ ...f, ...patch })); }
 
   // ── Load areas ──
@@ -2061,18 +2094,40 @@ export default function RegistroOTPage() {
                               )}
                             </div>
                           ) : (
-                            <button
-                              onClick={() => {
-                                if (!ot.ordenTrabajoId) return;
-                                if (ot.ordenTrabajoId in otDetalles) {
-                                  setOtDetalles(prev => { const n = { ...prev }; delete n[ot.ordenTrabajoId!]; return n; });
-                                } else {
-                                  cargarOtDetalle(ot.ordenTrabajoId);
-                                }
-                              }}
-                              style={{ fontSize: 12, color: "#16a34a", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>
-                              #{ot.ordenTrabajoNum} {ot.ordenTrabajoId && ot.ordenTrabajoId in otDetalles ? "▲ Ocultar" : "▼ Ver detalles"}
-                            </button>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 5, alignItems: "flex-end" }}>
+                              <button
+                                onClick={() => {
+                                  if (!ot.ordenTrabajoId) return;
+                                  if (ot.ordenTrabajoId in otDetalles) {
+                                    setOtDetalles(prev => { const n = { ...prev }; delete n[ot.ordenTrabajoId!]; return n; });
+                                  } else {
+                                    cargarOtDetalle(ot.ordenTrabajoId);
+                                  }
+                                }}
+                                style={{ fontSize: 12, color: "#16a34a", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>
+                                #{ot.ordenTrabajoNum} {ot.ordenTrabajoId && ot.ordenTrabajoId in otDetalles ? "▲ Ocultar" : "▼ Ver detalles"}
+                              </button>
+                              {ot.estado !== "completada" && ot.estado !== "en_revision" && (
+                                <button
+                                  onClick={() => { setAvanceRef(ref); setAvanceForm({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] }); }}
+                                  style={{ ...S.btnPrimary(), padding: "6px 12px", fontSize: 12 }}>
+                                  + Avance del día
+                                </button>
+                              )}
+                              {ot.continuaAt ? (
+                                <span style={{ fontSize: 10, fontWeight: 700, background: "#fff7ed", color: "#c2410c", border: "1px solid #fed7aa", borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" as const }}>
+                                  🔁 Continúa mañana {ot.continuaMotivo ? `· ${ot.continuaMotivo}` : ""}
+                                </span>
+                              ) : (
+                                user && user.rol <= 3 && ot.estado !== "completada" && ot.estado !== "en_revision" && (
+                                  <button
+                                    onClick={() => { setContinuarRef(ref); setContinuarMotivo("Falta de tiempo"); setContinuarNota(""); }}
+                                    style={{ fontSize: 11, fontWeight: 700, color: "#c2410c", background: "none", border: "1px solid #fed7aa", borderRadius: 6, padding: "4px 10px", cursor: "pointer", whiteSpace: "nowrap" as const }}>
+                                    🔁 Continúa mañana
+                                  </button>
+                                )
+                              )}
+                            </div>
                           )
                         ) : ot.pasarNoche ? (
                           <span style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed", background: "#ede9fe", border: "1px solid #c4b5fd", borderRadius: 6, padding: "4px 10px" }}>
@@ -2182,6 +2237,37 @@ export default function RegistroOTPage() {
                           <button onClick={confirmarPasarNoche} disabled={savingNoche}
                             style={{ fontSize: 12, fontWeight: 700, padding: "5px 14px", borderRadius: 6, border: "none", background: savingNoche ? "#a78bfa" : "#7c3aed", color: "white", cursor: savingNoche ? "not-allowed" : "pointer" }}>
                             {savingNoche ? "Guardando…" : "Confirmar 🌙"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Mini-form Continúa Mañana (inline, solo para esta OT) */}
+                    {continuarRef?.planId === ref.planId && continuarRef?.ot.numeroOT === ot.numeroOT && (
+                      <div style={{ marginTop: 10, borderTop: "1px solid #fed7aa", paddingTop: 10, background: "#fff7ed", borderRadius: "0 0 10px 10px", padding: "10px 12px" }}>
+                        <p style={{ fontSize: 12, fontWeight: 700, color: "#c2410c", marginBottom: 8 }}>🔁 ¿Por qué continúa mañana?</p>
+                        <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6, marginBottom: 8 }}>
+                          {["Falta de tiempo", "Falta de materiales", "Coordinación pendiente", "Equipo no disponible"].map(m => (
+                            <button key={m} onClick={() => setContinuarMotivo(m)}
+                              style={{ fontSize: 11, padding: "4px 10px", borderRadius: 20, border: `1px solid ${continuarMotivo === m ? "#c2410c" : "#e2e8f0"}`, background: continuarMotivo === m ? "#ffedd5" : "white", color: continuarMotivo === m ? "#c2410c" : "#64748b", cursor: "pointer", fontWeight: continuarMotivo === m ? 700 : 400 }}>
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+                        <input
+                          value={continuarNota}
+                          onChange={e => setContinuarNota(e.target.value)}
+                          placeholder="Nota adicional (opcional)..."
+                          style={{ width: "100%", border: "1px solid #fed7aa", borderRadius: 6, padding: "6px 10px", fontSize: 12, outline: "none", boxSizing: "border-box" as const, marginBottom: 8 }}
+                        />
+                        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                          <button onClick={() => setContinuarRef(null)}
+                            style={{ fontSize: 12, padding: "5px 14px", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", cursor: "pointer", color: "#64748b" }}>
+                            Cancelar
+                          </button>
+                          <button onClick={confirmarContinuar} disabled={savingContinuar}
+                            style={{ fontSize: 12, fontWeight: 700, padding: "5px 14px", borderRadius: 6, border: "none", background: savingContinuar ? "#fdba74" : "#c2410c", color: "white", cursor: savingContinuar ? "not-allowed" : "pointer" }}>
+                            {savingContinuar ? "Guardando…" : "Confirmar 🔁"}
                           </button>
                         </div>
                       </div>

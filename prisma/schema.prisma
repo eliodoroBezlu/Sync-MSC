@@ -269,6 +269,15 @@ model OtProgramada {
   pasarNocheNota        String?
   pasarNochePor         String?
   pasarNocheAt          DateTime?
+  // OT de un solo día que no se terminó en el turno y sigue al día siguiente
+  // (falta de materiales, coordinación, disponibilidad de equipo, etc.). Al
+  // marcarla, se crea automáticamente la fila del día siguiente enlazada al
+  // mismo ordenTrabajoId, para que aparezca programada y no dependa de que el
+  // técnico la busque manualmente.
+  continuaMotivo        String?
+  continuaNota          String?
+  continuaPor           String?
+  continuaAt            DateTime?
   esGuardia             Boolean  @default(false)
   bitacora              Json     @default("[]")
   programacion          ProgramacionSemanal @relation(fields: [programacionSemanalId], references: [id], onDelete: Cascade)

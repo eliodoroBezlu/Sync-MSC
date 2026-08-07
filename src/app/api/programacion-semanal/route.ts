@@ -182,6 +182,8 @@ function serializePrograma(
         pasarNoche: o.pasarNoche, pasarNocheMotivo: o.pasarNocheMotivo,
         pasarNocheNota: o.pasarNocheNota, pasarNochePor: o.pasarNochePor,
         pasarNocheAt: o.pasarNocheAt, esGuardia: o.esGuardia,
+        continuaMotivo: o.continuaMotivo, continuaNota: o.continuaNota,
+        continuaPor: o.continuaPor, continuaAt: o.continuaAt,
         bitacora: key && bitacoraMap[key]
           ? bitacoraMap[key]
           : (Array.isArray(o.bitacora) ? o.bitacora : []),
