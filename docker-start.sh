@@ -30,6 +30,14 @@ const migraciones = [
   "ALTER TABLE \"OtProgramada\" ALTER COLUMN \"personalAsignadoIds\" SET DEFAULT '{}'",
   "ALTER TABLE \"OtProgramada\" ADD COLUMN IF NOT EXISTS bitacora JSONB NOT NULL DEFAULT '[]'",
 
+  // ── "Continúa mañana" en OtProgramada (2026-08) — faltaba esta migración,
+  // Prisma incluye estas columnas en cualquier SELECT sobre OtProgramada y sin
+  // ellas TODA consulta a esa tabla fallaba (pantallas en blanco en todo el sitio).
+  "ALTER TABLE \"OtProgramada\" ADD COLUMN IF NOT EXISTS \"continuaMotivo\" TEXT",
+  "ALTER TABLE \"OtProgramada\" ADD COLUMN IF NOT EXISTS \"continuaNota\" TEXT",
+  "ALTER TABLE \"OtProgramada\" ADD COLUMN IF NOT EXISTS \"continuaPor\" TEXT",
+  "ALTER TABLE \"OtProgramada\" ADD COLUMN IF NOT EXISTS \"continuaAt\" TIMESTAMP(3)",
+
   // ── Competencias y Desempeño (2026-06) ──────────────────────────────────────
   `CREATE TABLE IF NOT EXISTS "TecnicoCompetencia" (
     id TEXT NOT NULL PRIMARY KEY,
