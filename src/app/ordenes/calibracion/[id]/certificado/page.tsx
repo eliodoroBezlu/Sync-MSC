@@ -228,6 +228,12 @@ function PatronCard({ p, num }: { p: PatronDoc; num: number }) {
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 
+// Alto útil de la hoja carta en px CSS (96dpi), descontando los márgenes de @page.
+const PAGE_H_MM = 279.4 - 2 * 7; // letter height - márgenes verticales (7mm arriba/abajo)
+const PX_PER_MM = 96 / 25.4;
+const USABLE_HEIGHT_PX = PAGE_H_MM * PX_PER_MM;
+const MIN_PRINT_SCALE = 0.6;
+
 export default function CertificadoPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
@@ -237,6 +243,33 @@ export default function CertificadoPage() {
   const [equipo, setEquipo] = useState<EquipoDoc | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // Ajusta el zoom del certificado justo antes de imprimir para que SIEMPRE
+  // entre en una sola hoja, sin importar cuántos patrones/mediciones tenga
+  // (un zoom fijo como 0.9 alcanza para reportes chicos pero se queda corto
+  // apenas hay más filas u observaciones largas, y desborda a una 2da hoja).
+  useEffect(() => {
+    const getEl = () => document.getElementById("certificado");
+    const handleBeforePrint = () => {
+      const el = getEl();
+      if (!el) return;
+      el.style.zoom = "1";
+      const scale = el.scrollHeight > USABLE_HEIGHT_PX
+        ? Math.max(USABLE_HEIGHT_PX / el.scrollHeight, MIN_PRINT_SCALE)
+        : 1;
+      el.style.zoom = String(scale);
+    };
+    const handleAfterPrint = () => {
+      const el = getEl();
+      if (el) el.style.zoom = "";
+    };
+    window.addEventListener("beforeprint", handleBeforePrint);
+    window.addEventListener("afterprint", handleAfterPrint);
+    return () => {
+      window.removeEventListener("beforeprint", handleBeforePrint);
+      window.removeEventListener("afterprint", handleAfterPrint);
+    };
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -554,8 +587,8 @@ export default function CertificadoPage() {
             max-width: 100% !important;
             width: 100% !important;
             box-sizing: border-box !important;
-            /* Escala al 90% para garantizar que todo el contenido entre en una hoja */
-            zoom: 0.9;
+            /* El zoom real se calcula en JS (evento beforeprint) según el
+               alto del contenido, para garantizar una sola hoja siempre */
           }
 
           /* El cuerpo central llena el espacio disponible */
