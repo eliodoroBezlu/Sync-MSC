@@ -55,6 +55,7 @@ type Linea = {
   tiempoRealHrs?: number;
   descripcionEquipo?: string;
   descripcionTrabajo?: string;
+  tareasEjecutadas?: string[];
   observaciones?: string;
 };
 
@@ -112,6 +113,15 @@ function avancesDeOT(ot: OTReactiva): Avance[] {
     }));
   }
   // OT legacy sin registrosDiarios: usar los datos estáticos de la OT como único avance
+  const multiplesLineas = ot.lineas.length > 1;
+  const observaciones = ot.lineas
+    .map(l => {
+      const texto = [l.descripcionTrabajo, l.observaciones].filter(Boolean).join(" — ");
+      if (!texto) return null;
+      return multiplesLineas ? `[${l.tag}] ${texto}` : texto;
+    })
+    .filter(Boolean)
+    .join(" | ") || null;
   return [{
     cardId: ot._id,
     ot,
@@ -119,8 +129,10 @@ function avancesDeOT(ot: OTReactiva): Avance[] {
     turno: ot.turno,
     tecnico: ot.tecnicos.map(t => t.nombreCompleto).join(" · ") || "—",
     hhTrabajadas: ot.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0),
-    tareasEjecutadas: [],
-    observaciones: null,
+    tareasEjecutadas: ot.lineas.flatMap(l =>
+      (l.tareasEjecutadas ?? []).map(t => multiplesLineas ? `[${l.tag}] ${t}` : t)
+    ),
+    observaciones,
   }];
 }
 

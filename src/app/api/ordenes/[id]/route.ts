@@ -119,17 +119,29 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     });
     const avances = hermanas
       .filter(h => h.tecnicos.length > 0 || h.lineas.some(l => (l.tiempoRealHrs ?? 0) > 0))
-      .map(h => ({
-        _id: h.id,
-        fecha: h.fecha,
-        turno: h.turno ?? null,
-        tecnico: h.tecnicos.map(t => t.nombreCompleto).join(", ") || "—",
-        usuarioId: null,
-        hhTrabajadas: h.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0),
-        tareasEjecutadas: [] as string[],
-        observaciones: null as string | null,
-        adjuntos: [] as unknown[],
-      }));
+      .map(h => {
+        const multiplesLineas = h.lineas.length > 1;
+        return {
+          _id: h.id,
+          fecha: h.fecha,
+          turno: h.turno ?? null,
+          tecnico: h.tecnicos.map(t => t.nombreCompleto).join(", ") || "—",
+          usuarioId: null,
+          hhTrabajadas: h.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0),
+          tareasEjecutadas: h.lineas.flatMap(l =>
+            (l.tareasEjecutadas ?? []).map(t => multiplesLineas ? `[${l.tag}] ${t}` : t)
+          ),
+          observaciones: h.lineas
+            .map(l => {
+              const texto = [l.descripcionTrabajo, l.observaciones].filter(Boolean).join(" — ");
+              if (!texto) return null;
+              return multiplesLineas ? `[${l.tag}] ${texto}` : texto;
+            })
+            .filter(Boolean)
+            .join(" | ") || null,
+          adjuntos: [] as unknown[],
+        };
+      });
     if (avances.length > 0) serialized.registrosDiarios = avances;
   }
 
