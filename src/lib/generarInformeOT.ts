@@ -449,20 +449,22 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
         startY: y,
         margin: { left: 15, right: 15 },
         head: tieneAvancesDiarios
-          ? [["TAG / Equipo", "Síntoma / Modo de Falla", "Causa Probable", "Resolución Aplicada"]]
-          : [["TAG / Equipo", "Síntoma / Modo de Falla", "Causa Probable", "Resolución Aplicada", "HH Est.", "HH Real"]],
+          ? [["TAG / Equipo", "Síntoma / Modo de Falla", "Causa Probable", "Resolución Aplicada", "Tareas Ejecutadas"]]
+          : [["TAG / Equipo", "Síntoma / Modo de Falla", "Causa Probable", "Resolución Aplicada", "Tareas Ejecutadas", "HH Est.", "HH Real"]],
         body: cmr.map(l => tieneAvancesDiarios
           ? [
             `${l.tag}\n${l.descripcionEquipo}`,
             l.sintoma ?? "—",
             l.causaProbable ?? "—",
             l.resolucionAplicada ?? "—",
+            (l.tareasEjecutadas ?? []).join("\n") || "—",
           ]
           : [
             `${l.tag}\n${l.descripcionEquipo}`,
             l.sintoma ?? "—",
             l.causaProbable ?? "—",
             l.resolucionAplicada ?? "—",
+            (l.tareasEjecutadas ?? []).join("\n") || "—",
             fmtHrs(l.tiempoEstimadoHrs),
             fmtHrs(l.tiempoRealHrs),
           ]),
@@ -471,18 +473,20 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
         alternateRowStyles: { fillColor: GRIS_L },
         columnStyles: tieneAvancesDiarios
           ? {
-            0: { cellWidth: 34, fontStyle: "bold" },
-            1: { cellWidth: 42 },
-            2: { cellWidth: 38 },
-            3: { cellWidth: 51 },
+            0: { cellWidth: 30, fontStyle: "bold" },
+            1: { cellWidth: 34 },
+            2: { cellWidth: 30 },
+            3: { cellWidth: 38 },
+            4: { cellWidth: 30 },
           }
           : {
-            0: { cellWidth: 32, fontStyle: "bold" },
-            1: { cellWidth: 35 },
-            2: { cellWidth: 32 },
-            3: { cellWidth: 40 },
-            4: { cellWidth: 14, halign: "center" },
-            5: { cellWidth: 14, halign: "center" },
+            0: { cellWidth: 27, fontStyle: "bold" },
+            1: { cellWidth: 29 },
+            2: { cellWidth: 26 },
+            3: { cellWidth: 32 },
+            4: { cellWidth: 26 },
+            5: { cellWidth: 13, halign: "center" },
+            6: { cellWidth: 13, halign: "center" },
           },
       });
       y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
@@ -501,18 +505,20 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
         startY: y,
         margin: { left: 15, right: 15 },
         head: tieneAvancesDiarios
-          ? [["TAG / Equipo", "Descripción del Trabajo", "Resolución / Resultado"]]
-          : [["TAG / Equipo", "Descripción del Trabajo", "Resolución / Resultado", "HH Est.", "HH Real"]],
+          ? [["TAG / Equipo", "Descripción del Trabajo", "Resolución / Resultado", "Tareas Ejecutadas"]]
+          : [["TAG / Equipo", "Descripción del Trabajo", "Resolución / Resultado", "Tareas Ejecutadas", "HH Est.", "HH Real"]],
         body: cmp.map(l => tieneAvancesDiarios
           ? [
             `${l.tag}\n${l.descripcionEquipo}`,
             l.descripcionTrabajo ?? l.sintoma ?? "—",
             l.resolucionAplicada ?? "—",
+            (l.tareasEjecutadas ?? []).join("\n") || "—",
           ]
           : [
             `${l.tag}\n${l.descripcionEquipo}`,
             l.descripcionTrabajo ?? l.sintoma ?? "—",
             l.resolucionAplicada ?? "—",
+            (l.tareasEjecutadas ?? []).join("\n") || "—",
             fmtHrs(l.tiempoEstimadoHrs),
             fmtHrs(l.tiempoRealHrs),
           ]),
@@ -521,16 +527,18 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
         alternateRowStyles: { fillColor: GRIS_L },
         columnStyles: tieneAvancesDiarios
           ? {
-            0: { cellWidth: 40, fontStyle: "bold" },
-            1: { cellWidth: 70 },
-            2: { cellWidth: 65 },
+            0: { cellWidth: 32, fontStyle: "bold" },
+            1: { cellWidth: 52 },
+            2: { cellWidth: 48 },
+            3: { cellWidth: 33 },
           }
           : {
-            0: { cellWidth: 32, fontStyle: "bold" },
-            1: { cellWidth: 60 },
-            2: { cellWidth: 55 },
-            3: { cellWidth: 14, halign: "center" },
-            4: { cellWidth: 14, halign: "center" },
+            0: { cellWidth: 26, fontStyle: "bold" },
+            1: { cellWidth: 44 },
+            2: { cellWidth: 40 },
+            3: { cellWidth: 30 },
+            4: { cellWidth: 13, halign: "center" },
+            5: { cellWidth: 13, halign: "center" },
           },
       });
       y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
