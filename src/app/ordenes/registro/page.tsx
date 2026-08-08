@@ -1763,12 +1763,12 @@ export default function RegistroOTPage() {
           descripcionTrabajo: l.descripcionTrabajo || undefined,
           resolucionAplicada: l.resolucionAplicada || undefined,
           estadoFinal: l.estadoFinal || undefined,
+          tareasEjecutadas: l.tareasEjecutadas.length > 0 ? l.tareasEjecutadas : undefined,
           ...(isCorrectivo(l.tipoOT) ? {
             sintoma: l.sintoma || undefined, causaProbable: l.causaProbable || undefined,
             tiempoEstimadoHrs: l.tiempoEstimadoHrs ? Number(l.tiempoEstimadoHrs) : undefined,
             tiempoRealHrs: l.tiempoRealHrs ? Number(l.tiempoRealHrs) : undefined,
           } : {
-            tareasEjecutadas: l.tareasEjecutadas.length > 0 ? l.tareasEjecutadas : undefined,
             tiempoRealHrs: l.tiempoRealHrs ? Number(l.tiempoRealHrs) : undefined,
           }),
           observaciones: l.observaciones || undefined,
@@ -2560,7 +2560,7 @@ export default function RegistroOTPage() {
                       {isCorrectivo(l.tipoOT) && l.causaProbable && <p style={{ fontSize: 12, color: "#475569" }}>Causa: {l.causaProbable}</p>}
                       {l.descripcionTrabajo && <p style={{ fontSize: 12, color: "#475569" }}>{l.descripcionTrabajo}</p>}
                       {l.resolucionAplicada && <p style={{ fontSize: 12, color: "#475569" }}>Resolución: {l.resolucionAplicada}</p>}
-                      {isPreventivo(l.tipoOT) && l.tareasEjecutadas.length > 0 && <ul style={{ margin: "3px 0", paddingLeft: 16 }}>{l.tareasEjecutadas.map((t, ti) => <li key={ti} style={{ fontSize: 12, color: "#64748b" }}>{t}</li>)}</ul>}
+                      {l.tareasEjecutadas.length > 0 && <ul style={{ margin: "3px 0", paddingLeft: 16 }}>{l.tareasEjecutadas.map((t, ti) => <li key={ti} style={{ fontSize: 12, color: "#64748b" }}>{t}</li>)}</ul>}
                       <div style={{ display: "flex", gap: 12, marginTop: 2, alignItems: "center" }}>
                         {l.tiempoEstimadoHrs && <span style={{ fontSize: 12, color: "#94a3b8" }}>Est: {l.tiempoEstimadoHrs}h</span>}
                         {l.tiempoRealHrs && <span style={{ fontSize: 12, color: "#16a34a", fontWeight: 600 }}>Real: {l.tiempoRealHrs}HH</span>}
