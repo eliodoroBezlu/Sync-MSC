@@ -1434,8 +1434,8 @@ export default function ReporteOTPage() {
                     </div>
                   )}
 
-                  {/* Tareas — PMP, PMT, PTJ */}
-                  {hasChecklist && (
+                  {/* Tareas — PMP, PMT, PTJ (checklist) y también CMP, CMR (correctivos) */}
+                  {(hasChecklist || isCorrectivo) && (
                     <div style={{ marginBottom: 12 }}>
                       <label style={{ ...S.label, marginBottom: 6 }}>Tareas</label>
                       {(l.tareasEjecutadas ?? []).map((t, ti) => (
