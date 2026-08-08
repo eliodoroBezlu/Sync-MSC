@@ -445,6 +445,19 @@ export default function ReporteOTPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?._id]);
 
+  // Avisar antes de cerrar/recargar la pestaña si hay una edición sin guardar
+  useEffect(() => {
+    if (!editMode) return;
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (!hayCambiosSinGuardar()) return;
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editMode, editLineas, editOtJdeNumero, editTurno, editFecha, editTecnicos]);
+
   const ordenesFiltradas = ordenes.filter((o) => {
     // Técnico/Contratista solo ve sus propias OTs
     if (esTecnico && user) {
@@ -526,6 +539,28 @@ export default function ReporteOTPage() {
 
   function patchLinea(idx: number, patch: Partial<Linea>) {
     setEditLineas((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+  }
+
+  function hayCambiosSinGuardar(): boolean {
+    if (!selected) return false;
+    if (JSON.stringify(editLineas) !== JSON.stringify(selected.lineas)) return true;
+    if (editOtJdeNumero !== (selected.otJdeNumero ?? "")) return true;
+    if (editTurno !== (selected.turno ?? "")) return true;
+    const fechaOriginal = selected.fecha ? new Date(selected.fecha).toISOString().split("T")[0] : "";
+    if (editFecha !== fechaOriginal) return true;
+    const tecnicosOriginal = selected.tecnicos.map(t => ({ usuarioId: t.usuarioId ?? "", nombreCompleto: t.nombreCompleto }));
+    if (JSON.stringify(editTecnicos) !== JSON.stringify(tecnicosOriginal)) return true;
+    return false;
+  }
+
+  function cancelarEdicion() {
+    if (hayCambiosSinGuardar()) {
+      const confirmar = window.confirm(
+        "Hay cambios sin guardar. Si cancelás ahora, se van a perder para siempre (síntoma, causa, tareas, observaciones, etc.).\n\n¿Seguro que querés descartarlos?"
+      );
+      if (!confirmar) return;
+    }
+    setEditMode(false);
   }
 
   async function guardarAvance() {
@@ -1089,7 +1124,7 @@ export default function ReporteOTPage() {
             </button>
           )}
           {editMode && (
-            <button onClick={() => setEditMode(false)} style={{ ...S.btnGhost, padding: "8px 16px", fontSize: 13 }}>
+            <button onClick={cancelarEdicion} style={{ ...S.btnGhost, padding: "8px 16px", fontSize: 13 }}>
               Cancelar edición
             </button>
           )}
@@ -1453,7 +1488,7 @@ export default function ReporteOTPage() {
             })}
             {saveErr && <p style={{ color: "#dc2626", fontSize: 12, marginTop: 8 }}>⚠ {saveErr}</p>}
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
-              <button onClick={() => setEditMode(false)} style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 13 }}>Cancelar</button>
+              <button onClick={cancelarEdicion} style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 13 }}>Cancelar</button>
               <button onClick={saveEdit} disabled={saving} style={{ ...S.btnAmber, padding: "8px 18px", fontSize: 13, opacity: saving ? 0.6 : 1 }}>
                 {saving ? "Guardando…" : "Guardar cambios con trazabilidad"}
               </button>
