@@ -290,21 +290,23 @@ export default function ReporteTurnoTecnicoPage() {
     }
     setOtsPlan(planes);
 
-    // Este reporte es exclusivo de la guardia OPEPLANT del turno (Diurno/Nocturno)
-    // seleccionado: "CMR/CMP registrados en el sistema" no debe mostrar cualquier
-    // OT reactiva registrada ese día/turno, solo las que corresponden a equipos
-    // de la guardia (numeroOT presente en el plan como esGuardia, ya filtrado
-    // arriba por grupo turnero + día).
-    // La OT OPEPLANT (madre) acumula avances de varias semanas con incluirHijas=true,
-    // así que además hay que acotar por fecha real del avance -- su propia "fecha" (badge
-    // mostrado en la tarjeta) o algún registroDiario -- para no arrastrar avances de
-    // otros días registrados bajo el mismo número.
+    // "CMR/CMP registrados en el sistema" muestra dos grupos:
+    //  1) OTs ligadas a la guardia OPEPLANT del turno (numeroOT presente en el
+    //     plan como esGuardia) — la OT OPEPLANT (madre) acumula avances de varias
+    //     semanas con incluirHijas=true, así que hay que acotar por fecha real del
+    //     avance -- su propia "fecha" o algún registroDiario -- para no arrastrar
+    //     avances de otros días registrados bajo el mismo número.
+    //  2) OTs correctivas independientes del plan (p. ej. una CMR abierta para
+    //     sacar material, sin relación a ninguna guardia programada): estas ya
+    //     vienen acotadas por fecha/turno/área desde la API (paramsOrd), así que
+    //     se incluyen tal cual — antes se excluían por completo si su otJdeNumero
+    //     no calzaba con la guardia, dejando al técnico sin poder reportarlas.
     const opeplantNumerosDelTurno = new Set(planes.filter(p => p.esGuardia).map(p => p.numeroOT));
     const esDelDia = (o: OTRegistrada) =>
       o.fecha.slice(0, 10) === form.fecha ||
       (o.registrosDiarios ?? []).some(r => r.fecha.slice(0, 10) === form.fecha);
     setOtsReg(registradas.filter(o =>
-      !!o.otJdeNumero && opeplantNumerosDelTurno.has(o.otJdeNumero) && esDelDia(o)
+      o.otJdeNumero && opeplantNumerosDelTurno.has(o.otJdeNumero) ? esDelDia(o) : true
     ));
 
     // ── 3. OTs en_proceso del técnico de días anteriores (continuación) ────
