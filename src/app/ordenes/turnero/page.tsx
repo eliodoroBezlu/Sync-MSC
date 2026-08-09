@@ -171,6 +171,7 @@ const S = {
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 type EditForm = {
+  fecha: string;
   estado: string;
   tecnicos: { usuarioId: string; nombreCompleto: string }[];
   lineas: { tag: string; descripcionEquipo: string; tipoOT: string; sintoma: string; resolucionAplicada: string; tiempoRealHrs: string; descripcionTrabajo: string; observaciones: string }[];
@@ -253,6 +254,7 @@ export default function TurneroPage() {
   function abrirEditar(ot: OTReactiva) {
     setEditingOt(ot);
     setEditForm({
+      fecha: ot.fecha ? ot.fecha.slice(0, 10) : "",
       estado: ot.estado,
       tecnicos: ot.tecnicos.map(t => ({ usuarioId: t.usuarioId ?? "", nombreCompleto: t.nombreCompleto })),
       lineas: ot.lineas.map(l => ({
@@ -277,6 +279,7 @@ export default function TurneroPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          fecha: editForm.fecha,
           estado: editForm.estado,
           tecnicos: editForm.tecnicos,
           lineas: editForm.lineas.map(l => ({
@@ -297,6 +300,7 @@ export default function TurneroPage() {
         if (o._id !== editingOt._id) return o;
         return {
           ...o,
+          fecha: editForm.fecha,
           estado: editForm.estado,
           tecnicos: editForm.tecnicos,
           lineas: editForm.lineas.map(l => ({
@@ -641,6 +645,17 @@ export default function TurneroPage() {
               {editingOt.tecnicos.map(t => t.nombreCompleto).join(" · ")}
             </p>
           )}
+
+          {/* Fecha */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: 6 }}>Fecha</label>
+            <input
+              type="date"
+              value={editForm.fecha}
+              onChange={e => setEditForm(f => f ? { ...f, fecha: e.target.value } : f)}
+              style={{ width: "100%", border: "1px solid #cbd5e1", borderRadius: 8, padding: "8px 10px", fontSize: 14, color: "#1e293b" }}
+            />
+          </div>
 
           {/* Estado */}
           <div style={{ marginBottom: 16 }}>
