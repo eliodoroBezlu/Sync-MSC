@@ -1434,31 +1434,29 @@ export default function ReporteOTPage() {
                     </div>
                   )}
 
-                  {/* Tareas — PMP, PMT, PTJ (checklist) y también CMP, CMR (correctivos) */}
-                  {(hasChecklist || isCorrectivo) && (
-                    <div style={{ marginBottom: 12 }}>
-                      <label style={{ ...S.label, marginBottom: 6 }}>Tareas</label>
-                      {(l.tareasEjecutadas ?? []).map((t, ti) => (
-                        <div key={ti} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-                          <span style={{ flex: 1, fontSize: 13, color: "#1e293b", background: "#f8fafc", borderRadius: 6, padding: "5px 9px" }}>{t}</span>
-                          <button type="button" onClick={() => removeTareaLinea(i, ti)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 14 }}>✕</button>
-                        </div>
-                      ))}
-                      <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-                        <input
-                          value={tareaInputs[i] ?? ""}
-                          onChange={(e) => setTareaInputs((ts) => ts.map((t, ii) => (ii === i ? e.target.value : t)))}
-                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTareaLinea(i); } }}
-                          placeholder="Nueva tarea…"
-                          style={{ ...S.input, fontSize: 13, padding: "6px 10px" }}
-                        />
-                        <button type="button" onClick={() => addTareaLinea(i)} style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12, whiteSpace: "nowrap" as const }}>+ Tarea</button>
+                  {/* Tareas — todos los tipos de OT (PMP, PMT, PDM, PTJ, CMP, CMR) */}
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ ...S.label, marginBottom: 6 }}>Tareas</label>
+                    {(l.tareasEjecutadas ?? []).map((t, ti) => (
+                      <div key={ti} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                        <span style={{ flex: 1, fontSize: 13, color: "#1e293b", background: "#f8fafc", borderRadius: 6, padding: "5px 9px" }}>{t}</span>
+                        <button type="button" onClick={() => removeTareaLinea(i, ti)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 14 }}>✕</button>
                       </div>
+                    ))}
+                    <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                      <input
+                        value={tareaInputs[i] ?? ""}
+                        onChange={(e) => setTareaInputs((ts) => ts.map((t, ii) => (ii === i ? e.target.value : t)))}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTareaLinea(i); } }}
+                        placeholder="Nueva tarea…"
+                        style={{ ...S.input, fontSize: 13, padding: "6px 10px" }}
+                      />
+                      <button type="button" onClick={() => addTareaLinea(i)} style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12, whiteSpace: "nowrap" as const }}>+ Tarea</button>
                     </div>
-                  )}
+                  </div>
 
                   {/* Estado final del equipo — siempre */}
-                  <div style={{ marginBottom: 12 }}>
+                  <div>
                     <label style={{ ...S.label, marginBottom: 3 }}>Estado final del equipo</label>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const }}>
                       {ESTADO_FINAL_OPTIONS.map(o => {
@@ -1471,17 +1469,6 @@ export default function ReporteOTPage() {
                         );
                       })}
                     </div>
-                  </div>
-
-                  {/* Observaciones — siempre */}
-                  <div>
-                    <label style={{ ...S.label, marginBottom: 3 }}>Observaciones</label>
-                    <textarea
-                      value={l.observaciones ?? ""}
-                      onChange={(e) => patchLinea(i, { observaciones: e.target.value })}
-                      placeholder="Observación adicional (opcional)"
-                      style={{ ...S.textareaSm, minHeight: 40 }}
-                    />
                   </div>
                 </div>
               );
