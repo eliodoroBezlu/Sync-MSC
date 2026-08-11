@@ -172,6 +172,7 @@ function serializePrograma(
         ? hhRegistroPorOrdenIdYFecha[o.ordenTrabajoId as string]
         : undefined;
       return {
+        id: o.id,
         numeroOT: o.numeroOT, tipoOT: o.tipoOT, tipoTrabajo: o.tipoTrabajo,
         prioridad: o.prioridad, descripcion: o.descripcion, tag: o.tag,
         descripcionEquipo: o.descripcionEquipo, personas: o.personas,

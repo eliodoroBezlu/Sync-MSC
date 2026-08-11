@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { esOpeplant } from "@/lib/opeplant";
 
 type OtProgramadaRow = {
   id: string;
@@ -6,6 +7,7 @@ type OtProgramadaRow = {
   dia: string;
   grupo: string;
   esGuardia: boolean;
+  tag: string | null;
   personalAsignado: string[];
 };
 
@@ -32,7 +34,7 @@ export async function reconciliarTurnosGuardia(
 
     const porClave = new Map<string, OtProgramadaRow[]>();
     for (const ot of programa.otsProgramadas) {
-      if (!ot.esGuardia || !TURNOS_GUARDIA.includes(ot.grupo)) continue;
+      if (!esOpeplant(ot.tag, ot.esGuardia) || !TURNOS_GUARDIA.includes(ot.grupo)) continue;
       const clave = `${ot.numeroOT}|${ot.dia}`;
       porClave.set(clave, [...(porClave.get(clave) ?? []), ot]);
     }

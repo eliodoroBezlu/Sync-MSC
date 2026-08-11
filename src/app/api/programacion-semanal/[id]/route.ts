@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
 import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 import { reconciliarTurnosGuardia } from "@/lib/planificacion/reconciliarTurnosGuardia";
+import { esOpeplant } from "@/lib/opeplant";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -204,18 +205,21 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     if (body.nuevoGrupo) {
       const filasObjetivo = await prisma.otProgramada.findMany({
         where: whereGrupo,
-        select: { id: true, esGuardia: true, grupo: true },
+        select: { id: true, esGuardia: true, tag: true, grupo: true },
       });
-      const esGuardiaObjetivo = filasObjetivo.some(f => f.esGuardia);
+      // esGuardia no siempre viene seteado por el importador -- el tag
+      // OPEPLANT es la fuente de verdad de respaldo (ver esOpeplant()).
+      const esGuardiaObjetivo = filasObjetivo.some(f => esOpeplant(f.tag, f.esGuardia));
       if (esGuardiaObjetivo && filasObjetivo.length > 0) {
         const grupoOrigen = filasObjetivo[0].grupo;
-        const gemela = await prisma.otProgramada.findFirst({
+        const candidatasGemela = await prisma.otProgramada.findMany({
           where: {
-            programacionSemanalId: id, numeroOT, dia, esGuardia: true,
+            programacionSemanalId: id, numeroOT, dia,
             grupo: String(body.nuevoGrupo),
             id: { notIn: filasObjetivo.map(f => f.id) },
           },
         });
+        const gemela = candidatasGemela.find(f => esOpeplant(f.tag, f.esGuardia)) ?? null;
         if (gemela) {
           await prisma.otProgramada.update({
             where: { id: gemela.id },
