@@ -319,6 +319,7 @@ export interface IOTProgramada {
   ordenTrabajoNum?: string; // número interno "#1", "#2"…
   // HH reales ejecutadas (de lineas.tiempoRealHrs o bitácora OPEPLANT)
   hhReales?: number | null;
+  esGuardia?: boolean; // OT de guardia de planta (OPEPLANT): vive como dos filas gemelas, Diurno y Nocturno
 }
 
 export interface IResumenDia {

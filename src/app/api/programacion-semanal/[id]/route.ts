@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
 import { verifyToken, COOKIE_NAME } from "@/lib/auth";
+import { reconciliarTurnosGuardia } from "@/lib/planificacion/reconciliarTurnosGuardia";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -105,6 +106,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const programa = await prisma.programacionSemanal.findUnique({ where: { id }, include });
   if (!programa) return Response.json({ ok: false, error: "No encontrado" }, { status: 404 });
+  await reconciliarTurnosGuardia([programa as unknown as Parameters<typeof reconciliarTurnosGuardia>[0][number]]);
   return Response.json(serialize(programa as Record<string, unknown>));
 }
 
@@ -185,6 +187,36 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     const estadoContinua = continuar
       ? (continuaMotivo && MOTIVOS_BLOQUEAN.has(continuaMotivo) ? "bloqueada" : "en_proceso")
       : undefined;
+
+    // Una OT de guardia (OPEPLANT) vive como dos filas gemelas por día -- una
+    // en Diurno y otra en Nocturno, mismo numeroOT+dia. Pisar el grupo de una
+    // sola fila con nuevoGrupo, sin más, puede dejar las dos filas en el
+    // mismo turno y ninguna en el otro (bug reportado: 945213 duplicada en
+    // Diurno). Si la fila que se edita es de guardia, se hace swap atómico
+    // con la gemela que ya ocupa ese grupo en vez de sobrescribirla.
+    if (body.nuevoGrupo) {
+      const filasObjetivo = await prisma.otProgramada.findMany({
+        where: whereGrupo,
+        select: { id: true, esGuardia: true, grupo: true },
+      });
+      const esGuardiaObjetivo = filasObjetivo.some(f => f.esGuardia);
+      if (esGuardiaObjetivo && filasObjetivo.length > 0) {
+        const grupoOrigen = filasObjetivo[0].grupo;
+        const gemela = await prisma.otProgramada.findFirst({
+          where: {
+            programacionSemanalId: id, numeroOT, dia, esGuardia: true,
+            grupo: String(body.nuevoGrupo),
+            id: { notIn: filasObjetivo.map(f => f.id) },
+          },
+        });
+        if (gemela) {
+          await prisma.otProgramada.update({
+            where: { id: gemela.id },
+            data: { grupo: grupoOrigen },
+          });
+        }
+      }
+    }
 
     await prisma.otProgramada.updateMany({
       where: whereGrupo,

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
 import { mapEstadoAlPlan } from "@/lib/otEstado";
+import { reconciliarTurnosGuardia } from "@/lib/planificacion/reconciliarTurnosGuardia";
 
 type BitacoraEntry = { turno: string; supervisor: string; nota: string; hhAtendidas: number; fecha?: string };
 
@@ -227,6 +228,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     await reconciliarContinuaciones([programa as unknown as { fechaFin: Date; otsProgramadas: OtProgramadaRow[] }]);
+    await reconciliarTurnosGuardia([programa as unknown as Parameters<typeof reconciliarTurnosGuardia>[0][number]]);
     const { NextResponse } = await import("next/server");
     return NextResponse.json(serializePrograma(programa as Parameters<typeof serializePrograma>[0], {}, {}));
   }
@@ -258,6 +260,7 @@ export async function GET(req: NextRequest) {
   });
 
   await reconciliarContinuaciones(programas as unknown as { fechaFin: Date; otsProgramadas: OtProgramadaRow[] }[]);
+  await reconciliarTurnosGuardia(programas as unknown as Parameters<typeof reconciliarTurnosGuardia>[0]);
 
   // Construir mapa de bitácora desde ReporteTurno técnicos del período
   // usando HH reales (tiempoRealHrs de sub-OTs registrados), NO el hhTotal planificado
