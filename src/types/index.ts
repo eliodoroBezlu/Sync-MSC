@@ -298,6 +298,7 @@ export interface IPersonalSemanal {
 }
 
 export interface IOTProgramada {
+  id?: string;                // id de la fila puntual (Prisma) -- clave cuando hay filas duplicadas
   numeroOT: string;           // Número JDE
   tipoOT: string;             // "P" | "C" | "S" (del JDE) — expandido vs TipoOT interno
   tipoTrabajo: string;        // "PdM-MANTENIMIENTO PREDICTIVO", "CMP-MANTTO CORRECTIVO PLANEADO"...

@@ -180,9 +180,16 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     const whereBase = todosLosDias
       ? { programacionSemanalId: id, numeroOT }
       : { programacionSemanalId: id, numeroOT, dia };
-    const whereGrupo = !todosLosDias && body.grupo
+    const whereGrupoMatch = !todosLosDias && body.grupo
       ? { ...whereBase, grupo: String(body.grupo) }
       : whereBase;
+    // numeroOT+dia+grupo no identifica una fila única cuando hay dos OTs de
+    // guardia duplicadas en el mismo grupo (el bug que esto corrige): ambas
+    // matchean y el update les pega a las dos. Si el cliente manda el id de
+    // la fila puntual (modal de editar técnicos), usarlo como selector exacto.
+    const whereGrupo = !todosLosDias && typeof body.id === "string" && body.id
+      ? { id: body.id }
+      : whereGrupoMatch;
 
     const estadoContinua = continuar
       ? (continuaMotivo && MOTIVOS_BLOQUEAN.has(continuaMotivo) ? "bloqueada" : "en_proceso")

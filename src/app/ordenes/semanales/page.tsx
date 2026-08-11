@@ -472,7 +472,7 @@ function AsignarTecnicosModal({
     const res = await fetch(`/api/programacion-semanal/${programaId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ numeroOT: ot.numeroOT, dia: ot.dia, grupo: ot.grupo, personalAsignado: seleccionados, personalAsignadoIds: ids, ...(grupoEdit !== ot.grupo ? { nuevoGrupo: grupoEdit } : {}) }),
+      body: JSON.stringify({ id: ot.id, numeroOT: ot.numeroOT, dia: ot.dia, grupo: ot.grupo, personalAsignado: seleccionados, personalAsignadoIds: ids, ...(grupoEdit !== ot.grupo ? { nuevoGrupo: grupoEdit } : {}) }),
     });
     const data = await res.json();
     setSaving(false);
