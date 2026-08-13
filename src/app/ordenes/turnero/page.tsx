@@ -521,6 +521,7 @@ export default function TurneroPage() {
                               {avancesDelDia.map(a => {
                                 const ot = a.ot;
                                 const estadoColor = ESTADO_COLOR[ot.estado] ?? "#64748b";
+                                const esLegacy = !ot.registrosDiarios || ot.registrosDiarios.length === 0;
                                 return (
                                   <div key={a.cardId} style={{ background: "#fafafa", borderRadius: 10, border: "1px solid #e2e8f0", padding: "10px 14px", borderLeft: "3px solid #d97706" }}>
                                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
@@ -554,29 +555,46 @@ export default function TurneroPage() {
                                     <p style={{ fontSize: 12, color: "#475569", marginBottom: 3 }}>
                                       {a.tecnico}
                                     </p>
-                                    {(!ot.registrosDiarios || ot.registrosDiarios.length === 0) && ot.lineas.length > 0 && (
-                                      <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 2 }}>
-                                        {ot.lineas.map((l, i) => (
-                                          (l.sintoma || l.descripcionTrabajo || l.resolucionAplicada) && (
+                                    {esLegacy && ot.lineas.length > 0 ? (
+                                      // OT legacy sin registrosDiarios: agrupar por tag (síntoma/descripción/resolución
+                                      // junto con sus propias tareas) en vez de repetir la misma info en un bloque aparte.
+                                      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 2 }}>
+                                        {ot.lineas.map((l, i) => {
+                                          const tieneResumen = l.sintoma || l.descripcionTrabajo || l.resolucionAplicada;
+                                          const tieneTareas = (l.tareasEjecutadas?.length ?? 0) > 0;
+                                          if (!tieneResumen && !tieneTareas) return null;
+                                          return (
                                             <div key={i} style={{ fontSize: 11, color: "#334155" }}>
-                                              {ot.lineas.length > 1 && (
-                                                <span style={{ fontWeight: 700, color: "#1d4ed8", fontFamily: "monospace" }}>{l.tag}: </span>
+                                              {tieneResumen && (
+                                                <div>
+                                                  {ot.lineas.length > 1 && (
+                                                    <span style={{ fontWeight: 700, color: "#1d4ed8", fontFamily: "monospace" }}>{l.tag}: </span>
+                                                  )}
+                                                  {l.sintoma && <span>{l.sintoma}. </span>}
+                                                  {l.descripcionTrabajo && <span>{l.descripcionTrabajo}</span>}
+                                                  {l.resolucionAplicada && <span style={{ color: "#16a34a" }}> ✓ {l.resolucionAplicada}</span>}
+                                                </div>
                                               )}
-                                              {l.sintoma && <span>{l.sintoma}. </span>}
-                                              {l.descripcionTrabajo && <span>{l.descripcionTrabajo}</span>}
-                                              {l.resolucionAplicada && <span style={{ color: "#16a34a" }}> ✓ {l.resolucionAplicada}</span>}
+                                              {tieneTareas && (
+                                                <ul style={{ margin: "2px 0 0", paddingLeft: 16 }}>
+                                                  {l.tareasEjecutadas!.map((t, ti) => <li key={ti}>{t}</li>)}
+                                                </ul>
+                                              )}
                                             </div>
-                                          )
-                                        ))}
+                                          );
+                                        })}
                                       </div>
-                                    )}
-                                    {a.tareasEjecutadas.length > 0 && (
-                                      <ul style={{ margin: "3px 0 0", paddingLeft: 16, fontSize: 11, color: "#334155" }}>
-                                        {a.tareasEjecutadas.map((t, i) => <li key={i}>{t}</li>)}
-                                      </ul>
-                                    )}
-                                    {a.observaciones && (
-                                      <p style={{ fontSize: 11, color: "#7c3aed", marginTop: 3 }}>{a.observaciones}</p>
+                                    ) : (
+                                      <>
+                                        {a.tareasEjecutadas.length > 0 && (
+                                          <ul style={{ margin: "3px 0 0", paddingLeft: 16, fontSize: 11, color: "#334155" }}>
+                                            {a.tareasEjecutadas.map((t, i) => <li key={i}>{t}</li>)}
+                                          </ul>
+                                        )}
+                                        {a.observaciones && (
+                                          <p style={{ fontSize: 11, color: "#7c3aed", marginTop: 3 }}>{a.observaciones}</p>
+                                        )}
+                                      </>
                                     )}
                                   </div>
                                 );
