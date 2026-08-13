@@ -185,8 +185,14 @@ export default async function ImprimirReporteTecnicoPage({ params }: Params) {
     };
   });
 
-  // Todas las OTs: plan primero, luego registradas
-  const todasOTs = [...otsPlan, ...otsRegistradas];
+  // Todas las OTs: plan primero, luego registradas. Deduplicar entradas de
+  // plan (p.ej. OPEPLANT) cuyo numero ya aparece entre las registradas —
+  // mismo criterio que usa PrintClientTecnico para la tabla — para que el
+  // resumen ejecutivo no cuente esa OT dos veces (una como plan, otra como
+  // registrada) cuando en la tabla impresa solo se ve una vez.
+  const numerosRegistrados = new Set(otsRegistradas.map(o => o.otJdeNumero ?? o.numeroOT));
+  const otsPlanDeduplicadas = otsPlan.filter(o => !numerosRegistrados.has(o.otJdeNumero ?? o.numeroOT));
+  const todasOTs = [...otsPlanDeduplicadas, ...otsRegistradas];
 
   // Calcular resumen
   const totalHH = todasOTs.reduce((s, o) => s + o.hhTotal, 0);
