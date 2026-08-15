@@ -54,6 +54,58 @@ function parseEtiquetaMes(texto: unknown): { mes: number; anio: number } | null 
   return { mes, anio: Number(m[2]) };
 }
 
+function normalizarTextoMes(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
+// El roster de Generación es un archivo dedicado (no compartido entre
+// disciplinas como el de E&I): un único listado de personal, sin secciones,
+// con rótulos de mes con guión bajo ("ENERO_2026" en vez de "Enero 2026") y
+// el nombre en la columna 1 en vez de la 3. Algunos rótulos vienen mal
+// escritos en el origen (ej. "ABRL_2026"): en vez de exigir que el nombre del
+// mes matchee el diccionario, se ancla el primer rótulo que sí resuelve y el
+// resto se infiere por secuencia, ya que los meses siempre aparecen en orden
+// calendario a lo largo de la fila.
+interface FormatoGeneracion {
+  filaDatos: number;
+  nombreCol: number;
+  columnasPorMes: Map<string, number>;
+}
+
+function resolverFormatoGeneracion(rows: unknown[][]): FormatoGeneracion | null {
+  let filaMeses = -1;
+  let etiquetas: { col: number; anio: number; mesTexto: string }[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i] as unknown[];
+    const matches: { col: number; anio: number; mesTexto: string }[] = [];
+    for (let c = 0; c < row.length; c++) {
+      const m = String(row[c] ?? "").trim().match(/^([A-Za-zÀ-ÿ]+)_(\d{4})$/);
+      if (m) matches.push({ col: c, mesTexto: m[1], anio: Number(m[2]) });
+    }
+    if (matches.length >= 6) {
+      filaMeses = i;
+      etiquetas = matches;
+    }
+  }
+  if (filaMeses < 0) return null;
+
+  etiquetas.sort((a, b) => a.col - b.col);
+  const anclaIdx = etiquetas.findIndex(e => MESES_ES[normalizarTextoMes(e.mesTexto)] !== undefined);
+  if (anclaIdx < 0) return null;
+  const mesAncla = MESES_ES[normalizarTextoMes(etiquetas[anclaIdx].mesTexto)];
+  const anioAncla = etiquetas[anclaIdx].anio;
+
+  const columnasPorMes = new Map<string, number>();
+  etiquetas.forEach((e, idx) => {
+    const totalMes = mesAncla + (idx - anclaIdx);
+    const mes = ((totalMes % 12) + 12) % 12;
+    const anio = anioAncla + Math.floor(totalMes / 12);
+    columnasPorMes.set(`${anio}-${mes}`, e.col);
+  });
+
+  return { filaDatos: filaMeses + 3, nombreCol: 1, columnasPorMes };
+}
+
 export async function POST(req: NextRequest, { params }: Ctx) {
   try {
     const { id } = await params;
@@ -80,58 +132,79 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
 
-    // ─── PASO 1: Ubicar la fila de rótulos de mes (ej. "Enero 2026") ──────
-    // Se toma la ÚLTIMA fila con varios rótulos de mes encontrada en toda la
-    // hoja: el archivo es un archivo histórico con bloques de años anteriores
-    // más arriba, y el bloque vigente siempre es el más reciente (más abajo).
-    let filaMeses = -1;
-    let columnasPorMes = new Map<string, number>();
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i] as unknown[];
-      const matches: { mes: number; anio: number; col: number }[] = [];
-      for (let c = 0; c < row.length; c++) {
-        const parsed = parseEtiquetaMes(row[c]);
-        if (parsed) matches.push({ ...parsed, col: c });
-      }
-      if (matches.length >= 6) {
-        filaMeses = i;
-        columnasPorMes = new Map(matches.map(m => [`${m.anio}-${m.mes}`, m.col]));
-      }
-    }
-    if (filaMeses < 0) {
-      return NextResponse.json(
-        { error: "No se encontró la fila de rótulos de mes (ej. 'Enero 2026') en el Excel" },
-        { status: 400 }
-      );
-    }
+    // ─── PASO 1/2: Ubicar rótulos de mes y desde dónde leer personas ───────
+    // Dos formatos posibles según el área: el roster de E&I trae todas las
+    // disciplinas en secciones dentro de una misma hoja ("Enero 2026", nombre
+    // en col 3); el de Generación es un archivo dedicado con un solo listado
+    // sin secciones ("ENERO_2026" con guión bajo, nombre en col 1). Se
+    // detecta primero el formato Generación porque su separador de rótulo
+    // ("_") es mutuamente excluyente con el de E&I (espacio).
+    const formatoGeneracion = resolverFormatoGeneracion(rows);
 
-    // ─── PASO 2: Ubicar la sección de la disciplina del plan bajo ese bloque
-    const seccionBuscada = SECCION_POR_DISCIPLINA[plan.disciplina];
-    if (!seccionBuscada) {
-      return NextResponse.json(
-        { error: `No hay una sección de roster configurada para la disciplina "${plan.disciplina}"` },
-        { status: 400 }
-      );
-    }
-    let filaEncabezado = -1;
-    let filaSeccion = -1;
-    for (let i = filaMeses; i < rows.length; i++) {
-      const row = rows[i] as unknown[];
-      const col3 = String(row[3] ?? "").trim();
-      if (col3 === seccionBuscada) {
-        filaSeccion = i;
-        continue;
+    let columnasPorMes: Map<string, number>;
+    let filaEncabezado: number;
+    let nombreCol: number;
+    let seccionBuscada: string | null = null;
+
+    if (formatoGeneracion) {
+      columnasPorMes = formatoGeneracion.columnasPorMes;
+      filaEncabezado = formatoGeneracion.filaDatos - 1;
+      nombreCol = formatoGeneracion.nombreCol;
+    } else {
+      // Se toma la ÚLTIMA fila con varios rótulos de mes encontrada en toda
+      // la hoja: el archivo es un archivo histórico con bloques de años
+      // anteriores más arriba, y el bloque vigente siempre es el más
+      // reciente (más abajo).
+      let filaMeses = -1;
+      columnasPorMes = new Map<string, number>();
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i] as unknown[];
+        const matches: { mes: number; anio: number; col: number }[] = [];
+        for (let c = 0; c < row.length; c++) {
+          const parsed = parseEtiquetaMes(row[c]);
+          if (parsed) matches.push({ ...parsed, col: c });
+        }
+        if (matches.length >= 6) {
+          filaMeses = i;
+          columnasPorMes = new Map(matches.map(m => [`${m.anio}-${m.mes}`, m.col]));
+        }
       }
-      if (col3 === "NOMBRE" && filaSeccion > 0) {
-        filaEncabezado = i;
-        break;
+      if (filaMeses < 0) {
+        return NextResponse.json(
+          { error: "No se encontró la fila de rótulos de mes (ej. 'Enero 2026') en el Excel" },
+          { status: 400 }
+        );
       }
-    }
-    if (filaEncabezado < 0) {
-      return NextResponse.json(
-        { error: `No se pudo encontrar la sección '${seccionBuscada}' en el Excel` },
-        { status: 400 }
-      );
+
+      // Ubicar la sección de la disciplina del plan bajo ese bloque
+      seccionBuscada = SECCION_POR_DISCIPLINA[plan.disciplina];
+      if (!seccionBuscada) {
+        return NextResponse.json(
+          { error: `No hay una sección de roster configurada para la disciplina "${plan.disciplina}"` },
+          { status: 400 }
+        );
+      }
+      nombreCol = 3;
+      let filaSeccion = -1;
+      filaEncabezado = -1;
+      for (let i = filaMeses; i < rows.length; i++) {
+        const row = rows[i] as unknown[];
+        const col3 = String(row[3] ?? "").trim();
+        if (col3 === seccionBuscada) {
+          filaSeccion = i;
+          continue;
+        }
+        if (col3 === "NOMBRE" && filaSeccion > 0) {
+          filaEncabezado = i;
+          break;
+        }
+      }
+      if (filaEncabezado < 0) {
+        return NextResponse.json(
+          { error: `No se pudo encontrar la sección '${seccionBuscada}' en el Excel` },
+          { status: 400 }
+        );
+      }
     }
 
     // ─── PASO 3: Resolver, por cada día real de la semana del plan, la ────
@@ -161,28 +234,40 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
     for (let i = filaEncabezado + 1; i < rows.length; i++) {
       const row = rows[i] as unknown[];
-      const col3 = String(row[3] ?? "").trim();
+      const nombre = String(row[nombreCol] ?? "").trim();
 
-      // Parar si encontramos el inicio de otra sección (cualquiera menos la
-      // que se está leyendo, ya que esa ya quedó atrás en filaSeccion)
-      if (SECCIONES_CONOCIDAS.includes(col3) && col3 !== seccionBuscada) break;
+      if (formatoGeneracion) {
+        // El listado termina en la fila de resumen "NÚMERO DE PERSONAS EN
+        // SITIÓ"; después vienen solo filas de leyenda de códigos.
+        if (/^N[UÚ]MERO/i.test(nombre)) break;
+        // Filas vacías son separadores visuales entre personas, no el fin.
+        if (!nombre) continue;
+      } else {
+        // Parar si encontramos el inicio de otra sección (cualquiera menos
+        // la que se está leyendo, ya que esa ya quedó atrás en filaSeccion)
+        if (SECCIONES_CONOCIDAS.includes(nombre) && nombre !== seccionBuscada) break;
 
-      // Excluir filas vacías o de leyenda
-      if (!col3 || /^\d+$/.test(col3)) continue;
-      if (["Dias trabajados", "Turno Dia", "Turno Noche"].includes(col3)) continue;
+        // Excluir filas vacías o de leyenda
+        if (!nombre || /^\d+$/.test(nombre)) continue;
+        if (["Dias trabajados", "Turno Dia", "Turno Noche"].includes(nombre)) continue;
+      }
 
       // **FILTRO CRÍTICO**: Solo técnicos (rol=4)
-      const usuarioId = usuariosPorNombre.get(col3.toLowerCase());
+      const usuarioId = usuariosPorNombre.get(nombre.toLowerCase());
       if (!usuarioId) continue;
 
       const asistenciaSemana = columnas.map(c => normalizarCodigo(row[c]));
       const guardiaDiurnaSemana = columnas.map(c => {
         const codigo = normalizarCodigo(row[c]);
+        // El roster de Generación no distingue "turno normal" de "guardia
+        // diurna" por relleno de celda como el de E&I: el código "T" ya
+        // significa "Trabajo Dia" sin ambigüedad.
+        if (formatoGeneracion) return codigo === "T";
         const celda = ws[XLSX.utils.encode_cell({ r: i, c })];
         return codigo === "T" && esFondoGuardiaDiurna(celda);
       });
 
-      personas.push({ nombre: col3, usuarioId, asistenciaSemana, guardiaDiurnaSemana });
+      personas.push({ nombre, usuarioId, asistenciaSemana, guardiaDiurnaSemana });
     }
 
     // Borrar roster anterior — se preservan los contratistas agregados a mano
@@ -267,7 +352,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       diasSemana: `${fechasSemana[0].getDate()}/${fechasSemana[0].getMonth() + 1} - ${fechasSemana[6].getDate()}/${fechasSemana[6].getMonth() + 1} (Semana ${plan.semana})`,
       mensaje: `${guardados}/${personas.length} técnicos importados`,
       ...(errores.length > 0 && { advertencias: errores }),
-      debug: { filaMeses, filaEncabezado, columnas },
+      debug: { formato: formatoGeneracion ? "generacion" : "seccionado", filaEncabezado, columnas },
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error importando roster";

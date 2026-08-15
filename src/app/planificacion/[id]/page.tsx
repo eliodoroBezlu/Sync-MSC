@@ -842,7 +842,7 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
                     color: "#0891b2", fontSize: 12, fontWeight: 700, cursor: "pointer",
                     border: "1.5px solid #0891b230",
                   }}>
-                    {importandoRoster ? "Importando…" : "⬆ Importar Roster E&I"}
+                    {importandoRoster ? "Importando…" : "⬆ Importar Roster"}
                   </label>
                   <input id="input-roster" type="file" accept=".xlsx,.xls" style={{ display: "none" }}
                     onChange={e => e.target.files?.[0] && importarRoster(e.target.files[0])} />
@@ -852,7 +852,7 @@ export default function PlanDetalleePage({ params }: { params: Promise<{ id: str
 
             {plan.roster.length === 0 ? (
               <div style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>
-                No hay técnicos en el roster. Importa el archivo &quot;02 Roster E&amp;I 2026.xlsx&quot;.
+                No hay técnicos en el roster. Importa el Excel de roster de tu área.
               </div>
             ) : (
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
