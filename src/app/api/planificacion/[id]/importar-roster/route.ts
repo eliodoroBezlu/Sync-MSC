@@ -58,6 +58,24 @@ function normalizarTextoMes(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
+// El roster de Generación trae el nombre en orden "Nombres Apellidos" (ej.
+// "Freddy Gustavo Juvenal Machaca Martinez"), mientras Usuario.nombre está
+// guardado en orden "Apellidos Nombres" (ej. "Machaca Martínez Freddy
+// Gustavo Juvenal") — el mismo orden que usa el roster de E&I, por eso ese
+// formato matchea directo. Ordenar alfabéticamente las palabras del nombre
+// (sin tildes) da una clave que coincide sin importar el orden de origen.
+function normalizarNombreOrden(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .sort()
+    .join(" ");
+}
+
 // El roster de Generación es un archivo dedicado (no compartido entre
 // disciplinas como el de E&I): un único listado de personal, sin secciones,
 // con rótulos de mes con guión bajo ("ENERO_2026" en vez de "Enero 2026") y
@@ -115,12 +133,14 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
     // Buscar solo técnicos (rol=4)
     const usuariosPorNombre = new Map<string, string>();
+    const usuariosPorNombreOrdenado = new Map<string, string>();
     const usuariosTecnicos = await prisma.usuario.findMany({
       where: { rol: 4, activo: true },
       select: { id: true, nombre: true },
     });
     for (const u of usuariosTecnicos) {
       usuariosPorNombre.set(u.nombre.trim().toLowerCase(), u.id);
+      usuariosPorNombreOrdenado.set(normalizarNombreOrden(u.nombre), u.id);
     }
 
     const formData = await req.formData();
@@ -253,7 +273,12 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       }
 
       // **FILTRO CRÍTICO**: Solo técnicos (rol=4)
-      const usuarioId = usuariosPorNombre.get(nombre.toLowerCase());
+      // El formato Generación trae el nombre en orden inverso al de la BD
+      // (ver normalizarNombreOrden); el fallback solo se activa para ese
+      // formato, así que el matching de E&I (que ya matchea directo) no cambia.
+      const usuarioId =
+        usuariosPorNombre.get(nombre.toLowerCase()) ??
+        (formatoGeneracion ? usuariosPorNombreOrdenado.get(normalizarNombreOrden(nombre)) : undefined);
       if (!usuarioId) continue;
 
       const asistenciaSemana = columnas.map(c => normalizarCodigo(row[c]));
