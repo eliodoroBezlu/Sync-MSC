@@ -1840,13 +1840,16 @@ export default function ReporteOTPage() {
         {ot.origenPlan && (() => {
           const hhDiarios = (ot.registrosDiarios ?? []).reduce((s, r) => s + r.hhTrabajadas, 0);
           const diasDiarios = ot.registrosDiarios?.length ?? 0;
-          // El día 1 de una OT recurrente ya queda registrado como el primer registrosDiarios
-          // (ver POST /api/ordenes), así que las horas de ot.lineas solo se suman aparte
-          // cuando todavía no existe ningún registro diario (OT de un solo día, sin desglose).
+          // HH reales = mayor entre lo cargado en las líneas de equipo (tiempoRealHrs) y la
+          // suma de los avances diarios (hhTrabajadas). Son dos capturas independientes que no
+          // se sincronizan: en recurrentes el día 1 se auto-siembra como primer avance a partir
+          // de tiempoRealHrs (ahí hhDiarios ya cubre a hhLineas), pero si alguien cargó un avance
+          // con horas distintas ambos valores divergen. Tomar el máximo evita descartar HH ya
+          // registradas y mantiene la coherencia con la vista de detalle de la OT y el PDF.
           const hhLineas = ot.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0);
           const diasLineas = diasDiarios === 0 && hhLineas > 0 ? 1 : 0;
           const totalDias = diasLineas + diasDiarios;
-          const totalHH = diasDiarios > 0 ? hhDiarios : hhLineas;
+          const totalHH = Math.max(hhLineas, hhDiarios);
           const puedeAgregarAvance = !["pendiente_revision", "revisado", "concluido"].includes(ot.estado);
           return (
           <div style={S.card}>

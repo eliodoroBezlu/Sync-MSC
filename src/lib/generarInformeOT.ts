@@ -109,7 +109,7 @@ function fmt(d?: string | Date) {
 }
 function fmtHrs(n?: number) {
   if (n == null || n === 0) return "—";
-  return `${n} h`;
+  return `${n} HH`;
 }
 
 // Obtiene las dimensiones reales de una imagen desde su dataUrl
@@ -610,7 +610,7 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
         return [
           fmt(r.fecha),
           r.tecnico,
-          `${r.hhTrabajadas} h`,
+          `${r.hhTrabajadas} HH`,
           detalle,
         ];
       }),
@@ -725,10 +725,16 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
   const totalEst  = ot.hhEstimadasPlan ?? ot.lineas.reduce((s, l) => s + (l.tiempoEstimadoHrs ?? 0), 0);
   const hhLineas  = ot.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0);
   const hhDiarios = (ot.registrosDiarios ?? []).reduce((s, r) => s + (r.hhTrabajadas ?? 0), 0);
-  // El día 1 ya queda registrado como el primer registroDiario (ver POST /api/ordenes),
-  // así que lineas[].tiempoRealHrs solo se suma aparte cuando todavía no hay ningún
-  // registro diario (misma regla que ordenes/reporte/page.tsx para evitar duplicar el día 1).
-  const totalReal = hhDiarios > 0 ? hhDiarios : hhLineas;
+  // Dos capturas independientes de HH reales que nunca se sincronizan:
+  //  - lineas[].tiempoRealHrs  → HH cargadas al cerrar/editar cada equipo intervenido
+  //  - registrosDiarios[].hhTrabajadas → HH cargadas en cada avance diario
+  // En OTs de plan/recurrentes el día 1 se auto-siembra como primer registro diario a
+  // partir de tiempoRealHrs, así que ahí hhDiarios ya incluye (o supera) a hhLineas.
+  // En reactivas planas donde alguien agregó un avance con horas distintas, ambos valores
+  // divergen (ej. OT 959593: línea 8 HH vs avance 4 HH). Tomamos el mayor para no
+  // descartar HH ya registradas ni contradecir la vista de detalle de la OT, y para no
+  // duplicar el día 1 en el caso recurrente (ahí el máximo es el propio hhDiarios).
+  const totalReal = Math.max(hhLineas, hhDiarios);
   const diff      = Math.round((totalReal - totalEst) * 10) / 10;
   const pct       = totalEst > 0 ? Math.round((totalReal / totalEst) * 100) : 0;
 
@@ -737,9 +743,9 @@ export async function generarInformeOT(ot: OTData): Promise<void> {
     margin: { left: 15, right: 80 },
     head: [["Concepto", "Valor"]],
     body: [
-      ["HH Estimadas (total)", totalEst > 0 ? `${totalEst} h` : "—"],
-      ["HH Reales (total)", totalReal > 0 ? `${totalReal} h` : "—"],
-      ["Diferencia", totalEst > 0 ? `${diff >= 0 ? "+" : ""}${diff} h` : "—"],
+      ["HH Estimadas (total)", totalEst > 0 ? `${totalEst} HH` : "—"],
+      ["HH Reales (total)", totalReal > 0 ? `${totalReal} HH` : "—"],
+      ["Diferencia", totalEst > 0 ? `${diff >= 0 ? "+" : ""}${diff} HH` : "—"],
       ["Eficiencia (Est. vs Real)", totalEst > 0 ? `${pct}%` : "—"],
     ],
     headStyles: { fillColor: NAVY, textColor: BLANCO, fontSize: 8, fontStyle: "bold", cellPadding: 3 },
