@@ -14,19 +14,24 @@ import {
 type Ctx = { params: Promise<{ id: string }> };
 
 // POST /api/paradas/[id]/importar
-//  - multipart con `file` (.xlsx): parser flexible por nombre de columna.
+//  - multipart con `file` (.xlsx): parser flexible por nombre de columna. Si no
+//    se indica `hoja`, se leen TODAS las hojas (una por disciplina en PPML060).
 //  - JSON { filas: [...] }: pegado manual desde una tabla.
 // Regla: no re-crea OTs cuyo numeroOT ya existe en la parada.
 export async function POST(req: NextRequest, { params }: Ctx) {
   try {
     const { id } = await params;
-    const parada = await prisma.parada.findUnique({ where: { id }, select: { id: true } });
+    const parada = await prisma.parada.findUnique({
+      where: { id },
+      select: { id: true, fechaEjecucionInicio: true },
+    });
     if (!parada) return NextResponse.json({ ok: false, error: "Parada no encontrada" }, { status: 404 });
 
     const contentType = req.headers.get("content-type") ?? "";
-    let filas: FilaImportNormalizada[] = [];
+    const filas: FilaImportNormalizada[] = [];
     let sinDisciplina = 0;
     let sinNumero = 0;
+    let seccionesOmitidas = 0;
 
     if (contentType.includes("application/json")) {
       const parsed = importarJsonSchema.safeParse(await req.json());
@@ -58,15 +63,32 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       if (!file) return NextResponse.json({ ok: false, error: "Archivo requerido" }, { status: 400 });
       const buffer = Buffer.from(await file.arrayBuffer());
       const wb = XLSX.read(buffer, { type: "buffer", cellDates: true });
-      const hojaNombre = String(formData.get("hoja") ?? "") || wb.SheetNames[0];
-      const ws = wb.Sheets[hojaNombre];
-      if (!ws) return NextResponse.json({ ok: false, error: `Hoja "${hojaNombre}" no encontrada` }, { status: 400 });
-      const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-      const res = parseFilasOts(rows);
-      filas = res.filas;
-      sinDisciplina = res.sinDisciplina;
-      sinNumero = res.sinNumero;
-      if (Object.keys(res.columnas).length === 0) {
+
+      const hojaPedida = String(formData.get("hoja") ?? "").trim();
+      const nombres = hojaPedida ? [hojaPedida] : wb.SheetNames;
+      let columnasReconocidas = 0;
+
+      for (const nombre of nombres) {
+        const ws = wb.Sheets[nombre];
+        if (!ws) {
+          if (hojaPedida) {
+            return NextResponse.json({ ok: false, error: `Hoja "${nombre}" no encontrada` }, { status: 400 });
+          }
+          continue;
+        }
+        const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+        const res = parseFilasOts(rows, {
+          disciplinaDefault: normalizarDisciplina(nombre),
+          ejecucionDesde: parada.fechaEjecucionInicio,
+        });
+        filas.push(...res.filas);
+        sinDisciplina += res.sinDisciplina;
+        sinNumero += res.sinNumero;
+        seccionesOmitidas += res.seccionesOmitidas;
+        columnasReconocidas += Object.keys(res.columnas).length;
+      }
+
+      if (columnasReconocidas === 0) {
         return NextResponse.json(
           { ok: false, error: "No se reconoció ninguna columna. ¿La primera fila tiene los encabezados?" },
           { status: 400 },
@@ -122,6 +144,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       duplicadasOmitidas: duplicadas,
       sinDisciplina,
       sinNumero,
+      seccionesOmitidas,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error importando";

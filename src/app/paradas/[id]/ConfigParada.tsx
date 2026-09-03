@@ -270,7 +270,8 @@ function SeccionImportar({ paradaId, onChange }: { paradaId: string; onChange: (
       }
       setMsg(
         `Importadas ${data.importadas} · ${data.duplicadasOmitidas} duplicadas omitidas` +
-          (data.sinDisciplina ? ` · ${data.sinDisciplina} sin disciplina` : ""),
+          (data.sinDisciplina ? ` · ${data.sinDisciplina} sin disciplina` : "") +
+          (data.seccionesOmitidas ? ` · ${data.seccionesOmitidas} filas de agrupación` : ""),
       );
       await onChange();
     } finally {
@@ -320,7 +321,8 @@ function SeccionImportar({ paradaId, onChange }: { paradaId: string; onChange: (
         </button>
       </div>
       <p style={{ fontSize: 12, color: "#94a3b8", margin: "8px 0 0" }}>
-        El Excel se parsea por nombre de columna. No se recrean OTs cuyo N° ya existe en la parada.
+        El Excel se parsea por nombre de columna y se leen todas las hojas (una por disciplina).
+        Las filas de agrupación se descartan y no se recrean OTs cuyo N° ya existe en la parada.
       </p>
       {msg && (
         <div style={{ fontSize: 12, marginTop: 8, color: msg.includes("Error") ? "#dc2626" : "#15803d" }}>{msg}</div>
