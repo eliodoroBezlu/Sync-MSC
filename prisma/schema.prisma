@@ -659,6 +659,9 @@ model Parada {
   fechaEjecucionInicio    DateTime
   fechaEjecucionFin       DateTime
   estado                  String   @default("preparativos") // preparativos | ejecucion | cerrada
+  fechaCierre             DateTime?
+  leccionesAprendidas     String?
+  observacionesCierre     String?
   creadoPor               String
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt

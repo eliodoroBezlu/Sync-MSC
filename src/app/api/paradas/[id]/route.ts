@@ -35,6 +35,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     if (d.fechaEjecucionInicio !== undefined) data.fechaEjecucionInicio = d.fechaEjecucionInicio;
     if (d.fechaEjecucionFin !== undefined) data.fechaEjecucionFin = d.fechaEjecucionFin;
     if (d.estado !== undefined) data.estado = d.estado;
+    if (d.fechaCierre !== undefined) data.fechaCierre = d.fechaCierre ?? null;
+    if (d.leccionesAprendidas !== undefined) data.leccionesAprendidas = d.leccionesAprendidas ?? null;
+    if (d.observacionesCierre !== undefined) data.observacionesCierre = d.observacionesCierre ?? null;
 
     const parada = await prisma.parada.update({ where: { id }, data });
     return NextResponse.json({ ok: true, parada: serialize(parada) });

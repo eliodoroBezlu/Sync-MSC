@@ -2,11 +2,24 @@
 
 import { useMemo, useRef, useState } from "react";
 import type { DisciplinaParada } from "@/lib/parada/tipos";
-import type { EstadoParada, ParadaDetalle, ParadaGrupoCli, TurnoParada } from "./tipos";
+import { DISCIPLINAS_PARADA } from "@/lib/parada/tipos";
+import type { SessionPayload } from "@/lib/auth";
+import { generarInformeCierrePdf, type DatosInformeCierre } from "@/lib/parada/generarInformeCierrePdf";
+import type {
+  AvanceCli,
+  EstadoParada,
+  ParadaDetalle,
+  ParadaGrupoCli,
+  TableroParada as TableroData,
+  TurnoParada,
+} from "./tipos";
 import { ymdInput, DISCIPLINA_LABEL, inp, btnPrim, btnSec, th, td } from "./ui";
 
 interface Props {
   parada: ParadaDetalle;
+  tablero: TableroData | null;
+  puedeCerrar: boolean;
+  usuario: SessionPayload;
   onChange: () => Promise<void>;
   onDeleted: () => void;
 }
@@ -24,13 +37,14 @@ const h3: React.CSSProperties = { fontSize: 14, fontWeight: 800, color: "#0f2847
 const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" };
 const campo: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 3, minWidth: 130 };
 
-export default function ConfigParada({ parada, onChange, onDeleted }: Props) {
+export default function ConfigParada({ parada, tablero, puedeCerrar, usuario, onChange, onDeleted }: Props) {
   return (
     <div>
       <SeccionDatos parada={parada} onChange={onChange} />
       <SeccionGrupos parada={parada} onChange={onChange} />
       <SeccionImportar paradaId={parada.id} onChange={onChange} />
       <SeccionOtManual paradaId={parada.id} onChange={onChange} />
+      <SeccionCierre parada={parada} tablero={tablero} puedeCerrar={puedeCerrar} usuario={usuario} onChange={onChange} />
       <SeccionPeligro paradaId={parada.id} codigo={parada.codigo} onDeleted={onDeleted} />
     </div>
   );
@@ -421,6 +435,234 @@ function SeccionOtManual({ paradaId, onChange }: { paradaId: string; onChange: (
         </button>
         {msg && <span style={{ fontSize: 12, color: msg.includes("Error") || msg.includes("obligat") ? "#dc2626" : "#15803d" }}>{msg}</span>}
       </div>
+    </div>
+  );
+}
+
+/* ── Cierre de la parada ───────────────────────────────────────────────── */
+function SeccionCierre({
+  parada, tablero, puedeCerrar, usuario, onChange,
+}: {
+  parada: ParadaDetalle;
+  tablero: TableroData | null;
+  puedeCerrar: boolean;
+  usuario: SessionPayload;
+  onChange: () => Promise<void>;
+}) {
+  const cerrada = parada.estado === "cerrada";
+  const [notas, setNotas] = useState({
+    leccionesAprendidas: parada.leccionesAprendidas ?? "",
+    observacionesCierre: parada.observacionesCierre ?? "",
+  });
+  const [busy, setBusy] = useState<"" | "notas" | "cerrar" | "reabrir" | "pdf">("");
+  const [msg, setMsg] = useState("");
+
+  async function patch(body: Record<string, unknown>): Promise<boolean> {
+    const res = await fetch(`/api/paradas/${parada.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.ok === false) {
+      setMsg(data.error ?? "Error al guardar");
+      return false;
+    }
+    return true;
+  }
+
+  async function guardarNotas() {
+    setBusy("notas");
+    setMsg("");
+    try {
+      const ok = await patch({
+        leccionesAprendidas: notas.leccionesAprendidas || null,
+        observacionesCierre: notas.observacionesCierre || null,
+      });
+      if (ok) {
+        setMsg("Notas de cierre guardadas.");
+        await onChange();
+      }
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function cerrar() {
+    if (!confirm(`¿Cerrar la parada ${parada.codigo}? Se bloquea el registro de avances y reportes. Podrás reabrirla si hace falta.`)) return;
+    setBusy("cerrar");
+    setMsg("");
+    try {
+      if (await patch({ estado: "cerrada", fechaCierre: new Date().toISOString() })) {
+        setMsg("Parada cerrada.");
+        await onChange();
+      }
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function reabrir() {
+    if (!confirm(`¿Reabrir la parada ${parada.codigo}? Vuelve al estado «En ejecución».`)) return;
+    setBusy("reabrir");
+    setMsg("");
+    try {
+      if (await patch({ estado: "ejecucion", fechaCierre: null })) {
+        setMsg("Parada reabierta.");
+        await onChange();
+      }
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function generarPdf() {
+    setBusy("pdf");
+    setMsg("");
+    try {
+      const res = await fetch(`/api/paradas/${parada.id}/avances`);
+      const avances: AvanceCli[] = res.ok ? await res.json() : [];
+      const hhPorOt = new Map<string, number>();
+      for (const a of avances) {
+        hhPorOt.set(a.paradaOtId, (hhPorOt.get(a.paradaOtId) ?? 0) + a.hhPropias + a.hhApoyo);
+      }
+      const otsEjec = parada.ots.filter((o) => o.fase === "ejecucion");
+      const emitidos = parada.reportesDiarios.filter((r) => r.estado === "emitido");
+
+      const retrasosMap = new Map<string, { numeroOT: string; motivo: string; accion: string }>();
+      for (const r of emitidos) {
+        for (const x of r.otsConRetraso ?? []) {
+          if (!retrasosMap.has(x.numeroOT)) {
+            retrasosMap.set(x.numeroOT, { numeroOT: x.numeroOT, motivo: x.motivo, accion: x.accion });
+          }
+        }
+      }
+      const pendMap = new Map<string, { tipo: string; detalle: string }>();
+      for (const r of emitidos) {
+        for (const p of r.pendientes ?? []) {
+          const k = `${p.tipo}|${p.detalle}`;
+          if (!pendMap.has(k)) pendMap.set(k, { tipo: p.tipo, detalle: p.detalle });
+        }
+      }
+
+      const porDisciplina = tablero
+        ? DISCIPLINAS_PARADA.map((d) => ({ disciplina: d, ...tablero.porDisciplina[d] })).filter((x) => x.otsTotal > 0)
+        : [];
+
+      const datos: DatosInformeCierre = {
+        paradaCodigo: parada.codigo,
+        paradaNombre: parada.nombre,
+        planta: parada.planta,
+        fechaPreparativosInicio: parada.fechaPreparativosInicio,
+        fechaEjecucionInicio: parada.fechaEjecucionInicio,
+        fechaEjecucionFin: parada.fechaEjecucionFin,
+        fechaCierre: parada.fechaCierre,
+        estado: parada.estado,
+        avanceGlobalPct: tablero?.avanceGlobalPct ?? 0,
+        cumplimientoPct: Math.round((tablero?.cumplimientoHoy ?? 0) * 100),
+        otsEjecucion: {
+          total: tablero?.ots.ejecucion.total ?? otsEjec.length,
+          terminadas: tablero?.ots.ejecucion.terminadas ?? 0,
+          enEjecucion: tablero?.ots.ejecucion.enEjecucion ?? 0,
+          noIniciadas: tablero?.ots.ejecucion.noIniciadas ?? 0,
+          conRetraso: tablero?.ots.ejecucion.conRetraso ?? 0,
+        },
+        otsPreparativos: {
+          total: tablero?.ots.preparativos.total ?? 0,
+          terminadas: tablero?.ots.preparativos.terminadas ?? 0,
+        },
+        hh: {
+          hhEst: tablero?.hh.hhEst ?? 0,
+          hhReal: tablero?.hh.hhReal ?? 0,
+          factorProductividad: tablero?.hh.factorProductividad ?? 0,
+        },
+        porDisciplina,
+        serieDiaria: tablero?.serieDiaria ?? [],
+        detalleOts: otsEjec.map((o) => ({
+          numeroOT: o.numeroOT,
+          descripcion: o.descripcion,
+          disciplina: o.disciplina,
+          grupo: o.grupo,
+          hhEst: o.hhEstimadas,
+          hhReal: Math.round((hhPorOt.get(o.id) ?? 0) * 10) / 10,
+          avancePct: o.avancePct,
+          estado: o.estado,
+        })),
+        otsPendientes: otsEjec
+          .filter((o) => o.estado !== "terminada")
+          .map((o) => ({
+            numeroOT: o.numeroOT,
+            descripcion: o.descripcion,
+            disciplina: o.disciplina,
+            avancePct: o.avancePct,
+            estado: o.estado,
+          })),
+        retrasosReportados: [...retrasosMap.values()],
+        pendientesReportados: [...pendMap.values()],
+        leccionesAprendidas: notas.leccionesAprendidas,
+        observacionesCierre: notas.observacionesCierre,
+        generadoPor: usuario.nombre || usuario.email || "—",
+      };
+      generarInformeCierrePdf(datos);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  const ta: React.CSSProperties = { ...inp, minHeight: 76, resize: "vertical", fontFamily: "inherit" };
+
+  return (
+    <div style={{ ...seccion, borderColor: cerrada ? "#bbf7d0" : "#e2e8f0", background: cerrada ? "#f0fdf4" : undefined }}>
+      <h3 style={h3}>Cierre de la parada</h3>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 12 }}>
+        <label style={{ ...campo, minWidth: 0 }}>
+          <span style={lbl}>Lecciones aprendidas</span>
+          <textarea
+            value={notas.leccionesAprendidas}
+            onChange={(e) => setNotas((p) => ({ ...p, leccionesAprendidas: e.target.value }))}
+            style={ta}
+            placeholder="Qué salió bien, qué mejorar para la próxima parada…"
+          />
+        </label>
+        <label style={{ ...campo, minWidth: 0 }}>
+          <span style={lbl}>Observaciones de cierre</span>
+          <textarea
+            value={notas.observacionesCierre}
+            onChange={(e) => setNotas((p) => ({ ...p, observacionesCierre: e.target.value }))}
+            style={ta}
+            placeholder="Pendientes trasladados a operación / mantenimiento normal, acuerdos…"
+          />
+        </label>
+      </div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <button onClick={guardarNotas} disabled={busy !== ""} style={btnSec}>
+          {busy === "notas" ? "Guardando…" : "Guardar notas de cierre"}
+        </button>
+        <button onClick={generarPdf} disabled={busy !== ""} style={btnPrim}>
+          {busy === "pdf" ? "Generando…" : "Generar informe de cierre (PDF)"}
+        </button>
+        {puedeCerrar && !cerrada && (
+          <button onClick={cerrar} disabled={busy !== ""} style={{ ...btnPrim, background: "#16a34a" }}>
+            {busy === "cerrar" ? "Cerrando…" : "Cerrar parada"}
+          </button>
+        )}
+        {puedeCerrar && cerrada && (
+          <button onClick={reabrir} disabled={busy !== ""} style={{ ...btnSec, borderColor: "#f59e0b", color: "#b45309" }}>
+            {busy === "reabrir" ? "Reabriendo…" : "Reabrir parada"}
+          </button>
+        )}
+        {msg && <span style={{ fontSize: 12, color: msg.includes("Error") ? "#dc2626" : "#15803d" }}>{msg}</span>}
+      </div>
+      {cerrada && parada.fechaCierre && (
+        <p style={{ fontSize: 12, color: "#15803d", margin: "10px 0 0", fontWeight: 700 }}>
+          Parada cerrada el {new Date(parada.fechaCierre).toLocaleDateString("es-BO")}.
+        </p>
+      )}
+      {!puedeCerrar && (
+        <p style={{ fontSize: 11, color: "#94a3b8", margin: "8px 0 0" }}>
+          Sólo Admin y Superintendente pueden cerrar o reabrir la parada.
+        </p>
+      )}
     </div>
   );
 }

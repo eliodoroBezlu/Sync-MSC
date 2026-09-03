@@ -52,6 +52,9 @@ export const editarParadaSchema = z.object({
   fechaEjecucionInicio: fechaReq.optional(),
   fechaEjecucionFin: fechaReq.optional(),
   estado: z.enum(["preparativos", "ejecucion", "cerrada"]).optional(),
+  fechaCierre: fechaNul.optional(),
+  leccionesAprendidas: z.string().trim().nullish(),
+  observacionesCierre: z.string().trim().nullish(),
 });
 
 // ── OTs de la parada ───────────────────────────────────────────────────────

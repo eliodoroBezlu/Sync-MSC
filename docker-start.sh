@@ -310,6 +310,11 @@ const migraciones = [
       FOREIGN KEY ("paradaId") REFERENCES "Parada"(id) ON DELETE CASCADE
   )`,
   "CREATE INDEX IF NOT EXISTS \"ParadaReporteDiario_paradaId_fecha_idx\" ON \"ParadaReporteDiario\" (\"paradaId\", fecha)",
+
+  // ── Parada: campos de cierre (Fase C, 2026-09) ────────────────────────────
+  "ALTER TABLE \"Parada\" ADD COLUMN IF NOT EXISTS \"fechaCierre\" TIMESTAMP(3)",
+  "ALTER TABLE \"Parada\" ADD COLUMN IF NOT EXISTS \"leccionesAprendidas\" TEXT",
+  "ALTER TABLE \"Parada\" ADD COLUMN IF NOT EXISTS \"observacionesCierre\" TEXT",
 ];
 
 (async () => {

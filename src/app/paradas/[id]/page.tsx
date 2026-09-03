@@ -20,6 +20,7 @@ import {
 const ROLES_VER = [1, 2, 3, 5];
 const ROLES_CONFIG = [1, 2, 5];
 const ROLES_REPORTE = [3, 5];
+const ROLES_CERRAR = [1, 2];
 
 type Tab = "resumen" | "preparativos" | "ejecucion" | "reportes" | "config";
 
@@ -84,6 +85,8 @@ export default function ParadaDetallePage({ params }: { params: Promise<{ id: st
   const puedeVer = ROLES_VER.includes(user.rol);
   const puedeConfig = ROLES_CONFIG.includes(user.rol);
   const puedeReporte = ROLES_REPORTE.includes(user.rol);
+  const puedeCerrar = ROLES_CERRAR.includes(user.rol);
+  const cerrada = parada?.estado === "cerrada";
 
   if (!puedeVer) {
     return (
@@ -142,6 +145,13 @@ export default function ParadaDetallePage({ params }: { params: Promise<{ id: st
           </div>
         </div>
 
+        {/* Aviso de parada cerrada (sólo lectura en pestañas operativas) */}
+        {cerrada && (
+          <div style={{ marginBottom: 12, padding: "8px 14px", borderRadius: 10, background: "#f0fdf4", border: "1.5px solid #bbf7d0", fontSize: 12, color: "#15803d", fontWeight: 600 }}>
+            Parada cerrada — Resumen, Preparativos, Ejecución y Reportes quedan en sólo lectura. Reábrela desde Configuración para volver a editar.
+          </div>
+        )}
+
         {/* Tablero fijo */}
         {tablero ? (
           <div style={{ position: "sticky", top: 8, zIndex: 20, marginBottom: 16 }}>
@@ -180,15 +190,22 @@ export default function ParadaDetallePage({ params }: { params: Promise<{ id: st
           {cargando || !parada ? (
             <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Cargando…</div>
           ) : tab === "resumen" ? (
-            <ListaOtsParada parada={parada} puedeEditar={puedeConfig} onChange={recargar} />
+            <ListaOtsParada parada={parada} puedeEditar={puedeConfig && !cerrada} onChange={recargar} />
           ) : tab === "preparativos" ? (
-            <PanelPreparativos parada={parada} puedeEditar={puedeConfig || puedeReporte} onChange={recargar} />
+            <PanelPreparativos parada={parada} puedeEditar={(puedeConfig || puedeReporte) && !cerrada} onChange={recargar} />
           ) : tab === "ejecucion" ? (
-            <AvanceDiario parada={parada} puedeEditar={puedeReporte} onChange={recargar} />
+            <AvanceDiario parada={parada} puedeEditar={puedeReporte && !cerrada} onChange={recargar} />
           ) : tab === "reportes" ? (
-            <ReporteDiarioSupervisor parada={parada} tablero={tablero} puedeEmitir={puedeReporte} usuario={user} onChange={recargar} />
+            <ReporteDiarioSupervisor parada={parada} tablero={tablero} puedeEmitir={puedeReporte && !cerrada} usuario={user} onChange={recargar} />
           ) : (
-            <ConfigParada parada={parada} onChange={recargar} onDeleted={() => router.replace("/paradas")} />
+            <ConfigParada
+              parada={parada}
+              tablero={tablero}
+              puedeCerrar={puedeCerrar}
+              usuario={user}
+              onChange={recargar}
+              onDeleted={() => router.replace("/paradas")}
+            />
           )}
         </div>
       </main>

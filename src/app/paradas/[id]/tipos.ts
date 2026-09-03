@@ -86,6 +86,9 @@ export interface ParadaDetalle {
   fechaEjecucionInicio: string;
   fechaEjecucionFin: string;
   estado: EstadoParada;
+  fechaCierre: string | null;
+  leccionesAprendidas: string | null;
+  observacionesCierre: string | null;
   creadoPor: string;
   createdAt: string;
   updatedAt: string;

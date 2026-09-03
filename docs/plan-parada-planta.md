@@ -259,8 +259,12 @@ Ruta base top-level `/paradas` (como `/planificacion`).
 14. Card en el menú `/ordenes`.
 
 ### Fase C — Cierre y pulido
-15. `generarInformeCierrePdf.ts` + estado `"cerrada"`.
-16. (Opcional) integración con consolidado mensual de HH.
+15. ✅ `generarInformeCierrePdf.ts` + estado `"cerrada"`.
+    - `Parada`: +`fechaCierre`, `leccionesAprendidas`, `observacionesCierre` (nullable; schema + `docker-start.sh`).
+    - `editarParadaSchema` / PATCH `/api/paradas/[id]` aceptan los 3 campos nuevos.
+    - `ConfigParada` → `SeccionCierre`: notas de cierre, **Cerrar / Reabrir parada** (roles 1, 2), **Generar informe de cierre (PDF)**.
+    - `page.tsx`: pestañas operativas en sólo lectura cuando `estado = "cerrada"` + aviso.
+16. (Opcional) integración con consolidado mensual de HH — pendiente.
 17. `code-reviewer` + pruebas manuales con datos reales de PPML060 + `npm run build`.
 18. Commit → push a `externo` y `origin` (deploy Railway).
 
