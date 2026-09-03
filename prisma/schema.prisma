@@ -10,26 +10,26 @@ datasource db {
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
 
 model Usuario {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   nombre           String
   apellido         String?
-  email            String?  @unique
+  email            String?   @unique
   passwordHash     String?
-  rol              Int      // 1=Admin 2=Sup 3=Supervisor 4=Técnico 5=Planificador
-  disciplina       String   @default("GENERAL") // GENERAL|MEC|ELEC|INST
+  rol              Int // 1=Admin 2=Sup 3=Supervisor 4=Técnico 5=Planificador
+  disciplina       String    @default("GENERAL") // GENERAL|MEC|ELEC|INST
   areaTrabajo      String?
   celular          String?
   jde              String?
   puesto           String?
   superintendencia String?
-  esContratista    Boolean  @default(false)
+  esContratista    Boolean   @default(false)
   fechaExpiracion  DateTime?
-  activo           Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  activo           Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   // Relaciones
-  areas            UsuarioArea[]
+  areas UsuarioArea[]
 
   @@index([rol, activo])
   @@index([jde])
@@ -47,51 +47,51 @@ model UsuarioArea {
 // ─── AREAS ────────────────────────────────────────────────────────────────────
 
 model Area {
-  codigo           String  @id
+  codigo           String   @id
   nombre           String
   superintendencia String
-  tieneCalibracion Boolean @default(false)
-  activo           Boolean @default(true)
+  tieneCalibracion Boolean  @default(false)
+  activo           Boolean  @default(true)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  usuarios         UsuarioArea[]
-  equipos          Equipo[]
-  ordenes          OrdenTrabajo[]
-  programaciones   ProgramacionSemanal[]
-  calibraciones    RegistroCalibracion[]
+  usuarios       UsuarioArea[]
+  equipos        Equipo[]
+  ordenes        OrdenTrabajo[]
+  programaciones ProgramacionSemanal[]
+  calibraciones  RegistroCalibracion[]
 }
 
 // ─── EQUIPOS ──────────────────────────────────────────────────────────────────
 
 model Equipo {
-  id                  String   @id @default(cuid())
-  tag                 String   @unique
-  descripcion         String
-  descripcion2        String?
-  descripcion3        String?
-  nivel               Int
-  parentTag           String?
-  nivelPath           String[] // array de strings
-  tipoEquipo          String   @default(".")
-  descripcionTipo     String?
-  subtipo             String?
-  descripcionSubtipo  String?
-  categoriaISO        String?
-  criticidad          String?  // A|B|C
-  centroCosto         String?
-  areaCodigo          String
-  descripcionArea     String?
-  fabricante          String?
-  modelo              String?
-  serie               String?
-  fechaInstalacion    DateTime?
+  id                   String    @id @default(cuid())
+  tag                  String    @unique
+  descripcion          String
+  descripcion2         String?
+  descripcion3         String?
+  nivel                Int
+  parentTag            String?
+  nivelPath            String[] // array de strings
+  tipoEquipo           String    @default(".")
+  descripcionTipo      String?
+  subtipo              String?
+  descripcionSubtipo   String?
+  categoriaISO         String?
+  criticidad           String? // A|B|C
+  centroCosto          String?
+  areaCodigo           String
+  descripcionArea      String?
+  fabricante           String?
+  modelo               String?
+  serie                String?
+  fechaInstalacion     DateTime?
   vidaUtilEstimadaAnos Int?
-  activo              Boolean  @default(true)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  activo               Boolean   @default(true)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  area                Area     @relation(fields: [areaCodigo], references: [codigo])
+  area Area @relation(fields: [areaCodigo], references: [codigo])
 
   @@index([areaCodigo, nivel, activo])
   @@index([parentTag])
@@ -101,18 +101,18 @@ model Equipo {
 // ─── ORDENES DE TRABAJO ───────────────────────────────────────────────────────
 
 model OrdenTrabajo {
-  id                    String   @id @default(cuid())
-  numeroOT              String   @unique
+  id                    String    @id @default(cuid())
+  numeroOT              String    @unique
   fecha                 DateTime
-  turno                 String   // Diurno|Nocturno|Parada de Planta|Planta|Otro
+  turno                 String // Diurno|Nocturno|Parada de Planta|Planta|Otro
   areaCodigo            String
-  estado                String   @default("borrador")
+  estado                String    @default("borrador")
   // OT recurrente (largo aliento, se reprograma semana tras semana bajo el mismo
   // otJdeNumero): al llegar a "true" deja de reabrirse sola cuando aparece una
   // nueva semana programada. Ver reconciliarContinuaciones en
   // api/programacion-semanal/route.ts. Por defecto false: no afecta a las OTs
   // normales, que nunca vuelven a coincidir con una semana futura.
-  cerradaDefinitiva     Boolean  @default(false)
+  cerradaDefinitiva     Boolean   @default(false)
   // Supervisión
   supCodigoModoFallaISO String?
   supClasificacionRCM   String?
@@ -124,21 +124,21 @@ model OrdenTrabajo {
   supRevisadoPor        String?
   supRevisadoEn         DateTime?
   // Enlace plan semanal
-  origenPlan            Boolean  @default(false)
+  origenPlan            Boolean   @default(false)
   programacionSemanalId String?
   otJdeNumero           String?
   otJdeDia              String?
   // OT hija de una OPEPLANT madre
   parentOtId            String?
   parentOtNum           String?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
-  area              Area           @relation(fields: [areaCodigo], references: [codigo])
-  tecnicos          OtTecnico[]
-  lineas            OtLinea[]
-  historial         OtHistorial[]
-  registrosDiarios  OtRegistroDiario[]
+  area             Area               @relation(fields: [areaCodigo], references: [codigo])
+  tecnicos         OtTecnico[]
+  lineas           OtLinea[]
+  historial        OtHistorial[]
+  registrosDiarios OtRegistroDiario[]
 
   @@index([areaCodigo, estado, fecha(sort: Desc)])
   @@index([otJdeNumero])
@@ -147,11 +147,11 @@ model OrdenTrabajo {
 }
 
 model OtTecnico {
-  id              String       @id @default(cuid())
-  ordenTrabajoId  String
-  usuarioId       String?
-  nombreCompleto  String
-  ordenTrabajo    OrdenTrabajo @relation(fields: [ordenTrabajoId], references: [id], onDelete: Cascade)
+  id             String       @id @default(cuid())
+  ordenTrabajoId String
+  usuarioId      String?
+  nombreCompleto String
+  ordenTrabajo   OrdenTrabajo @relation(fields: [ordenTrabajoId], references: [id], onDelete: Cascade)
 
   @@index([ordenTrabajoId])
   @@index([usuarioId])
@@ -162,17 +162,17 @@ model OtLinea {
   ordenTrabajoId     String
   tag                String
   descripcionEquipo  String
-  tipoOT             String       // CMP|CMR|PMP|PMT|PTJ
+  tipoOT             String // CMP|CMR|PMP|PMT|PTJ
   sintoma            String?
   causaProbable      String?
   resolucionAplicada String?
-  estadoFinal        String?      // operativo | operativo_obs | pendiente | fuera_servicio
+  estadoFinal        String? // operativo | operativo_obs | pendiente | fuera_servicio
   tiempoEstimadoHrs  Float?
   tiempoRealHrs      Float?
   descripcionTrabajo String?
   tareasEjecutadas   String[]
   observaciones      String?
-  adjuntos           Json     @default("[]") // AdjuntoItem[]
+  adjuntos           Json         @default("[]") // AdjuntoItem[]
   ordenTrabajo       OrdenTrabajo @relation(fields: [ordenTrabajoId], references: [id], onDelete: Cascade)
 
   @@index([ordenTrabajoId])
@@ -201,7 +201,7 @@ model OtRegistroDiario {
   hhTrabajadas   Float
   tareas         String[]
   observaciones  String?
-  adjuntos       Json     @default("[]")
+  adjuntos       Json         @default("[]")
   ordenTrabajo   OrdenTrabajo @relation(fields: [ordenTrabajoId], references: [id], onDelete: Cascade)
 
   @@index([ordenTrabajoId])
@@ -210,22 +210,22 @@ model OtRegistroDiario {
 // ─── PROGRAMACIÓN SEMANAL ─────────────────────────────────────────────────────
 
 model ProgramacionSemanal {
-  id                   String   @id @default(cuid())
-  semana               Int
-  anio                 Int
-  disciplina           String   // INST|MEC|ELEC|GENERAL
-  areaCodigo           String?
-  fechaInicio          DateTime
-  fechaFin             DateTime
-  hhDisponiblesSemana  Float    @default(0)
-  hhProgramadasSemana  Float    @default(0)
-  hhReactivoSemana     Float    @default(0)
-  estado               String   @default("borrador") // borrador|publicado|cerrado
-  subidoPor            String
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  semana              Int
+  anio                Int
+  disciplina          String // INST|MEC|ELEC|GENERAL
+  areaCodigo          String?
+  fechaInicio         DateTime
+  fechaFin            DateTime
+  hhDisponiblesSemana Float    @default(0)
+  hhProgramadasSemana Float    @default(0)
+  hhReactivoSemana    Float    @default(0)
+  estado              String   @default("borrador") // borrador|publicado|cerrado
+  subidoPor           String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  area           Area?           @relation(fields: [areaCodigo], references: [codigo])
+  area           Area?             @relation(fields: [areaCodigo], references: [codigo])
   otsProgramadas OtProgramada[]
   personal       PersonalSemanal[]
   resumenDias    ResumenDia[]
@@ -253,18 +253,18 @@ model OtProgramada {
   descripcion           String
   tag                   String
   descripcionEquipo     String?
-  personas              Int      @default(1)
-  hrsTrabajo            Float    @default(0)
-  hhTotal               Float    @default(0)
+  personas              Int                 @default(1)
+  hrsTrabajo            Float               @default(0)
+  hhTotal               Float               @default(0)
   personalAsignado      String[]
   personalAsignadoIds   String[] // usuarioIds para match exacto (independiente del texto del nombre)
   grupo                 String
-  dia                   String   // Lu|Ma|Mi|Ju|Vi|Sa|Do
-  estado                String   @default("no_iniciada")
+  dia                   String // Lu|Ma|Mi|Ju|Vi|Sa|Do
+  estado                String              @default("no_iniciada")
   observaciones         String?
   ordenTrabajoId        String?
   ordenTrabajoNum       String?
-  pasarNoche            Boolean  @default(false)
+  pasarNoche            Boolean             @default(false)
   pasarNocheMotivo      String?
   pasarNocheNota        String?
   pasarNochePor         String?
@@ -278,8 +278,8 @@ model OtProgramada {
   continuaNota          String?
   continuaPor           String?
   continuaAt            DateTime?
-  esGuardia             Boolean  @default(false)
-  bitacora              Json     @default("[]")
+  esGuardia             Boolean             @default(false)
+  bitacora              Json                @default("[]")
   programacion          ProgramacionSemanal @relation(fields: [programacionSemanalId], references: [id], onDelete: Cascade)
 
   @@index([programacionSemanalId])
@@ -293,8 +293,8 @@ model PersonalSemanal {
   usuarioId             String?
   nombre                String
   grupo                 String
-  esContratista         Boolean  @default(false)
-  asistencia            Json     @default("[]") // [{dia, estado}]
+  esContratista         Boolean             @default(false)
+  asistencia            Json                @default("[]") // [{dia, estado}]
   programacion          ProgramacionSemanal @relation(fields: [programacionSemanalId], references: [id], onDelete: Cascade)
 
   @@index([programacionSemanalId])
@@ -305,9 +305,9 @@ model ResumenDia {
   programacionSemanalId String
   dia                   String
   fecha                 DateTime
-  hhDisponibles         Float    @default(0)
-  hhProgramadas         Float    @default(0)
-  utilizacion           Float    @default(0)
+  hhDisponibles         Float               @default(0)
+  hhProgramadas         Float               @default(0)
+  utilizacion           Float               @default(0)
   programacion          ProgramacionSemanal @relation(fields: [programacionSemanalId], references: [id], onDelete: Cascade)
 
   @@index([programacionSemanalId])
@@ -341,37 +341,37 @@ model ReporteTurno {
 // ─── CALIBRACIÓN ──────────────────────────────────────────────────────────────
 
 model RegistroCalibracion {
-  id                    String   @id @default(cuid())
-  numeroCertificado     String   @unique
-  tag                   String
+  id                     String   @id @default(cuid())
+  numeroCertificado      String   @unique
+  tag                    String
   descripcionInstrumento String
-  tipoVariable          String
-  patronIds             String[]
-  patronCodigos         String[]
-  tecnicoId             String
-  tecnicoNombre         String
-  supervisorId          String?
-  supervisorNombre      String?
-  fecha                 DateTime
-  temperatura           Float?
-  humedad               Float?
-  turno                 String?
-  unidad                String?
-  puntos                Json     // [{lecturaPatron, lecturaInstrumento, error, ...}]
-  puntosAntes           Json     @default("[]")
-  resultadoGeneral      String   // APROBADO|RECHAZADO|AJUSTADO
-  observaciones         String?
-  pdfUrl                String?
-  stickerImpreso        Boolean  @default(false)
-  otAsociada            String?
-  areaCodigo            String   @default("3320")
-  estado                String   @default("revision") // revision | aprobado
-  tecnicoFirma          String?  // Base64 or URL
-  supervisorFirma       String?  // Base64 or URL
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  tipoVariable           String
+  patronIds              String[]
+  patronCodigos          String[]
+  tecnicoId              String
+  tecnicoNombre          String
+  supervisorId           String?
+  supervisorNombre       String?
+  fecha                  DateTime
+  temperatura            Float?
+  humedad                Float?
+  turno                  String?
+  unidad                 String?
+  puntos                 Json // [{lecturaPatron, lecturaInstrumento, error, ...}]
+  puntosAntes            Json     @default("[]")
+  resultadoGeneral       String // APROBADO|RECHAZADO|AJUSTADO
+  observaciones          String?
+  pdfUrl                 String?
+  stickerImpreso         Boolean  @default(false)
+  otAsociada             String?
+  areaCodigo             String   @default("3320")
+  estado                 String   @default("revision") // revision | aprobado
+  tecnicoFirma           String? // Base64 or URL
+  supervisorFirma        String? // Base64 or URL
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
-  area                  Area     @relation(fields: [areaCodigo], references: [codigo])
+  area Area @relation(fields: [areaCodigo], references: [codigo])
 
   @@index([tag, fecha(sort: Desc)])
   @@index([areaCodigo, fecha(sort: Desc)])
@@ -452,7 +452,7 @@ model ChecklistMantto {
   codigo       String   @default("")
   areaCodigo   String   @default("*")
   nombre       String
-  disciplina   String   // Mecanico | Electrico | Instrumentacion | Universal
+  disciplina   String // Mecanico | Electrico | Instrumentacion | Universal
   nivelTag     Int?
   areaProceso  String   @default("general")
   categoriaISO String?
@@ -468,69 +468,69 @@ model ChecklistMantto {
 // ─── COMPETENCIAS Y DESEMPEÑO (mejoras mantenimiento) ────────────────────────
 
 model TecnicoCompetencia {
-  id            String   @id @default(cuid())
-  usuarioId     String
-  disciplina    String   // INST|ELEC|MEC|TESA|CON|VE
-  nivel         String   @default("Básico") // Básico|Intermedio|Avanzado|Experto
-  competencias  String[] // ["Calibración","Diagnóstico","Reparación",...]
-  certificado   Boolean  @default(false)
-  validaHasta   DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String    @id @default(cuid())
+  usuarioId    String
+  disciplina   String // INST|ELEC|MEC|TESA|CON|VE
+  nivel        String    @default("Básico") // Básico|Intermedio|Avanzado|Experto
+  competencias String[] // ["Calibración","Diagnóstico","Reparación",...]
+  certificado  Boolean   @default(false)
+  validaHasta  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@unique([usuarioId, disciplina])
   @@index([disciplina, nivel])
 }
 
 model EquipoMantenimientoPlan {
-  id               String   @id @default(cuid())
-  tag              String
-  disciplina       String
-  tipoOT           String   @default("PMT") // PMT|PMP|PDM
-  descripcion      String
-  frecuencia       String   // semanal|mensual|trimestral|anual|ciclos
-  basadoEn         String   @default("calendario") // calendario|horasOperacion|ciclos
-  personas         Int      @default(1)
-  hrsTrabajo       Float    @default(2)
-  grupo            String   @default("Diurno")
-  diasPreferidos   String[] @default(["Lu","Vi"]) // días preferidos
-  competenciaReq   String?
-  ultimoEjecutado  DateTime?
+  id                 String    @id @default(cuid())
+  tag                String
+  disciplina         String
+  tipoOT             String    @default("PMT") // PMT|PMP|PDM
+  descripcion        String
+  frecuencia         String // semanal|mensual|trimestral|anual|ciclos
+  basadoEn           String    @default("calendario") // calendario|horasOperacion|ciclos
+  personas           Int       @default(1)
+  hrsTrabajo         Float     @default(2)
+  grupo              String    @default("Diurno")
+  diasPreferidos     String[]  @default(["Lu", "Vi"]) // días preferidos
+  competenciaReq     String?
+  ultimoEjecutado    DateTime?
   proximoVencimiento DateTime?
-  activo           Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  activo             Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@unique([tag, tipoOT])
   @@index([proximoVencimiento, activo])
 }
 
 model TecnicoDesempenio {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   usuarioId       String
   tag             String
   tipoOT          String
-  otasCompletadas Int      @default(0)
-  tiempoPromedio  Float    @default(0)
-  eficiencia      Float    @default(100) // porcentaje
+  otasCompletadas Int       @default(0)
+  tiempoPromedio  Float     @default(0)
+  eficiencia      Float     @default(100) // porcentaje
   ultimaFecha     DateTime?
-  tendencia       String   @default("estable") // mejorando|estable|empeorando
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  tendencia       String    @default("estable") // mejorando|estable|empeorando
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@unique([usuarioId, tag, tipoOT])
   @@index([eficiencia])
 }
 
 model PlanConstraintAlert {
-  id                String   @id @default(cuid())
-  planBorradorId    String
-  tipo              String   // capacidad|turno|especialista|asignacion|conflicto
-  severidad         String   @default("warning") // error|warning|info
-  mensaje           String
-  detalles          Json?
-  resuelto          Boolean  @default(false)
-  createdAt         DateTime @default(now())
+  id             String   @id @default(cuid())
+  planBorradorId String
+  tipo           String // capacidad|turno|especialista|asignacion|conflicto
+  severidad      String   @default("warning") // error|warning|info
+  mensaje        String
+  detalles       Json?
+  resuelto       Boolean  @default(false)
+  createdAt      DateTime @default(now())
 
   @@index([planBorradorId, resuelto])
 }
@@ -538,85 +538,85 @@ model PlanConstraintAlert {
 // ─── PLANIFICACIÓN (módulo nuevo) ─────────────────────────────────────────────
 
 model PlanBorrador {
-  id                    String   @id @default(cuid())
+  id                    String    @id @default(cuid())
   semana                Int
   anio                  Int
   areaCodigo            String
-  disciplina            String   // INST|ELEC|MEC|TESA|CON|VE
-  estado                String   @default("borrador") // borrador|revision|publicado
+  disciplina            String // INST|ELEC|MEC|TESA|CON|VE
+  estado                String    @default("borrador") // borrador|revision|publicado
   creadoPor             String
   publicadoEn           DateTime?
   programacionSemanalId String?
   // Override manual de horas-hombre disponibles por grupo/día: {grupo: {dia: horas}}.
   // Ausente = capacidad automática (headcount de CuadrillaMiembro x 10 hrs/día).
-  capacidadOverride     Json     @default("{}")
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  capacidadOverride     Json      @default("{}")
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
-  ots                   PlanBorradorOt[]
-  roster                RosterSemanal[]
-  cuadrilla             CuadrillaMiembro[]
+  ots       PlanBorradorOt[]
+  roster    RosterSemanal[]
+  cuadrilla CuadrillaMiembro[]
 
   @@unique([semana, anio, areaCodigo])
   @@index([anio, semana, estado])
 }
 
 model PlanBorradorOt {
-  id                  String   @id @default(cuid())
-  planBorradorId      String
-  control             Int?
-  numeroOT            String
-  tipoOT              String
-  tipoTrabajo         String
-  prioridad           String?
-  descripcion         String
-  tag                 String
-  descripcionEquipo   String   @default("")
-  personas            Int      @default(1)
-  hrsTrabajo          Float    @default(0)
-  hhTotal             Float    @default(0)
-  fechaInicioOt       DateTime?
-  fechaFinOt          DateTime?
-  diasTexto           String?
-  dias                String[]
-  hhPorDiaManual      Json?    // {dia: horas} — override manual del reparto de hhTotal en días puntuales; los días sin entrada aquí siguen repartiéndose parejo con el resto de hhTotal, ver hhPorDia() en capacidad.ts/TableroSemanal.tsx
-  estadoJDE           String?  // código de estado JDE: 40 Listo para Programar, 48 En progreso, 30 Espera de Compras/Servicio, 45 Reprogramado, 44 Parada de Planta, 43 Programa Semanal
-  estadoDetalle       String?  // descripción del estadoJDE tal como viene del Excel
-  solicitante         String?  // columna Q del Excel PROGRAMA
-  observaciones       String?  // columna R del Excel PROGRAMA
-  grupo               String   @default("Diurno")
-  grupoPorDia         Json?    // {dia: grupo} — override manual del grupo en días puntuales de una OT multi-día; los días sin entrada aquí siguen usando `grupo`, ver grupoDelDia() en cuadrillas.ts
-  grupoManual         Boolean  @default(false) // true si el planificador fijó el grupo (o algún grupoPorDia) a mano — Balancear no lo toca
-  personalAsignado    String[] // cache derivado de CuadrillaMiembro — no editar directo, ver /api/planificacion/[id]/cuadrillas
-  personalAsignadoIds String[]
-  esGuardia           Boolean  @default(false)
-  seleccionada          Boolean  @default(false) // elegida por el planificador para programarse esta semana
-  motivoNoProgramada    String?  // por qué no se eligió (cuando seleccionada = false)
+  id                     String    @id @default(cuid())
+  planBorradorId         String
+  control                Int?
+  numeroOT               String
+  tipoOT                 String
+  tipoTrabajo            String
+  prioridad              String?
+  descripcion            String
+  tag                    String
+  descripcionEquipo      String    @default("")
+  personas               Int       @default(1)
+  hrsTrabajo             Float     @default(0)
+  hhTotal                Float     @default(0)
+  fechaInicioOt          DateTime?
+  fechaFinOt             DateTime?
+  diasTexto              String?
+  dias                   String[]
+  hhPorDiaManual         Json? // {dia: horas} — override manual del reparto de hhTotal en días puntuales; los días sin entrada aquí siguen repartiéndose parejo con el resto de hhTotal, ver hhPorDia() en capacidad.ts/TableroSemanal.tsx
+  estadoJDE              String? // código de estado JDE: 40 Listo para Programar, 48 En progreso, 30 Espera de Compras/Servicio, 45 Reprogramado, 44 Parada de Planta, 43 Programa Semanal
+  estadoDetalle          String? // descripción del estadoJDE tal como viene del Excel
+  solicitante            String? // columna Q del Excel PROGRAMA
+  observaciones          String? // columna R del Excel PROGRAMA
+  grupo                  String    @default("Diurno")
+  grupoPorDia            Json? // {dia: grupo} — override manual del grupo en días puntuales de una OT multi-día; los días sin entrada aquí siguen usando `grupo`, ver grupoDelDia() en cuadrillas.ts
+  grupoManual            Boolean   @default(false) // true si el planificador fijó el grupo (o algún grupoPorDia) a mano — Balancear no lo toca
+  personalAsignado       String[] // cache derivado de CuadrillaMiembro — no editar directo, ver /api/planificacion/[id]/cuadrillas
+  personalAsignadoIds    String[]
+  esGuardia              Boolean   @default(false)
+  seleccionada           Boolean   @default(false) // elegida por el planificador para programarse esta semana
+  motivoNoProgramada     String? // por qué no se eligió (cuando seleccionada = false)
   comentarioNoProgramada String?
-  esBacklog             Boolean  @default(false) // arrastrada automáticamente desde el plan anterior del área
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  esBacklog              Boolean   @default(false) // arrastrada automáticamente desde el plan anterior del área
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
-  plan                PlanBorrador @relation(fields: [planBorradorId], references: [id], onDelete: Cascade)
+  plan PlanBorrador @relation(fields: [planBorradorId], references: [id], onDelete: Cascade)
 
   @@index([planBorradorId])
   @@index([numeroOT])
 }
 
 model RosterSemanal {
-  id            String   @id @default(cuid())
+  id             String   @id @default(cuid())
   planBorradorId String
-  nombre        String
-  jde           String?
-  usuarioId     String?
-  grupo         String   @default("Diurno") // resumen semanal (mayoría D/N) — solo display, no usar para asignación; ver CuadrillaMiembro
-  esContratista Boolean  @default(false)
-  disciplina    String   // INST|ELEC|MEC|TESA|CON|VE
-  asistencia    Json     @default("[]") // 7 códigos por día [Lu..Do]: D|N|T|V|CS|L|""
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  nombre         String
+  jde            String?
+  usuarioId      String?
+  grupo          String   @default("Diurno") // resumen semanal (mayoría D/N) — solo display, no usar para asignación; ver CuadrillaMiembro
+  esContratista  Boolean  @default(false)
+  disciplina     String // INST|ELEC|MEC|TESA|CON|VE
+  asistencia     Json     @default("[]") // 7 códigos por día [Lu..Do]: D|N|T|V|CS|L|""
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  plan          PlanBorrador @relation(fields: [planBorradorId], references: [id], onDelete: Cascade)
+  plan PlanBorrador @relation(fields: [planBorradorId], references: [id], onDelete: Cascade)
 
   @@unique([planBorradorId, nombre])
   @@index([planBorradorId])
@@ -629,17 +629,138 @@ model RosterSemanal {
 model CuadrillaMiembro {
   id               String   @id @default(cuid())
   planBorradorId   String
-  grupo            String   // G1|G2|G3|G4|Diurno|Nocturno
-  dia              String   // Lu|Ma|Mi|Ju|Vi|Sa|Do
+  grupo            String // G1|G2|G3|G4|Diurno|Nocturno
+  dia              String // Lu|Ma|Mi|Ju|Vi|Sa|Do
   tecnicoNombre    String
   tecnicoUsuarioId String?
   origen           String   @default("manual") // roster|balanceador|manual
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  plan             PlanBorrador @relation(fields: [planBorradorId], references: [id], onDelete: Cascade)
+  plan PlanBorrador @relation(fields: [planBorradorId], references: [id], onDelete: Cascade)
 
   @@unique([planBorradorId, grupo, dia, tecnicoNombre])
   @@index([planBorradorId, dia])
   @@index([planBorradorId, grupo])
+}
+
+// ─── PARADA DE PLANTA ────────────────────────────────────────────────────────
+// Seguimiento de paradas mayores (turnarounds). No usa turneros ni programa
+// semanal. Dos fases: "preparativos" (no cuenta HH) y "ejecucion" (11–13, aquí
+// sí se contabilizan HH vía ParadaAvanceDiario). Los contratistas no se
+// registran como personas: solo suman a dotacionApoyo del grupo.
+
+model Parada {
+  id                      String   @id @default(cuid())
+  codigo                  String   @unique // "PPML060"
+  nombre                  String
+  planta                  String?
+  fechaPreparativosInicio DateTime
+  fechaEjecucionInicio    DateTime
+  fechaEjecucionFin       DateTime
+  estado                  String   @default("preparativos") // preparativos | ejecucion | cerrada
+  creadoPor               String
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  ots             ParadaOt[]
+  grupos          ParadaGrupo[]
+  avances         ParadaAvanceDiario[]
+  reportesDiarios ParadaReporteDiario[]
+
+  @@index([estado, fechaEjecucionInicio(sort: Desc)])
+}
+
+model ParadaGrupo {
+  id                  String  @id @default(cuid())
+  paradaId            String
+  turno               String // Dia | Noche
+  disciplina          String // ELEC | INST | TESA | MIXTO
+  supervisorNombre    String
+  supervisorUsuarioId String?
+  dotacionPropia      Int     @default(0)
+  dotacionApoyo       Int     @default(0) // contratistas que suman al grupo
+  parada              Parada  @relation(fields: [paradaId], references: [id], onDelete: Cascade)
+
+  @@unique([paradaId, turno, disciplina])
+  @@index([paradaId])
+}
+
+model ParadaOt {
+  id                String    @id @default(cuid())
+  paradaId          String
+  numeroOT          String
+  ordenTrabajoId    String? // enlace opcional a OrdenTrabajo real
+  descripcion       String
+  tag               String    @default("")
+  descripcionEquipo String    @default("")
+  disciplina        String // ELEC | INST | TESA
+  fase              String    @default("ejecucion") // preparativos | ejecucion
+  hhEstimadas       Float     @default(0)
+  fechaProg         DateTime?
+  fechaProgFin      DateTime?
+  grupo             String    @default("Dia") // Dia | Noche | Ambos
+  responsable       String?
+  critica           Boolean   @default(false)
+  estado            String    @default("no_iniciada") // no_iniciada | en_ejecucion | terminada | con_retraso
+  avancePct         Int       @default(0) // cache del último avance diario
+  observaciones     String?
+  orden             Int?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  parada  Parada               @relation(fields: [paradaId], references: [id], onDelete: Cascade)
+  avances ParadaAvanceDiario[]
+
+  @@index([paradaId, fase])
+  @@index([numeroOT])
+}
+
+model ParadaAvanceDiario {
+  id            String   @id @default(cuid())
+  paradaId      String // denormalizado para el tablero
+  paradaOtId    String
+  fecha         DateTime // 11, 12 o 13
+  turno         String // Dia | Noche
+  avancePct     Int      @default(0) // % físico al cierre del turno
+  hhPropias     Float    @default(0)
+  hhApoyo       Float    @default(0)
+  estado        String // no_iniciada | en_ejecucion | terminada | con_retraso
+  comentario    String?
+  registradoPor String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  parada   Parada   @relation(fields: [paradaId], references: [id], onDelete: Cascade)
+  paradaOt ParadaOt @relation(fields: [paradaOtId], references: [id], onDelete: Cascade)
+
+  @@unique([paradaOtId, fecha, turno])
+  @@index([paradaId, fecha])
+}
+
+model ParadaReporteDiario {
+  id                  String   @id @default(cuid())
+  paradaId            String
+  fecha               DateTime
+  turno               String // Dia | Noche
+  reunion             String // "08:00" | "17:00"
+  supervisorNombre    String
+  supervisorUsuarioId String?
+  resumen             String
+  avanceGlobalPct     Int      @default(0)
+  hhPropias           Float    @default(0)
+  hhApoyo             Float    @default(0)
+  otsTerminadas       String[]
+  otsConRetraso       Json     @default("[]") // [{ numeroOT, motivo, accion }]
+  pendientes          Json     @default("[]") // [{ tipo, detalle }]
+  observaciones       String?
+  estado              String   @default("borrador") // borrador | emitido
+  pdfUrl              String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  parada Parada @relation(fields: [paradaId], references: [id], onDelete: Cascade)
+
+  @@unique([paradaId, fecha, turno, reunion])
+  @@index([paradaId, fecha])
 }

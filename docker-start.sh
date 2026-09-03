@@ -204,6 +204,112 @@ const migraciones = [
 
   // ── Grupo manual por día en una OT multi-día (2026-07) ──────────────────────
   "ALTER TABLE \"PlanBorradorOt\" ADD COLUMN IF NOT EXISTS \"grupoPorDia\" JSONB",
+
+  // ── Módulo Parada de Planta (2026-09) ──────────────────────────────────────
+  // Turnarounds: fase "preparativos" (no cuenta HH) y "ejecucion" (11–13, HH
+  // vía ParadaAvanceDiario). Contratistas = solo un número en dotacionApoyo.
+  `CREATE TABLE IF NOT EXISTS "Parada" (
+    id TEXT NOT NULL PRIMARY KEY,
+    codigo TEXT NOT NULL,
+    nombre TEXT NOT NULL,
+    planta TEXT,
+    "fechaPreparativosInicio" TIMESTAMP(3) NOT NULL,
+    "fechaEjecucionInicio" TIMESTAMP(3) NOT NULL,
+    "fechaEjecucionFin" TIMESTAMP(3) NOT NULL,
+    estado TEXT NOT NULL DEFAULT 'preparativos',
+    "creadoPor" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "Parada_codigo_key" UNIQUE (codigo)
+  )`,
+  "CREATE INDEX IF NOT EXISTS \"Parada_estado_fechaEjecucionInicio_idx\" ON \"Parada\" (estado, \"fechaEjecucionInicio\" DESC)",
+  `CREATE TABLE IF NOT EXISTS "ParadaGrupo" (
+    id TEXT NOT NULL PRIMARY KEY,
+    "paradaId" TEXT NOT NULL,
+    turno TEXT NOT NULL,
+    disciplina TEXT NOT NULL,
+    "supervisorNombre" TEXT NOT NULL,
+    "supervisorUsuarioId" TEXT,
+    "dotacionPropia" INTEGER NOT NULL DEFAULT 0,
+    "dotacionApoyo" INTEGER NOT NULL DEFAULT 0,
+    CONSTRAINT "ParadaGrupo_paradaId_turno_disciplina_key" UNIQUE ("paradaId", turno, disciplina),
+    CONSTRAINT "ParadaGrupo_paradaId_fkey"
+      FOREIGN KEY ("paradaId") REFERENCES "Parada"(id) ON DELETE CASCADE
+  )`,
+  "CREATE INDEX IF NOT EXISTS \"ParadaGrupo_paradaId_idx\" ON \"ParadaGrupo\" (\"paradaId\")",
+  `CREATE TABLE IF NOT EXISTS "ParadaOt" (
+    id TEXT NOT NULL PRIMARY KEY,
+    "paradaId" TEXT NOT NULL,
+    "numeroOT" TEXT NOT NULL,
+    "ordenTrabajoId" TEXT,
+    descripcion TEXT NOT NULL,
+    tag TEXT NOT NULL DEFAULT '',
+    "descripcionEquipo" TEXT NOT NULL DEFAULT '',
+    disciplina TEXT NOT NULL,
+    fase TEXT NOT NULL DEFAULT 'ejecucion',
+    "hhEstimadas" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "fechaProg" TIMESTAMP(3),
+    "fechaProgFin" TIMESTAMP(3),
+    grupo TEXT NOT NULL DEFAULT 'Dia',
+    responsable TEXT,
+    critica BOOLEAN NOT NULL DEFAULT false,
+    estado TEXT NOT NULL DEFAULT 'no_iniciada',
+    "avancePct" INTEGER NOT NULL DEFAULT 0,
+    observaciones TEXT,
+    orden INTEGER,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ParadaOt_paradaId_fkey"
+      FOREIGN KEY ("paradaId") REFERENCES "Parada"(id) ON DELETE CASCADE
+  )`,
+  "CREATE INDEX IF NOT EXISTS \"ParadaOt_paradaId_fase_idx\" ON \"ParadaOt\" (\"paradaId\", fase)",
+  "CREATE INDEX IF NOT EXISTS \"ParadaOt_numeroOT_idx\" ON \"ParadaOt\" (\"numeroOT\")",
+  `CREATE TABLE IF NOT EXISTS "ParadaAvanceDiario" (
+    id TEXT NOT NULL PRIMARY KEY,
+    "paradaId" TEXT NOT NULL,
+    "paradaOtId" TEXT NOT NULL,
+    fecha TIMESTAMP(3) NOT NULL,
+    turno TEXT NOT NULL,
+    "avancePct" INTEGER NOT NULL DEFAULT 0,
+    "hhPropias" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "hhApoyo" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    estado TEXT NOT NULL,
+    comentario TEXT,
+    "registradoPor" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ParadaAvanceDiario_paradaOtId_fecha_turno_key" UNIQUE ("paradaOtId", fecha, turno),
+    CONSTRAINT "ParadaAvanceDiario_paradaId_fkey"
+      FOREIGN KEY ("paradaId") REFERENCES "Parada"(id) ON DELETE CASCADE,
+    CONSTRAINT "ParadaAvanceDiario_paradaOtId_fkey"
+      FOREIGN KEY ("paradaOtId") REFERENCES "ParadaOt"(id) ON DELETE CASCADE
+  )`,
+  "CREATE INDEX IF NOT EXISTS \"ParadaAvanceDiario_paradaId_fecha_idx\" ON \"ParadaAvanceDiario\" (\"paradaId\", fecha)",
+  `CREATE TABLE IF NOT EXISTS "ParadaReporteDiario" (
+    id TEXT NOT NULL PRIMARY KEY,
+    "paradaId" TEXT NOT NULL,
+    fecha TIMESTAMP(3) NOT NULL,
+    turno TEXT NOT NULL,
+    reunion TEXT NOT NULL,
+    "supervisorNombre" TEXT NOT NULL,
+    "supervisorUsuarioId" TEXT,
+    resumen TEXT NOT NULL DEFAULT '',
+    "avanceGlobalPct" INTEGER NOT NULL DEFAULT 0,
+    "hhPropias" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "hhApoyo" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "otsTerminadas" TEXT[] NOT NULL DEFAULT '{}',
+    "otsConRetraso" JSONB NOT NULL DEFAULT '[]',
+    pendientes JSONB NOT NULL DEFAULT '[]',
+    observaciones TEXT,
+    estado TEXT NOT NULL DEFAULT 'borrador',
+    "pdfUrl" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ParadaReporteDiario_paradaId_fecha_turno_reunion_key" UNIQUE ("paradaId", fecha, turno, reunion),
+    CONSTRAINT "ParadaReporteDiario_paradaId_fkey"
+      FOREIGN KEY ("paradaId") REFERENCES "Parada"(id) ON DELETE CASCADE
+  )`,
+  "CREATE INDEX IF NOT EXISTS \"ParadaReporteDiario_paradaId_fecha_idx\" ON \"ParadaReporteDiario\" (\"paradaId\", fecha)",
 ];
 
 (async () => {
