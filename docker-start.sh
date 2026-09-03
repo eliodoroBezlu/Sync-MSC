@@ -315,6 +315,20 @@ const migraciones = [
   "ALTER TABLE \"Parada\" ADD COLUMN IF NOT EXISTS \"fechaCierre\" TIMESTAMP(3)",
   "ALTER TABLE \"Parada\" ADD COLUMN IF NOT EXISTS \"leccionesAprendidas\" TEXT",
   "ALTER TABLE \"Parada\" ADD COLUMN IF NOT EXISTS \"observacionesCierre\" TEXT",
+
+  // ── Parada: asignación de técnicos por OT + roster de grupo (2026-09) ──────
+  "ALTER TABLE \"ParadaOt\" ADD COLUMN IF NOT EXISTS \"personalAsignado\" TEXT[] NOT NULL DEFAULT '{}'",
+  "ALTER TABLE \"ParadaOt\" ADD COLUMN IF NOT EXISTS \"personalAsignadoIds\" TEXT[] NOT NULL DEFAULT '{}'",
+  `CREATE TABLE IF NOT EXISTS "ParadaGrupoMiembro" (
+    id TEXT NOT NULL PRIMARY KEY,
+    "paradaGrupoId" TEXT NOT NULL,
+    "usuarioId" TEXT,
+    nombre TEXT NOT NULL,
+    "esLider" BOOLEAN NOT NULL DEFAULT false,
+    CONSTRAINT "ParadaGrupoMiembro_paradaGrupoId_fkey"
+      FOREIGN KEY ("paradaGrupoId") REFERENCES "ParadaGrupo"(id) ON DELETE CASCADE
+  )`,
+  "CREATE INDEX IF NOT EXISTS \"ParadaGrupoMiembro_paradaGrupoId_idx\" ON \"ParadaGrupoMiembro\" (\"paradaGrupoId\")",
 ];
 
 (async () => {

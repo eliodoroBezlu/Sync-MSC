@@ -10,11 +10,15 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   const grupos = await prisma.paradaGrupo.findMany({
     where: { paradaId: id },
     orderBy: [{ turno: "asc" }, { disciplina: "asc" }],
+    include: { miembros: { orderBy: { nombre: "asc" } } },
   });
-  return NextResponse.json(grupos.map((g) => serialize(g)));
+  return NextResponse.json(
+    grupos.map((g) => ({ ...serialize(g), miembros: g.miembros.map((m) => serialize(m)) })),
+  );
 }
 
 // POST /api/paradas/[id]/grupos — crea/actualiza un grupo (unique turno+disciplina).
+// Si el body trae `miembros`, reemplaza el roster completo del grupo.
 export async function POST(req: NextRequest, { params }: Ctx) {
   try {
     const { id } = await params;
@@ -47,7 +51,34 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         dotacionApoyo: d.dotacionApoyo,
       },
     });
-    return NextResponse.json({ ok: true, grupo: serialize(grupo) }, { status: 201 });
+
+    if (d.miembros) {
+      await prisma.$transaction([
+        prisma.paradaGrupoMiembro.deleteMany({ where: { paradaGrupoId: grupo.id } }),
+        prisma.paradaGrupoMiembro.createMany({
+          data: d.miembros.map((m) => ({
+            paradaGrupoId: grupo.id,
+            usuarioId: m.usuarioId ?? null,
+            nombre: m.nombre,
+            esLider: m.esLider,
+          })),
+        }),
+      ]);
+    }
+
+    const conMiembros = await prisma.paradaGrupo.findUnique({
+      where: { id: grupo.id },
+      include: { miembros: { orderBy: { nombre: "asc" } } },
+    });
+    return NextResponse.json(
+      {
+        ok: true,
+        grupo: conMiembros
+          ? { ...serialize(conMiembros), miembros: conMiembros.miembros.map((m) => serialize(m)) }
+          : serialize(grupo),
+      },
+      { status: 201 },
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error interno";
     return NextResponse.json({ ok: false, error: message }, { status: 400 });

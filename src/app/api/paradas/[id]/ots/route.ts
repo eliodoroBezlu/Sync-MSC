@@ -50,6 +50,8 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         responsable: d.responsable ?? null,
         critica: d.critica,
         observaciones: d.observaciones ?? null,
+        personalAsignado: d.personalAsignado ?? [],
+        personalAsignadoIds: d.personalAsignadoIds ?? [],
         orden,
       },
     });

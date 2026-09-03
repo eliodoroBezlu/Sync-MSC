@@ -685,8 +685,24 @@ model ParadaGrupo {
   dotacionApoyo       Int     @default(0) // contratistas que suman al grupo
   parada              Parada  @relation(fields: [paradaId], references: [id], onDelete: Cascade)
 
+  miembros ParadaGrupoMiembro[]
+
   @@unique([paradaId, turno, disciplina])
   @@index([paradaId])
+}
+
+// Roster de la cuadrilla de un grupo Día/Noche×disciplina. `esLider` marca al
+// jefe de grupo (uno por grupo, en la práctica). El supervisor de la parada
+// sigue en ParadaGrupo.supervisorNombre; el líder es un técnico del propio grupo.
+model ParadaGrupoMiembro {
+  id            String  @id @default(cuid())
+  paradaGrupoId String
+  usuarioId     String?
+  nombre        String
+  esLider       Boolean @default(false)
+  grupo         ParadaGrupo @relation(fields: [paradaGrupoId], references: [id], onDelete: Cascade)
+
+  @@index([paradaGrupoId])
 }
 
 model ParadaOt {
@@ -709,6 +725,12 @@ model ParadaOt {
   avancePct         Int       @default(0) // cache del último avance diario
   observaciones     String?
   orden             Int?
+  // Técnicos que ejecutan/reportan esta OT en la parada. Mismo patrón que
+  // OtProgramada del plan semanal: `personalAsignadoIds` es el match exacto por
+  // usuarioId (independiente del texto del nombre) y alimenta la visibilidad de
+  // la OT en "Registro de OT". `personalAsignado` guarda los nombres visibles.
+  personalAsignado    String[]
+  personalAsignadoIds String[]
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 

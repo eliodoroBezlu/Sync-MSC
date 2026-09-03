@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DisciplinaParada } from "@/lib/parada/tipos";
 import { DISCIPLINAS_PARADA } from "@/lib/parada/tipos";
 import type { SessionPayload } from "@/lib/auth";
@@ -10,10 +10,46 @@ import type {
   EstadoParada,
   ParadaDetalle,
   ParadaGrupoCli,
+  ParadaOtCli,
   TableroParada as TableroData,
   TurnoParada,
 } from "./tipos";
-import { ymdInput, DISCIPLINA_LABEL, inp, btnPrim, btnSec, th, td } from "./ui";
+import { ymdInput, DISCIPLINA_LABEL, inp, btnPrim, btnSec } from "./ui";
+
+/** Técnico o contratista elegible para asignar a grupos y OTs de la parada. */
+interface TecnicoOpt {
+  _id: string;
+  nombreCompleto: string;
+  disciplina: string | null;
+  esContratista: boolean;
+}
+
+/** Carga una sola vez la lista de técnicos + contratistas (rol 4 y 6). */
+function useTecnicos(): TecnicoOpt[] {
+  const [lista, setLista] = useState<TecnicoOpt[]>([]);
+  useEffect(() => {
+    let vivo = true;
+    fetch("/api/usuarios?rol=4,6")
+      .then((r) => r.json())
+      .then((data: Array<{ _id: string; nombreCompleto: string; disciplina: string | null; esContratista: boolean }>) => {
+        if (vivo && Array.isArray(data)) {
+          setLista(
+            data.map((u) => ({
+              _id: u._id,
+              nombreCompleto: u.nombreCompleto,
+              disciplina: u.disciplina ?? null,
+              esContratista: !!u.esContratista,
+            })),
+          );
+        }
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, []);
+  return lista;
+}
 
 interface Props {
   parada: ParadaDetalle;
@@ -42,6 +78,7 @@ export default function ConfigParada({ parada, tablero, puedeCerrar, usuario, on
     <div>
       <SeccionDatos parada={parada} onChange={onChange} />
       <SeccionGrupos parada={parada} onChange={onChange} />
+      <SeccionAsignaciones parada={parada} onChange={onChange} />
       <SeccionImportar paradaId={parada.id} onChange={onChange} />
       <SeccionOtManual paradaId={parada.id} onChange={onChange} />
       <SeccionCierre parada={parada} tablero={tablero} puedeCerrar={puedeCerrar} usuario={usuario} onChange={onChange} />
@@ -139,6 +176,7 @@ function SeccionDatos({ parada, onChange }: { parada: ParadaDetalle; onChange: (
 
 /* ── Grupos Día / Noche ─────────────────────────────────────────────────── */
 function SeccionGrupos({ parada, onChange }: { parada: ParadaDetalle; onChange: () => Promise<void> }) {
+  const tecnicos = useTecnicos();
   const porClave = useMemo(() => {
     const m = new Map<string, ParadaGrupoCli>();
     for (const g of parada.grupos) m.set(`${g.turno}|${g.disciplina}`, g);
@@ -147,39 +185,28 @@ function SeccionGrupos({ parada, onChange }: { parada: ParadaDetalle; onChange: 
 
   return (
     <div style={seccion}>
-      <h3 style={h3}>Dotación por grupo</h3>
+      <h3 style={h3}>Grupos, líderes y cuadrilla</h3>
       <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 12px" }}>
-        «Apoyo» es cabeza de personal de contratista sumada al grupo — sólo un número, sin nombres ni usuarios.
+        Un grupo por turno y disciplina. El <b>supervisor</b> es el responsable del grupo; el <b>líder</b> es un
+        técnico de la propia cuadrilla. «Dot. apoyo» es sólo un número de contratistas — no lleva nombres.
       </p>
       {TURNOS.map((turno) => (
-        <div key={turno} style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: "#ea580c", marginBottom: 6 }}>
+        <div key={turno} style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: "#ea580c", marginBottom: 8 }}>
             Turno {turno === "Dia" ? "Día" : "Noche"}
           </div>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
-              <thead>
-                <tr>
-                  <th style={th}>Disciplina</th>
-                  <th style={th}>Supervisor</th>
-                  <th style={{ ...th, width: 110 }}>Dot. propia</th>
-                  <th style={{ ...th, width: 110 }}>Dot. apoyo</th>
-                  <th style={{ ...th, width: 90 }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {DISCIPLINAS.map((disc) => (
-                  <FilaGrupo
-                    key={disc}
-                    paradaId={parada.id}
-                    turno={turno}
-                    disciplina={disc}
-                    grupo={porClave.get(`${turno}|${disc}`) ?? null}
-                    onChange={onChange}
-                  />
-                ))}
-              </tbody>
-            </table>
+          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+            {DISCIPLINAS.map((disc) => (
+              <TarjetaGrupo
+                key={disc}
+                paradaId={parada.id}
+                turno={turno}
+                disciplina={disc}
+                grupo={porClave.get(`${turno}|${disc}`) ?? null}
+                tecnicos={tecnicos}
+                onChange={onChange}
+              />
+            ))}
           </div>
         </div>
       ))}
@@ -187,13 +214,14 @@ function SeccionGrupos({ parada, onChange }: { parada: ParadaDetalle; onChange: 
   );
 }
 
-function FilaGrupo({
-  paradaId, turno, disciplina, grupo, onChange,
+function TarjetaGrupo({
+  paradaId, turno, disciplina, grupo, tecnicos, onChange,
 }: {
   paradaId: string;
   turno: TurnoParada;
   disciplina: DisciplinaParada;
   grupo: ParadaGrupoCli | null;
+  tecnicos: TecnicoOpt[];
   onChange: () => Promise<void>;
 }) {
   const [f, setF] = useState({
@@ -201,12 +229,48 @@ function FilaGrupo({
     dotacionPropia: String(grupo?.dotacionPropia ?? ""),
     dotacionApoyo: String(grupo?.dotacionApoyo ?? ""),
   });
+  const [seleccion, setSeleccion] = useState<Set<string>>(
+    () => new Set((grupo?.miembros ?? []).map((m) => m.usuarioId).filter((x): x is string => !!x)),
+  );
+  const [liderId, setLiderId] = useState<string>(
+    () => (grupo?.miembros ?? []).find((m) => m.esLider)?.usuarioId ?? "",
+  );
   const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
+
+  // Ordena: la disciplina del técnico primero, contratistas al final.
+  const orden = useMemo(() => {
+    const disc = disciplina as string;
+    return [...tecnicos].sort((a, b) => {
+      const am = a.disciplina === disc ? 0 : 1;
+      const bm = b.disciplina === disc ? 0 : 1;
+      if (am !== bm) return am - bm;
+      if (a.esContratista !== b.esContratista) return a.esContratista ? 1 : -1;
+      return a.nombreCompleto.localeCompare(b.nombreCompleto);
+    });
+  }, [tecnicos, disciplina]);
+
+  function toggle(id: string) {
+    setSeleccion((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) {
+        n.delete(id);
+        if (liderId === id) setLiderId("");
+      } else {
+        n.add(id);
+      }
+      return n;
+    });
+  }
 
   async function guardar() {
     setBusy(true);
+    setMsg("");
     try {
+      const miembros = orden
+        .filter((t) => seleccion.has(t._id))
+        .map((t) => ({ usuarioId: t._id, nombre: t.nombreCompleto, esLider: t._id === liderId }));
       const res = await fetch(`/api/paradas/${paradaId}/grupos`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -216,37 +280,236 @@ function FilaGrupo({
           supervisorNombre: f.supervisorNombre,
           dotacionPropia: Number(f.dotacionPropia) || 0,
           dotacionApoyo: Number(f.dotacionApoyo) || 0,
+          miembros,
         }),
       });
       const data = await res.json();
       if (data.ok === false) {
-        alert(data.error ?? "Error");
+        setMsg(data.error ?? "Error");
         return;
       }
+      setMsg("Guardado.");
       await onChange();
     } finally {
       setBusy(false);
     }
   }
 
+  const seleccionados = orden.filter((t) => seleccion.has(t._id));
+
   return (
-    <tr>
-      <td style={{ ...td, fontWeight: 700 }}>{DISCIPLINA_LABEL[disciplina]}</td>
-      <td style={td}>
+    <div style={{ border: "1.5px solid #e2e8f0", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ fontSize: 12, fontWeight: 800, color: "#0f2847" }}>
+        {DISCIPLINA_LABEL[disciplina]}{" "}
+        <span style={{ fontWeight: 600, color: "#94a3b8" }}>· {seleccionados.length} en cuadrilla</span>
+      </div>
+
+      <label style={campo}>
+        <span style={lbl}>Supervisor</span>
         <input value={f.supervisorNombre} onChange={(e) => set("supervisorNombre", e.target.value)} style={inp} placeholder="Nombre del supervisor" />
-      </td>
-      <td style={td}>
-        <input type="number" min={0} value={f.dotacionPropia} onChange={(e) => set("dotacionPropia", e.target.value)} style={inp} />
-      </td>
-      <td style={td}>
-        <input type="number" min={0} value={f.dotacionApoyo} onChange={(e) => set("dotacionApoyo", e.target.value)} style={inp} />
-      </td>
-      <td style={td}>
-        <button onClick={guardar} disabled={busy} style={{ ...btnSec, padding: "4px 10px" }}>
-          {busy ? "…" : grupo ? "Actualizar" : "Crear"}
+      </label>
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <label style={{ ...campo, minWidth: 0, flex: 1 }}>
+          <span style={lbl}>Dot. propia</span>
+          <input type="number" min={0} value={f.dotacionPropia} onChange={(e) => set("dotacionPropia", e.target.value)} style={inp} />
+        </label>
+        <label style={{ ...campo, minWidth: 0, flex: 1 }}>
+          <span style={lbl}>Dot. apoyo</span>
+          <input type="number" min={0} value={f.dotacionApoyo} onChange={(e) => set("dotacionApoyo", e.target.value)} style={inp} />
+        </label>
+      </div>
+
+      <div>
+        <span style={lbl}>Cuadrilla (técnicos)</span>
+        <div style={{ maxHeight: 168, overflowY: "auto", border: "1.5px solid #e2e8f0", borderRadius: 6, padding: 6, marginTop: 3 }}>
+          {orden.length === 0 && <div style={{ fontSize: 12, color: "#94a3b8" }}>Cargando técnicos…</div>}
+          {orden.map((t) => (
+            <label key={t._id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "2px 0", cursor: "pointer" }}>
+              <input type="checkbox" checked={seleccion.has(t._id)} onChange={() => toggle(t._id)} />
+              <span style={{ color: t.disciplina === disciplina ? "#0f2847" : "#64748b" }}>
+                {t.nombreCompleto}
+                {t.esContratista && <span style={{ color: "#ea580c" }}> · contratista</span>}
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <label style={campo}>
+        <span style={lbl}>Líder del grupo</span>
+        <select value={liderId} onChange={(e) => setLiderId(e.target.value)} style={inp}>
+          <option value="">— sin líder —</option>
+          {seleccionados.map((t) => (
+            <option key={t._id} value={t._id}>{t.nombreCompleto}</option>
+          ))}
+        </select>
+      </label>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <button onClick={guardar} disabled={busy} style={{ ...btnSec, padding: "6px 12px" }}>
+          {busy ? "Guardando…" : grupo ? "Actualizar grupo" : "Crear grupo"}
         </button>
-      </td>
-    </tr>
+        {msg && <span style={{ fontSize: 11, color: msg === "Guardado." ? "#15803d" : "#dc2626" }}>{msg}</span>}
+      </div>
+    </div>
+  );
+}
+
+/* ── Asignar técnicos a las OTs de la parada ────────────────────────────── */
+function SeccionAsignaciones({ parada, onChange }: { parada: ParadaDetalle; onChange: () => Promise<void> }) {
+  const tecnicos = useTecnicos();
+  const porDisc = useMemo(() => {
+    const m = new Map<string, ParadaOtCli[]>();
+    for (const ot of parada.ots) {
+      const arr = m.get(ot.disciplina) ?? [];
+      arr.push(ot);
+      m.set(ot.disciplina, arr);
+    }
+    return m;
+  }, [parada.ots]);
+
+  if (parada.ots.length === 0) {
+    return (
+      <div style={seccion}>
+        <h3 style={h3}>Asignar técnicos a las OTs</h3>
+        <p style={{ fontSize: 12, color: "#64748b", margin: 0 }}>
+          Primero importá o agregá OTs a la parada; después asignás quién ejecuta y reporta cada una.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={seccion}>
+      <h3 style={h3}>Asignar técnicos a las OTs</h3>
+      <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 12px" }}>
+        Los técnicos asignados verán la OT en <b>Registro de OT</b> bajo el código de la parada y la abrirán/cerrarán
+        desde ahí.
+      </p>
+      {DISCIPLINAS.map((disc) => {
+        const ots = porDisc.get(disc) ?? [];
+        if (ots.length === 0) return null;
+        return (
+          <div key={disc} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#ea580c", marginBottom: 6 }}>
+              {DISCIPLINA_LABEL[disc]} · {ots.length} OT
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {ots.map((ot) => (
+                <FilaAsignacionOt
+                  key={ot.id}
+                  paradaId={parada.id}
+                  ot={ot}
+                  tecnicos={tecnicos.filter((t) => t.disciplina === disc || t.disciplina == null || t.esContratista)}
+                  onChange={onChange}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function FilaAsignacionOt({
+  paradaId, ot, tecnicos, onChange,
+}: {
+  paradaId: string;
+  ot: ParadaOtCli;
+  tecnicos: TecnicoOpt[];
+  onChange: () => Promise<void>;
+}) {
+  const [seleccion, setSeleccion] = useState<Set<string>>(() => new Set(ot.personalAsignadoIds ?? []));
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [abierto, setAbierto] = useState(false);
+
+  const orden = useMemo(
+    () => [...tecnicos].sort((a, b) => a.nombreCompleto.localeCompare(b.nombreCompleto)),
+    [tecnicos],
+  );
+  const nombrePorId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of orden) m.set(t._id, t.nombreCompleto);
+    return m;
+  }, [orden]);
+
+  function toggle(id: string) {
+    setSeleccion((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
+
+  async function guardar() {
+    setBusy(true);
+    setMsg("");
+    try {
+      const ids = orden.filter((t) => seleccion.has(t._id)).map((t) => t._id);
+      const nombres = ids.map((id) => nombrePorId.get(id) ?? "").filter(Boolean);
+      const res = await fetch(`/api/paradas/${paradaId}/ots/${ot.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ personalAsignadoIds: ids, personalAsignado: nombres }),
+      });
+      const data = await res.json();
+      if (data.ok === false) {
+        setMsg(data.error ?? "Error");
+        return;
+      }
+      setMsg("Guardado.");
+      await onChange();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const asignadosLabel =
+    ot.personalAsignado.length > 0 ? ot.personalAsignado.join(", ") : "Sin asignar";
+
+  return (
+    <div style={{ border: "1.5px solid #e2e8f0", borderRadius: 8, padding: "8px 10px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontWeight: 700, fontSize: 13, color: "#0f2847" }}>{ot.numeroOT}</span>
+        <span style={{ fontSize: 12, color: "#64748b" }}>{ot.tag || "—"}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#ea580c" }}>{ot.grupo}</span>
+        <span style={{ fontSize: 12, color: "#334155", flex: 1, minWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {ot.descripcion}
+        </span>
+        <button onClick={() => setAbierto((v) => !v)} style={{ ...btnSec, padding: "4px 10px" }}>
+          {abierto ? "Cerrar" : "Asignar"}
+        </button>
+      </div>
+      <div style={{ fontSize: 11, color: seleccion.size > 0 || ot.personalAsignado.length > 0 ? "#15803d" : "#94a3b8", marginTop: 3 }}>
+        {asignadosLabel}
+      </div>
+      {abierto && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ maxHeight: 168, overflowY: "auto", border: "1.5px solid #e2e8f0", borderRadius: 6, padding: 6 }}>
+            {orden.length === 0 && <div style={{ fontSize: 12, color: "#94a3b8" }}>Cargando técnicos…</div>}
+            {orden.map((t) => (
+              <label key={t._id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "2px 0", cursor: "pointer" }}>
+                <input type="checkbox" checked={seleccion.has(t._id)} onChange={() => toggle(t._id)} />
+                <span>
+                  {t.nombreCompleto}
+                  {t.esContratista && <span style={{ color: "#ea580c" }}> · contratista</span>}
+                </span>
+              </label>
+            ))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+            <button onClick={guardar} disabled={busy} style={{ ...btnSec, padding: "6px 12px" }}>
+              {busy ? "Guardando…" : "Guardar asignación"}
+            </button>
+            {msg && <span style={{ fontSize: 11, color: msg === "Guardado." ? "#15803d" : "#dc2626" }}>{msg}</span>}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -8,6 +8,7 @@ import { useUser } from "@/context/AuthContext";
 import { getFechaTurno, localDateStr, autoTurno, estaEnVentanaCierreSemanal } from "@/lib/turno";
 import { getWeekNumber, getWeekDates, getSemanaAnioOffset } from "@/lib/semana";
 import { tipoOtDisplay, normalizarACodigoCompleto } from "@/lib/tiposOt";
+import PanelParadaOts from "./PanelParadaOts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1876,6 +1877,13 @@ export default function RegistroOTPage() {
         {/* ════════════════ VISTA INICIO ════════════════════════════════════ */}
         {view === "inicio" && (
           <>
+            {/* OTs de Parada de Planta (aditivo, no toca el plan semanal) */}
+            <PanelParadaOts
+              user={user ? { id: user.id, nombre: user.nombre, rol: user.rol } : null}
+              fecha={shiftFecha}
+              turno={shiftTurno === "Nocturno" ? "Nocturno" : "Diurno"}
+            />
+
             {/* Plan Semanal — navegación por días */}
             <div style={{ ...S.card, border: "1px solid #bfdbfe", background: "#f8fbff", padding: 0, overflow: "hidden" }}>
               {/* Header */}

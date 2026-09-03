@@ -58,6 +58,9 @@ export const editarParadaSchema = z.object({
 });
 
 // ── OTs de la parada ───────────────────────────────────────────────────────
+const nombresList = z.array(z.string().trim()).optional();
+const idsList = z.array(z.string().trim()).optional();
+
 export const crearOtSchema = z.object({
   numeroOT: z.string().trim().min(1, "N° OT requerido"),
   descripcion: z.string().trim().min(1, "descripción requerida"),
@@ -73,6 +76,8 @@ export const crearOtSchema = z.object({
   critica: z.boolean().optional().default(false),
   observaciones: z.string().trim().nullish(),
   orden: z.coerce.number().int().nullish(),
+  personalAsignado: nombresList,
+  personalAsignadoIds: idsList,
 });
 
 export const editarOtSchema = z.object({
@@ -92,9 +97,17 @@ export const editarOtSchema = z.object({
   avancePct: z.coerce.number().int().min(0).max(100).optional(),
   observaciones: z.string().trim().nullish(),
   orden: z.coerce.number().int().nullish(),
+  personalAsignado: nombresList,
+  personalAsignadoIds: idsList,
 });
 
 // ── Grupos Día/Noche ───────────────────────────────────────────────────────
+const miembroGrupoSchema = z.object({
+  usuarioId: z.string().trim().nullish(),
+  nombre: z.string().trim().min(1, "nombre requerido"),
+  esLider: z.boolean().optional().default(false),
+});
+
 export const crearGrupoSchema = z.object({
   turno: TURNO,
   disciplina: DISCIPLINA_GRUPO,
@@ -102,6 +115,8 @@ export const crearGrupoSchema = z.object({
   supervisorUsuarioId: z.string().trim().nullish(),
   dotacionPropia: z.coerce.number().int().min(0).optional().default(0),
   dotacionApoyo: z.coerce.number().int().min(0).optional().default(0),
+  // Si viene, reemplaza el roster completo del grupo.
+  miembros: z.array(miembroGrupoSchema).optional(),
 });
 
 export const editarGrupoSchema = z.object({

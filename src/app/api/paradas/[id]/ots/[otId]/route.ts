@@ -30,6 +30,8 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     if (d.avancePct !== undefined) data.avancePct = d.avancePct;
     if (d.observaciones !== undefined) data.observaciones = d.observaciones ?? null;
     if (d.orden !== undefined) data.orden = d.orden ?? null;
+    if (d.personalAsignado !== undefined) data.personalAsignado = d.personalAsignado;
+    if (d.personalAsignadoIds !== undefined) data.personalAsignadoIds = d.personalAsignadoIds;
 
     const ot = await prisma.paradaOt.update({
       where: { id: otId, paradaId: id },

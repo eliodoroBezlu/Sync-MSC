@@ -7,6 +7,12 @@ export type FaseParada = "preparativos" | "ejecucion";
 export type EstadoParada = "preparativos" | "ejecucion" | "cerrada";
 export type ReunionParada = "08:00" | "17:00";
 
+export interface ParadaGrupoMiembroCli {
+  usuarioId: string | null;
+  nombre: string;
+  esLider: boolean;
+}
+
 export interface ParadaGrupoCli {
   _id: string;
   id: string;
@@ -17,6 +23,7 @@ export interface ParadaGrupoCli {
   supervisorUsuarioId: string | null;
   dotacionPropia: number;
   dotacionApoyo: number;
+  miembros: ParadaGrupoMiembroCli[];
 }
 
 export interface ParadaOtCli {
@@ -40,6 +47,8 @@ export interface ParadaOtCli {
   avancePct: number;
   observaciones: string | null;
   orden: number | null;
+  personalAsignado: string[];
+  personalAsignadoIds: string[];
 }
 
 export interface OtConRetraso {
