@@ -39,6 +39,7 @@ export default function ParadaDetallePage({ params }: { params: Promise<{ id: st
   const [tablero, setTablero] = useState<TableroData | null>(null);
   const [cargando, setCargando] = useState(true);
   const [noExiste, setNoExiste] = useState(false);
+  const [errorParada, setErrorParada] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("resumen");
   const [hoy, setHoy] = useState<string>(hoyYmd());
 
@@ -47,13 +48,23 @@ export default function ParadaDetallePage({ params }: { params: Promise<{ id: st
   }, [loading, user, router]);
 
   const loadParada = useCallback(async () => {
-    const res = await fetch(`/api/paradas/${id}`);
-    if (res.status === 404) {
-      setNoExiste(true);
-      return;
+    try {
+      const res = await fetch(`/api/paradas/${id}`);
+      if (res.status === 404) {
+        setNoExiste(true);
+        return;
+      }
+      if (!res.ok) {
+        const cuerpo = await res.json().catch(() => null);
+        setErrorParada(cuerpo?.error ?? `Error del servidor (${res.status})`);
+        return;
+      }
+      const data = await res.json();
+      setErrorParada(null);
+      setParada(data);
+    } catch {
+      setErrorParada("No se pudo conectar con el servidor.");
     }
-    const data = await res.json();
-    setParada(data);
   }, [id]);
 
   const loadTablero = useCallback(
@@ -106,6 +117,27 @@ export default function ParadaDetallePage({ params }: { params: Promise<{ id: st
       <div style={{ minHeight: "100vh", background: "#f1f5f9" }}>
         <AppHeader backHref="/paradas" />
         <div style={{ textAlign: "center", padding: 60, color: "#64748b" }}>Parada no encontrada.</div>
+      </div>
+    );
+  }
+
+  if (errorParada && !parada) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#f1f5f9" }}>
+        <AppHeader backHref="/paradas" />
+        <div style={{ textAlign: "center", padding: 60, color: "#b91c1c" }}>
+          <p style={{ fontWeight: 700, marginBottom: 8 }}>No se pudo cargar la parada.</p>
+          <p style={{ fontSize: 13, color: "#64748b", marginBottom: 16 }}>{errorParada}</p>
+          <button
+            onClick={() => {
+              setCargando(true);
+              recargar().finally(() => setCargando(false));
+            }}
+            style={{ padding: "8px 16px", borderRadius: 8, border: "1.5px solid #b91c1c", background: "white", color: "#b91c1c", fontWeight: 700, cursor: "pointer" }}
+          >
+            Reintentar
+          </button>
+        </div>
       </div>
     );
   }

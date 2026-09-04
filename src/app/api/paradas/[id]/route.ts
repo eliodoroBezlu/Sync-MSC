@@ -6,20 +6,28 @@ type Ctx = { params: Promise<{ id: string }> };
 
 // GET /api/paradas/[id] — detalle con OTs, grupos y reportes.
 export async function GET(_req: NextRequest, { params }: Ctx) {
-  const { id } = await params;
-  const parada = await prisma.parada.findUnique({
-    where: { id },
-    include: {
-      ots: { orderBy: [{ orden: "asc" }, { numeroOT: "asc" }] },
-      grupos: {
-        orderBy: [{ turno: "asc" }, { disciplina: "asc" }, { numero: "asc" }],
-        include: { miembros: { orderBy: { nombre: "asc" } } },
+  try {
+    const { id } = await params;
+    const parada = await prisma.parada.findUnique({
+      where: { id },
+      include: {
+        ots: { orderBy: [{ orden: "asc" }, { numeroOT: "asc" }] },
+        grupos: {
+          orderBy: [{ turno: "asc" }, { disciplina: "asc" }, { numero: "asc" }],
+          include: { miembros: { orderBy: { nombre: "asc" } } },
+        },
+        reportesDiarios: { orderBy: [{ fecha: "desc" }, { reunion: "desc" }] },
       },
-      reportesDiarios: { orderBy: [{ fecha: "desc" }, { reunion: "desc" }] },
-    },
-  });
-  if (!parada) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
-  return NextResponse.json(serialize(parada));
+    });
+    if (!parada) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+    return NextResponse.json(serialize(parada));
+  } catch (err: unknown) {
+    // Se deja el detalle en el log del servidor (visible en Railway) para poder
+    // diagnosticar sin exponer internals al cliente.
+    console.error("GET /api/paradas/[id] falló:", err);
+    const message = err instanceof Error ? err.message : "Error interno";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 // PATCH /api/paradas/[id] — edita encabezado / estado.
