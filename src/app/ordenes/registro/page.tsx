@@ -8,6 +8,7 @@ import { useUser } from "@/context/AuthContext";
 import { getFechaTurno, localDateStr, autoTurno, estaEnVentanaCierreSemanal } from "@/lib/turno";
 import { getWeekNumber, getWeekDates, getSemanaAnioOffset } from "@/lib/semana";
 import { tipoOtDisplay, normalizarACodigoCompleto } from "@/lib/tiposOt";
+import { guardarBorrador, leerBorrador, borrarBorrador, type BorradorGuardado } from "@/lib/borradorOT";
 import PanelParadaOts from "./PanelParadaOts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -149,6 +150,30 @@ type AvanceDiarioForm = {
   observaciones: string;
   adjuntos: AdjuntoItem[];
 };
+
+// Snapshot local (IndexedDB) del formulario de Registro de OT, para no perder
+// lo llenado en campo (líneas confirmadas + la línea que se está editando, con
+// sus fotos) si el técnico cierra la pestaña antes de enviar. Ver src/lib/borradorOT.ts.
+type BorradorOT = {
+  form: FormData;
+  editLinea: LineaForm | null;
+  editIdx: number | null;
+  isNewLinea: boolean;
+  step: number;
+  view: "inicio" | "registro";
+};
+
+// Considera "con contenido" un borrador con al menos una línea confirmada o
+// una línea en edición con algo cargado (evita guardar/ofrecer recuperar un
+// formulario vacío recién abierto).
+function lineaTieneContenido(l: LineaForm | null): boolean {
+  if (!l) return false;
+  return !!(
+    l.tag || l.sintoma || l.causaProbable || l.resolucionAplicada ||
+    l.descripcionTrabajo || l.observaciones ||
+    l.tareasEjecutadas.length > 0 || l.adjuntos.length > 0
+  );
+}
 
 // ─── Date/Helpers ─────────────────────────────────────────────────────────────
 
@@ -1226,6 +1251,54 @@ export default function RegistroOTPage() {
   const [done, setDone] = useState(false);
   const [doneOT, setDoneOT] = useState<{ numeroOT: string; estado: string; consolidado?: boolean; parentOtNum?: string | null } | null>(null);
 
+  // ── Borrador local (IndexedDB) ──────────────────────────────────────────
+  // Slot único por técnico: si ya hay un borrador sin decidir (recuperar o
+  // descartar) no se autoguarda encima para no perderlo antes de mostrarlo.
+  const claveBorrador = user ? `otregistro:${user.id}` : null;
+  const [borrador, setBorrador] = useState<BorradorGuardado<BorradorOT> | null>(null);
+  const [borradorListo, setBorradorListo] = useState(false);
+
+  useEffect(() => {
+    if (!claveBorrador) return;
+    let cancelado = false;
+    leerBorrador<BorradorOT>(claveBorrador).then(res => {
+      if (cancelado) return;
+      const tieneContenido = !!res && (res.datos.form.lineas.length > 0 || lineaTieneContenido(res.datos.editLinea));
+      if (res && tieneContenido) setBorrador(res);
+      else if (res) borrarBorrador(claveBorrador); // residual vacío, se limpia solo
+      setBorradorListo(true);
+    });
+    return () => { cancelado = true; };
+    // Solo se revisa una vez, apenas se conoce al usuario.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claveBorrador]);
+
+  useEffect(() => {
+    if (!claveBorrador || !borradorListo || borrador) return;
+    const tieneContenido = form.lineas.length > 0 || lineaTieneContenido(editLinea);
+    if (!tieneContenido) return;
+    const id = setTimeout(() => {
+      guardarBorrador<BorradorOT>(claveBorrador, { form, editLinea, editIdx, isNewLinea, step, view });
+    }, 800);
+    return () => clearTimeout(id);
+  }, [claveBorrador, borradorListo, borrador, form, editLinea, editIdx, isNewLinea, step, view]);
+
+  function recuperarBorrador() {
+    if (!borrador) return;
+    setForm(borrador.datos.form);
+    setEditLinea(borrador.datos.editLinea);
+    setEditIdx(borrador.datos.editIdx);
+    setIsNewLinea(borrador.datos.isNewLinea);
+    setStep(borrador.datos.step);
+    setView("registro");
+    setBorrador(null);
+  }
+
+  function descartarBorrador() {
+    if (claveBorrador) borrarBorrador(claveBorrador);
+    setBorrador(null);
+  }
+
   // Detección de OT madre OPEPLANT al escribir N° OT.
   // Consulta el plan semanal directamente (vía /api/ordenes/opeplant-check), no si
   // ya existe una OT madre creada — así se detecta desde el primer técnico de la
@@ -1778,6 +1851,7 @@ export default function RegistroOTPage() {
       const res = await fetch("/api/ordenes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error al guardar");
+      if (claveBorrador) borrarBorrador(claveBorrador);
       setDone(true);
       setDoneOT({ numeroOT: data.ot.numeroOT, estado: data.ot.estado, consolidado: data.consolidado ?? false, parentOtNum: data.ot.parentOtNum ?? null });
     } catch (e: unknown) {
@@ -1873,6 +1947,26 @@ export default function RegistroOTPage() {
             )}
           </div>
         </div>
+
+        {/* Borrador local recuperable (llenado en campo, sin enviar aún) */}
+        {borrador && (
+          <div style={{ marginBottom: 16, padding: "12px 16px", borderRadius: 10, background: "#fffbeb", border: "1.5px solid #fcd34d", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 20 }}>💾</span>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: "#92400e" }}>Hay un borrador sin enviar en este dispositivo</div>
+              <div style={{ fontSize: 12, color: "#92400e" }}>
+                Guardado el {new Date(borrador.ts).toLocaleString("es-BO")} — parece que quedó a medio llenar.
+              </div>
+            </div>
+            <button onClick={recuperarBorrador} style={S.btnPrimary()}>Recuperar</button>
+            <button
+              onClick={descartarBorrador}
+              style={{ fontSize: 12, padding: "7px 14px", borderRadius: 8, border: "1.5px solid #e2e8f0", background: "white", color: "#64748b", cursor: "pointer" }}
+            >
+              Descartar
+            </button>
+          </div>
+        )}
 
         {/* ════════════════ VISTA INICIO ════════════════════════════════════ */}
         {view === "inicio" && (
