@@ -19,6 +19,7 @@ export interface ParadaGrupoCli {
   paradaId: string;
   turno: TurnoParada;
   disciplina: string; // ELEC | INST | TESA | MIXTO
+  numero: number; // Grupo 1, Grupo 2, …
   supervisorNombre: string;
   supervisorUsuarioId: string | null;
   dotacionPropia: number;

@@ -19,6 +19,24 @@ export const DISCIPLINAS_PARADA: readonly DisciplinaParada[] = [
   "TESA",
 ] as const;
 
+/**
+ * Disciplina de parada a la que queda restringido un usuario, o `null` si ve todo.
+ *
+ * - Roles 3 (Supervisor) y 4 (Técnico) sólo ven su propia disciplina.
+ * - El resto de roles (1 Administrador, 2 Superintendente, 5 Planificador, …) ven todo.
+ * - `disciplina` "GENERAL"/"MEC" (o cualquier valor no reconocido) => ve todo.
+ */
+export function disciplinaParadaDeUsuario(
+  rol: number,
+  disciplina: string | null | undefined,
+): DisciplinaParada | null {
+  if (rol !== 3 && rol !== 4) return null;
+  if (disciplina === "ELEC" || disciplina === "INST" || disciplina === "TESA") {
+    return disciplina;
+  }
+  return null;
+}
+
 /** Subconjunto de `ParadaOt` que necesita el cálculo del tablero. */
 export interface OtParadaCalc {
   id: string;

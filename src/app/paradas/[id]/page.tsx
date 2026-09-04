@@ -10,6 +10,7 @@ import PanelPreparativos from "./PanelPreparativos";
 import AvanceDiario from "./AvanceDiario";
 import ReporteDiarioSupervisor from "./ReporteDiarioSupervisor";
 import ConfigParada from "./ConfigParada";
+import { disciplinaParadaDeUsuario } from "@/lib/parada/tipos";
 import {
   NARANJA,
   ESTADO_PARADA_META,
@@ -17,10 +18,10 @@ import {
   type TableroParada as TableroData,
 } from "./tipos";
 
-const ROLES_VER = [1, 2, 3, 5];
+// Roles 3 (Supervisor) y 4 (Técnico) entran restringidos a su propia disciplina.
+const ROLES_VER = [1, 2, 3, 4, 5];
 const ROLES_CONFIG = [1, 2, 5];
 const ROLES_REPORTE = [3, 5];
-const ROLES_CERRAR = [1, 2];
 
 type Tab = "resumen" | "preparativos" | "ejecucion" | "reportes" | "config";
 
@@ -85,8 +86,9 @@ export default function ParadaDetallePage({ params }: { params: Promise<{ id: st
   const puedeVer = ROLES_VER.includes(user.rol);
   const puedeConfig = ROLES_CONFIG.includes(user.rol);
   const puedeReporte = ROLES_REPORTE.includes(user.rol);
-  const puedeCerrar = ROLES_CERRAR.includes(user.rol);
   const cerrada = parada?.estado === "cerrada";
+  // Disciplina a la que queda restringido el usuario (null = ve todo).
+  const discFiltro = disciplinaParadaDeUsuario(user.rol, user.disciplina);
 
   if (!puedeVer) {
     return (
@@ -155,7 +157,7 @@ export default function ParadaDetallePage({ params }: { params: Promise<{ id: st
         {/* Tablero fijo */}
         {tablero ? (
           <div style={{ position: "sticky", top: 8, zIndex: 20, marginBottom: 16 }}>
-            <TableroParada tablero={tablero} hoy={hoy} />
+            <TableroParada tablero={tablero} hoy={hoy} discFiltro={discFiltro} />
           </div>
         ) : (
           <div style={{ padding: 24, textAlign: "center", color: "#94a3b8", background: "white", borderRadius: 14, marginBottom: 16 }}>
@@ -190,19 +192,16 @@ export default function ParadaDetallePage({ params }: { params: Promise<{ id: st
           {cargando || !parada ? (
             <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Cargando…</div>
           ) : tab === "resumen" ? (
-            <ListaOtsParada parada={parada} puedeEditar={puedeConfig && !cerrada} onChange={recargar} />
+            <ListaOtsParada parada={parada} puedeEditar={puedeConfig && !cerrada} discFiltro={discFiltro} onChange={recargar} />
           ) : tab === "preparativos" ? (
-            <PanelPreparativos parada={parada} puedeEditar={(puedeConfig || puedeReporte) && !cerrada} onChange={recargar} />
+            <PanelPreparativos parada={parada} puedeEditar={(puedeConfig || puedeReporte) && !cerrada} discFiltro={discFiltro} onChange={recargar} />
           ) : tab === "ejecucion" ? (
-            <AvanceDiario parada={parada} puedeEditar={puedeReporte && !cerrada} onChange={recargar} />
+            <AvanceDiario parada={parada} puedeEditar={puedeReporte && !cerrada} discFiltro={discFiltro} onChange={recargar} />
           ) : tab === "reportes" ? (
-            <ReporteDiarioSupervisor parada={parada} tablero={tablero} puedeEmitir={puedeReporte && !cerrada} usuario={user} onChange={recargar} />
+            <ReporteDiarioSupervisor parada={parada} tablero={tablero} puedeEmitir={puedeReporte && !cerrada} usuario={user} discFiltro={discFiltro} onChange={recargar} />
           ) : (
             <ConfigParada
               parada={parada}
-              tablero={tablero}
-              puedeCerrar={puedeCerrar}
-              usuario={user}
               onChange={recargar}
               onDeleted={() => router.replace("/paradas")}
             />

@@ -12,7 +12,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     include: {
       ots: { orderBy: [{ orden: "asc" }, { numeroOT: "asc" }] },
       grupos: {
-        orderBy: [{ turno: "asc" }, { disciplina: "asc" }],
+        orderBy: [{ turno: "asc" }, { disciplina: "asc" }, { numero: "asc" }],
         include: { miembros: { orderBy: { nombre: "asc" } } },
       },
       reportesDiarios: { orderBy: [{ fecha: "desc" }, { reunion: "desc" }] },

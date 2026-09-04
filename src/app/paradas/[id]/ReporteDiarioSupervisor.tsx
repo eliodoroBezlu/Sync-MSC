@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SessionPayload } from "@/lib/auth";
+import type { DisciplinaParada } from "@/lib/parada/tipos";
 import { generarReporteDiarioPdf, type DatosReportePdf } from "@/lib/parada/generarReporteDiarioPdf";
 import type {
   OtConRetraso, ParadaDetalle, ParadaReporteCli, PendienteParada,
@@ -14,6 +15,8 @@ interface Props {
   tablero: TableroData | null;
   puedeEmitir: boolean;
   usuario: SessionPayload;
+  /** Si viene, sólo se consideran las OTs de esa disciplina. */
+  discFiltro?: DisciplinaParada | null;
   onChange: () => Promise<void>;
 }
 
@@ -42,12 +45,15 @@ interface FormState {
   observaciones: string;
 }
 
-export default function ReporteDiarioSupervisor({ parada, tablero, puedeEmitir, usuario, onChange }: Props) {
+export default function ReporteDiarioSupervisor({ parada, tablero, puedeEmitir, usuario, discFiltro, onChange }: Props) {
   const dias = useMemo(
     () => diasEjec(parada.fechaEjecucionInicio, parada.fechaEjecucionFin),
     [parada.fechaEjecucionInicio, parada.fechaEjecucionFin],
   );
-  const otsEjec = useMemo(() => parada.ots.filter((o) => o.fase === "ejecucion"), [parada.ots]);
+  const otsEjec = useMemo(
+    () => parada.ots.filter((o) => o.fase === "ejecucion" && (!discFiltro || o.disciplina === discFiltro)),
+    [parada.ots, discFiltro],
+  );
 
   const [f, setF] = useState<FormState>({
     fecha: dias[0],

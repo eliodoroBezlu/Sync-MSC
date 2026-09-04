@@ -1326,6 +1326,7 @@ function UsuariosTab() {
                 <option value="ELEC">ELEC — Eléctrico</option>
                 <option value="INST">INST — Instrumentación</option>
                 <option value="MEC">MEC — Mecánico especializado</option>
+                <option value="TESA">TESA — SC Tesa</option>
               </select>
             </div>
             <div>

@@ -9,7 +9,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const grupos = await prisma.paradaGrupo.findMany({
     where: { paradaId: id },
-    orderBy: [{ turno: "asc" }, { disciplina: "asc" }],
+    orderBy: [{ turno: "asc" }, { disciplina: "asc" }, { numero: "asc" }],
     include: { miembros: { orderBy: { nombre: "asc" } } },
   });
   return NextResponse.json(
@@ -29,16 +29,18 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     const d = parsed.data;
     const grupo = await prisma.paradaGrupo.upsert({
       where: {
-        paradaId_turno_disciplina: {
+        paradaId_turno_disciplina_numero: {
           paradaId: id,
           turno: d.turno,
           disciplina: d.disciplina,
+          numero: d.numero,
         },
       },
       create: {
         paradaId: id,
         turno: d.turno,
         disciplina: d.disciplina,
+        numero: d.numero,
         supervisorNombre: d.supervisorNombre,
         supervisorUsuarioId: d.supervisorUsuarioId ?? null,
         dotacionPropia: d.dotacionPropia,

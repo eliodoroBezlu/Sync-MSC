@@ -2,12 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useUser } from "@/context/AuthContext";
+import type { DisciplinaParada } from "@/lib/parada/tipos";
 import type { AvanceCli, ParadaDetalle, TurnoParada } from "./tipos";
 import { EstadoPill, DISCIPLINA_LABEL, th, td, inp, btnPrim, ESTADOS_OT } from "./ui";
 
 interface Props {
   parada: ParadaDetalle;
   puedeEditar: boolean;
+  /** Si viene, sólo se muestran las OTs de esa disciplina. */
+  discFiltro?: DisciplinaParada | null;
   onChange: () => Promise<void>;
 }
 
@@ -33,7 +36,7 @@ function etiquetaDia(ymd: string): string {
   return new Date(ymd + "T12:00:00").toLocaleDateString("es-BO", { weekday: "short", day: "2-digit", month: "2-digit" });
 }
 
-export default function AvanceDiario({ parada, puedeEditar, onChange }: Props) {
+export default function AvanceDiario({ parada, puedeEditar, discFiltro, onChange }: Props) {
   const { user } = useUser();
   const dias = useMemo(
     () => rangoFechas(parada.fechaEjecucionInicio, parada.fechaEjecucionFin),
@@ -44,8 +47,9 @@ export default function AvanceDiario({ parada, puedeEditar, onChange }: Props) {
     () =>
       parada.ots
         .filter((o) => o.fase === "ejecucion")
+        .filter((o) => !discFiltro || o.disciplina === discFiltro)
         .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || a.numeroOT.localeCompare(b.numeroOT)),
-    [parada.ots],
+    [parada.ots, discFiltro],
   );
 
   const [fecha, setFecha] = useState<string>(dias[0]);

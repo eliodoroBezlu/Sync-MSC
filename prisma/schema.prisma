@@ -679,6 +679,7 @@ model ParadaGrupo {
   paradaId            String
   turno               String // Dia | Noche
   disciplina          String // ELEC | INST | TESA | MIXTO
+  numero              Int     @default(1) // Grupo 1, Grupo 2, … dentro de la disciplina/turno
   supervisorNombre    String
   supervisorUsuarioId String?
   dotacionPropia      Int     @default(0)
@@ -687,7 +688,7 @@ model ParadaGrupo {
 
   miembros ParadaGrupoMiembro[]
 
-  @@unique([paradaId, turno, disciplina])
+  @@unique([paradaId, turno, disciplina, numero])
   @@index([paradaId])
 }
 

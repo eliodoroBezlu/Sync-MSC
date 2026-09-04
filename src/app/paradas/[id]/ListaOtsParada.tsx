@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { DisciplinaParada } from "@/lib/parada/tipos";
 import type { ParadaDetalle, ParadaOtCli } from "./tipos";
 import {
   fmtFecha, ymdInput, EstadoPill, BarraAvance, DISCIPLINA_LABEL,
@@ -10,6 +11,8 @@ import {
 interface Props {
   parada: ParadaDetalle;
   puedeEditar: boolean;
+  /** Si viene, la lista queda restringida a esa disciplina y se oculta el filtro. */
+  discFiltro?: DisciplinaParada | null;
   onChange: () => Promise<void>;
 }
 
@@ -17,7 +20,7 @@ type FiltroFase = "todas" | "preparativos" | "ejecucion";
 type FiltroDisc = "todas" | "ELEC" | "INST" | "TESA";
 type FiltroEstado = "todos" | "no_iniciada" | "en_ejecucion" | "terminada" | "con_retraso";
 
-export default function ListaOtsParada({ parada, puedeEditar, onChange }: Props) {
+export default function ListaOtsParada({ parada, puedeEditar, discFiltro, onChange }: Props) {
   const [fFase, setFFase] = useState<FiltroFase>("todas");
   const [fDisc, setFDisc] = useState<FiltroDisc>("todas");
   const [fEstado, setFEstado] = useState<FiltroEstado>("todos");
@@ -27,6 +30,7 @@ export default function ListaOtsParada({ parada, puedeEditar, onChange }: Props)
 
   const ots = useMemo(() => {
     return parada.ots.filter((o) => {
+      if (discFiltro && o.disciplina !== discFiltro) return false;
       if (fFase !== "todas" && o.fase !== fFase) return false;
       if (fDisc !== "todas" && o.disciplina !== fDisc) return false;
       if (fEstado !== "todos" && o.estado !== fEstado) return false;
@@ -41,7 +45,7 @@ export default function ListaOtsParada({ parada, puedeEditar, onChange }: Props)
       }
       return true;
     });
-  }, [parada.ots, fFase, fDisc, fEstado, busca]);
+  }, [parada.ots, discFiltro, fFase, fDisc, fEstado, busca]);
 
   const totHH = ots.reduce((s, o) => s + o.hhEstimadas, 0);
 
@@ -91,12 +95,19 @@ export default function ListaOtsParada({ parada, puedeEditar, onChange }: Props)
           <option value="preparativos">Preparativos</option>
           <option value="ejecucion">Ejecución</option>
         </select>
-        <select value={fDisc} onChange={(e) => setFDisc(e.target.value as FiltroDisc)} style={{ ...inp, width: "auto" }}>
-          <option value="todas">Todas las disciplinas</option>
-          <option value="ELEC">Eléctricos</option>
-          <option value="INST">Instrumentistas</option>
-          <option value="TESA">SC Tesa</option>
-        </select>
+        {!discFiltro && (
+          <select value={fDisc} onChange={(e) => setFDisc(e.target.value as FiltroDisc)} style={{ ...inp, width: "auto" }}>
+            <option value="todas">Todas las disciplinas</option>
+            <option value="ELEC">Eléctricos</option>
+            <option value="INST">Instrumentistas</option>
+            <option value="TESA">SC Tesa</option>
+          </select>
+        )}
+        {discFiltro && (
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#ea580c" }}>
+            {DISCIPLINA_LABEL[discFiltro] ?? discFiltro}
+          </span>
+        )}
         <select value={fEstado} onChange={(e) => setFEstado(e.target.value as FiltroEstado)} style={{ ...inp, width: "auto" }}>
           <option value="todos">Todos los estados</option>
           {ESTADOS_OT.map((e) => (

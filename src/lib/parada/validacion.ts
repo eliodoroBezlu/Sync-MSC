@@ -111,6 +111,8 @@ const miembroGrupoSchema = z.object({
 export const crearGrupoSchema = z.object({
   turno: TURNO,
   disciplina: DISCIPLINA_GRUPO,
+  // Número de grupo dentro de la disciplina/turno (Grupo 1, Grupo 2, …).
+  numero: z.coerce.number().int().min(1).optional().default(1),
   supervisorNombre: z.string().trim().optional().default(""),
   supervisorUsuarioId: z.string().trim().nullish(),
   dotacionPropia: z.coerce.number().int().min(0).optional().default(0),

@@ -1,19 +1,22 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { DisciplinaParada } from "@/lib/parada/tipos";
 import type { ParadaDetalle, ParadaOtCli } from "./tipos";
 import { fmtFecha, ymdInput, EstadoPill, DISCIPLINA_LABEL, th, td, inp, btnSec, ESTADOS_OT } from "./ui";
 
 interface Props {
   parada: ParadaDetalle;
   puedeEditar: boolean;
+  /** Si viene, sólo se muestran las OTs de esa disciplina. */
+  discFiltro?: DisciplinaParada | null;
   onChange: () => Promise<void>;
 }
 
 // Pestaña Preparativos: OTs con fase = "preparativos". No llevan HH al tablero;
 // aquí sólo se controla responsable, fecha programada y estado. Si la OT está
 // vinculada a una OT real del sistema se muestra el enlace.
-export default function PanelPreparativos({ parada, puedeEditar, onChange }: Props) {
+export default function PanelPreparativos({ parada, puedeEditar, discFiltro, onChange }: Props) {
   const [editId, setEditId] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
 
@@ -21,8 +24,9 @@ export default function PanelPreparativos({ parada, puedeEditar, onChange }: Pro
     () =>
       parada.ots
         .filter((o) => o.fase === "preparativos")
+        .filter((o) => !discFiltro || o.disciplina === discFiltro)
         .sort((a, b) => (a.fechaProg ?? "").localeCompare(b.fechaProg ?? "")),
-    [parada.ots],
+    [parada.ots, discFiltro],
   );
 
   const conteo = {

@@ -13,7 +13,7 @@ export async function GET() {
   return NextResponse.json(paradas.map((p) => serialize(p)));
 }
 
-// POST /api/paradas — crea la parada y siembra los grupos base Día/Noche.
+// POST /api/paradas — crea la parada y siembra un "Grupo 1" por disciplina y turno.
 export async function POST(req: NextRequest) {
   try {
     const parsed = crearParadaSchema.safeParse(await req.json());
@@ -32,10 +32,14 @@ export async function POST(req: NextRequest) {
         fechaEjecucionFin: d.fechaEjecucionFin,
         creadoPor: d.creadoPor,
         grupos: {
-          create: [
-            { turno: "Dia", disciplina: "MIXTO", supervisorNombre: "" },
-            { turno: "Noche", disciplina: "MIXTO", supervisorNombre: "" },
-          ],
+          create: (["Dia", "Noche"] as const).flatMap((turno) =>
+            (["ELEC", "INST", "TESA"] as const).map((disciplina) => ({
+              turno,
+              disciplina,
+              numero: 1,
+              supervisorNombre: "",
+            })),
+          ),
         },
       },
       include: { grupos: true },

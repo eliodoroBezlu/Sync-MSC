@@ -5,7 +5,8 @@ export type Rol = 1 | 2 | 3 | 4 | 5 | 6;
 // ─── Disciplina ───────────────────────────────────────────────────────────────
 // GENERAL = acceso a módulos de OT (default)
 // INST    = acceso exclusivo a Calibración
-export type Disciplina = "GENERAL" | "MEC" | "ELEC" | "INST";
+// TESA    = SC Tesa (disciplina propia dentro de Parada de Planta)
+export type Disciplina = "GENERAL" | "MEC" | "ELEC" | "INST" | "TESA";
 
 // ─── OT domain literals ───────────────────────────────────────────────────────
 export type TurnoTipo = "Diurno" | "Nocturno" | "Parada de Planta" | "Otro";

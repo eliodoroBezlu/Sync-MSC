@@ -1,11 +1,18 @@
 "use client";
 
-import type { TableroParada as TableroData } from "@/lib/parada/tipos";
+import { useState } from "react";
+import type { DisciplinaParada, TableroParada as TableroData } from "@/lib/parada/tipos";
 import { NARANJA } from "./tipos";
+import { DISCIPLINA_LABEL } from "./ui";
 
 interface Props {
   tablero: TableroData;
   hoy: string; // YYYY-MM-DD seleccionado
+  /**
+   * Si viene, el usuario está restringido a esa disciplina: el tablero abre en la
+   * vista "Mi disciplina" y ofrece un conmutador para ver la superintendencia.
+   */
+  discFiltro?: DisciplinaParada | null;
 }
 
 const NAVY = "#0f2847";
@@ -78,10 +85,25 @@ function Celda({ children, label }: { children: React.ReactNode; label: string }
   );
 }
 
-export default function TableroParada({ tablero, hoy }: Props) {
+export default function TableroParada({ tablero, hoy, discFiltro }: Props) {
   const { avanceGlobalPct, ots, cumplimientoHoy, porDisciplina, hh, diaActual } = tablero;
-  const ejec = ots.ejecucion;
   const cumplPct = Math.round(cumplimientoHoy * 100);
+
+  // Usuarios restringidos abren en "Mi disciplina"; pueden conmutar a la
+  // superintendencia (vista global) para ver el avance conjunto.
+  const [vista, setVista] = useState<"disciplina" | "super">("disciplina");
+  const verDisc = !!discFiltro && vista === "disciplina";
+  const filaDisc = discFiltro ? porDisciplina[discFiltro] : null;
+
+  // Celdas primarias: en "Mi disciplina" se muestran los números de esa disciplina;
+  // en la vista global (o roles sin restricción) se muestran los totales de la parada.
+  const ejec = ots.ejecucion;
+  const avancePrimario = verDisc && filaDisc ? filaDisc.avancePct : avanceGlobalPct;
+  const otsTermPrimario = verDisc && filaDisc ? filaDisc.otsTerminadas : ejec.terminadas;
+  const otsTotPrimario = verDisc && filaDisc ? filaDisc.otsTotal : ejec.total;
+  const hhRealPrimario = verDisc && filaDisc ? filaDisc.hhReal : hh.hhReal;
+  const hhEstPrimario = verDisc && filaDisc ? filaDisc.hhEst : hh.hhEst;
+  const etiquetaAvance = verDisc && discFiltro ? (DISCIPLINA_LABEL[discFiltro] ?? discFiltro) : "Avance global";
 
   return (
     <div
@@ -96,12 +118,41 @@ export default function TableroParada({ tablero, hoy }: Props) {
         overflowX: "auto",
       }}
     >
-      {/* Anillo de avance global */}
+      {/* Conmutador Mi disciplina / Superintendencia (sólo usuarios restringidos) */}
+      {discFiltro && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "0 16px", justifyContent: "center" }}>
+          {([
+            ["disciplina", DISCIPLINA_LABEL[discFiltro] ?? discFiltro],
+            ["super", "Superintendencia"],
+          ] as const).map(([v, lbl]) => (
+            <button
+              key={v}
+              onClick={() => setVista(v)}
+              style={{
+                padding: "5px 10px",
+                borderRadius: 8,
+                border: "1.5px solid",
+                borderColor: vista === v ? "#ea580c" : "#e2e8f0",
+                background: vista === v ? "#ea580c" : "white",
+                color: vista === v ? "white" : "#334155",
+                fontWeight: 700,
+                fontSize: 11,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {lbl}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Anillo de avance (global o de la disciplina propia) */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "0 16px", minWidth: 110 }}>
         <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Avance global
+          {etiquetaAvance}
         </span>
-        <Anillo pct={avanceGlobalPct} plan={diaActual.avancePlan} />
+        <Anillo pct={avancePrimario} plan={diaActual.avancePlan} />
       </div>
 
       {/* Día actual */}
@@ -116,15 +167,21 @@ export default function TableroParada({ tablero, hoy }: Props) {
       {/* OTs de ejecución por estado */}
       <Celda label="OTs ejecución">
         <span style={{ fontSize: 18, fontWeight: 800, color: NAVY }}>
-          {ejec.terminadas}/{ejec.total}
+          {otsTermPrimario}/{otsTotPrimario}
         </span>
-        <div style={{ display: "flex", gap: 6, fontSize: 10 }}>
-          <span style={{ color: "#15803d" }}>✓ {ejec.terminadas}</span>
-          <span style={{ color: "#0369a1" }}>▶ {ejec.enEjecucion}</span>
-          <span style={{ color: "#b91c1c" }}>⚠ {ejec.conRetraso}</span>
-          <span style={{ color: "#64748b" }}>○ {ejec.noIniciadas}</span>
-        </div>
-        <span style={{ fontSize: 10, color: "#94a3b8" }}>Prep.: {ots.preparativos.terminadas}/{ots.preparativos.total}</span>
+        {verDisc ? (
+          <span style={{ fontSize: 10, color: "#94a3b8" }}>terminadas / total en {DISCIPLINA_LABEL[discFiltro!] ?? discFiltro}</span>
+        ) : (
+          <>
+            <div style={{ display: "flex", gap: 6, fontSize: 10 }}>
+              <span style={{ color: "#15803d" }}>✓ {ejec.terminadas}</span>
+              <span style={{ color: "#0369a1" }}>▶ {ejec.enEjecucion}</span>
+              <span style={{ color: "#b91c1c" }}>⚠ {ejec.conRetraso}</span>
+              <span style={{ color: "#64748b" }}>○ {ejec.noIniciadas}</span>
+            </div>
+            <span style={{ fontSize: 10, color: "#94a3b8" }}>Prep.: {ots.preparativos.terminadas}/{ots.preparativos.total}</span>
+          </>
+        )}
       </Celda>
 
       {/* Cumplimiento hoy */}
@@ -138,10 +195,10 @@ export default function TableroParada({ tablero, hoy }: Props) {
       {/* HH */}
       <Celda label="HH ejecución">
         <span style={{ fontSize: 18, fontWeight: 800, color: NAVY }}>
-          {hh.hhReal}<span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}> / {hh.hhEst}</span>
+          {hhRealPrimario}<span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}> / {hhEstPrimario}</span>
         </span>
         <span style={{ fontSize: 10, color: "#94a3b8" }}>
-          Factor prod. {hh.factorProductividad || "—"}
+          {verDisc ? "reales / estimadas en tu disciplina" : `Factor prod. ${hh.factorProductividad || "—"}`}
         </span>
       </Celda>
 

@@ -2,16 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DisciplinaParada } from "@/lib/parada/tipos";
-import { DISCIPLINAS_PARADA } from "@/lib/parada/tipos";
-import type { SessionPayload } from "@/lib/auth";
-import { generarInformeCierrePdf, type DatosInformeCierre } from "@/lib/parada/generarInformeCierrePdf";
 import type {
-  AvanceCli,
   EstadoParada,
   ParadaDetalle,
   ParadaGrupoCli,
   ParadaOtCli,
-  TableroParada as TableroData,
   TurnoParada,
 } from "./tipos";
 import { ymdInput, DISCIPLINA_LABEL, inp, btnPrim, btnSec } from "./ui";
@@ -22,6 +17,39 @@ interface TecnicoOpt {
   nombreCompleto: string;
   disciplina: string | null;
   esContratista: boolean;
+}
+
+/** Supervisor (rol 3) elegible como responsable de un grupo. */
+interface SupervisorOpt {
+  _id: string;
+  nombreCompleto: string;
+  disciplina: string | null;
+}
+
+/** Carga una sola vez la lista de supervisores (rol 3). */
+function useSupervisores(): SupervisorOpt[] {
+  const [lista, setLista] = useState<SupervisorOpt[]>([]);
+  useEffect(() => {
+    let vivo = true;
+    fetch("/api/usuarios?rol=3")
+      .then((r) => r.json())
+      .then((data: Array<{ _id: string; nombreCompleto: string; disciplina: string | null }>) => {
+        if (vivo && Array.isArray(data)) {
+          setLista(
+            data.map((u) => ({
+              _id: u._id,
+              nombreCompleto: u.nombreCompleto,
+              disciplina: u.disciplina ?? null,
+            })),
+          );
+        }
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, []);
+  return lista;
 }
 
 /** Carga una sola vez la lista de técnicos + contratistas (rol 4 y 6). */
@@ -53,9 +81,6 @@ function useTecnicos(): TecnicoOpt[] {
 
 interface Props {
   parada: ParadaDetalle;
-  tablero: TableroData | null;
-  puedeCerrar: boolean;
-  usuario: SessionPayload;
   onChange: () => Promise<void>;
   onDeleted: () => void;
 }
@@ -73,7 +98,7 @@ const h3: React.CSSProperties = { fontSize: 14, fontWeight: 800, color: "#0f2847
 const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" };
 const campo: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 3, minWidth: 130 };
 
-export default function ConfigParada({ parada, tablero, puedeCerrar, usuario, onChange, onDeleted }: Props) {
+export default function ConfigParada({ parada, onChange, onDeleted }: Props) {
   return (
     <div>
       <SeccionDatos parada={parada} onChange={onChange} />
@@ -81,7 +106,6 @@ export default function ConfigParada({ parada, tablero, puedeCerrar, usuario, on
       <SeccionAsignaciones parada={parada} onChange={onChange} />
       <SeccionImportar paradaId={parada.id} onChange={onChange} />
       <SeccionOtManual paradaId={parada.id} onChange={onChange} />
-      <SeccionCierre parada={parada} tablero={tablero} puedeCerrar={puedeCerrar} usuario={usuario} onChange={onChange} />
       <SeccionPeligro paradaId={parada.id} codigo={parada.codigo} onDeleted={onDeleted} />
     </div>
   );
@@ -177,18 +201,45 @@ function SeccionDatos({ parada, onChange }: { parada: ParadaDetalle; onChange: (
 /* ── Grupos Día / Noche ─────────────────────────────────────────────────── */
 function SeccionGrupos({ parada, onChange }: { parada: ParadaDetalle; onChange: () => Promise<void> }) {
   const tecnicos = useTecnicos();
-  const porClave = useMemo(() => {
-    const m = new Map<string, ParadaGrupoCli>();
-    for (const g of parada.grupos) m.set(`${g.turno}|${g.disciplina}`, g);
+  const supervisores = useSupervisores();
+  const [creando, setCreando] = useState("");
+
+  // Grupos existentes agrupados por `${turno}|${disciplina}`, ordenados por número.
+  const porTurnoDisc = useMemo(() => {
+    const m = new Map<string, ParadaGrupoCli[]>();
+    for (const g of parada.grupos) {
+      const k = `${g.turno}|${g.disciplina}`;
+      const arr = m.get(k) ?? [];
+      arr.push(g);
+      m.set(k, arr);
+    }
+    for (const arr of m.values()) arr.sort((a, b) => a.numero - b.numero);
     return m;
   }, [parada.grupos]);
 
+  async function agregarGrupo(turno: TurnoParada, disc: DisciplinaParada) {
+    const k = `${turno}|${disc}`;
+    const existentes = porTurnoDisc.get(k) ?? [];
+    const numero = existentes.reduce((mx, g) => Math.max(mx, g.numero), 0) + 1;
+    setCreando(k);
+    try {
+      await fetch(`/api/paradas/${parada.id}/grupos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ turno, disciplina: disc, numero, supervisorNombre: "" }),
+      });
+      await onChange();
+    } finally {
+      setCreando("");
+    }
+  }
+
   return (
     <div style={seccion}>
-      <h3 style={h3}>Grupos, líderes y cuadrilla</h3>
+      <h3 style={h3}>Grupos</h3>
       <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 12px" }}>
-        Un grupo por turno y disciplina. El <b>supervisor</b> es el responsable del grupo; el <b>líder</b> es un
-        técnico de la propia cuadrilla. «Dot. apoyo» es sólo un número de contratistas — no lleva nombres.
+        Cada disciplina puede tener uno o más grupos por turno (Grupo 1, Grupo 2…). El <b>supervisor</b> se elige de
+        la lista de supervisores de esa disciplina. «Dot. apoyo» es sólo un número de contratistas — no lleva nombres.
       </p>
       {TURNOS.map((turno) => (
         <div key={turno} style={{ marginBottom: 16 }}>
@@ -196,17 +247,37 @@ function SeccionGrupos({ parada, onChange }: { parada: ParadaDetalle; onChange: 
             Turno {turno === "Dia" ? "Día" : "Noche"}
           </div>
           <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
-            {DISCIPLINAS.map((disc) => (
-              <TarjetaGrupo
-                key={disc}
-                paradaId={parada.id}
-                turno={turno}
-                disciplina={disc}
-                grupo={porClave.get(`${turno}|${disc}`) ?? null}
-                tecnicos={tecnicos}
-                onChange={onChange}
-              />
-            ))}
+            {DISCIPLINAS.map((disc) => {
+              const k = `${turno}|${disc}`;
+              const grupos = porTurnoDisc.get(k) ?? [];
+              return (
+                <div key={disc} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#0f2847" }}>{DISCIPLINA_LABEL[disc]}</div>
+                  {grupos.map((g) => (
+                    <TarjetaGrupo
+                      key={g.id}
+                      paradaId={parada.id}
+                      turno={turno}
+                      disciplina={disc}
+                      grupo={g}
+                      tecnicos={tecnicos}
+                      supervisores={supervisores}
+                      onChange={onChange}
+                    />
+                  ))}
+                  {grupos.length === 0 && (
+                    <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin grupos.</div>
+                  )}
+                  <button
+                    onClick={() => agregarGrupo(turno, disc)}
+                    disabled={creando === k}
+                    style={{ ...btnSec, padding: "6px 12px", alignSelf: "flex-start" }}
+                  >
+                    {creando === k ? "Agregando…" : "+ Agregar grupo"}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
       ))}
@@ -215,29 +286,43 @@ function SeccionGrupos({ parada, onChange }: { parada: ParadaDetalle; onChange: 
 }
 
 function TarjetaGrupo({
-  paradaId, turno, disciplina, grupo, tecnicos, onChange,
+  paradaId, turno, disciplina, grupo, tecnicos, supervisores, onChange,
 }: {
   paradaId: string;
   turno: TurnoParada;
   disciplina: DisciplinaParada;
-  grupo: ParadaGrupoCli | null;
+  grupo: ParadaGrupoCli;
   tecnicos: TecnicoOpt[];
+  supervisores: SupervisorOpt[];
   onChange: () => Promise<void>;
 }) {
   const [f, setF] = useState({
-    supervisorNombre: grupo?.supervisorNombre ?? "",
-    dotacionPropia: String(grupo?.dotacionPropia ?? ""),
-    dotacionApoyo: String(grupo?.dotacionApoyo ?? ""),
+    supervisorUsuarioId: grupo.supervisorUsuarioId ?? "",
+    supervisorNombre: grupo.supervisorNombre ?? "",
+    dotacionPropia: String(grupo.dotacionPropia ?? ""),
+    dotacionApoyo: String(grupo.dotacionApoyo ?? ""),
   });
   const [seleccion, setSeleccion] = useState<Set<string>>(
-    () => new Set((grupo?.miembros ?? []).map((m) => m.usuarioId).filter((x): x is string => !!x)),
-  );
-  const [liderId, setLiderId] = useState<string>(
-    () => (grupo?.miembros ?? []).find((m) => m.esLider)?.usuarioId ?? "",
+    () => new Set((grupo.miembros ?? []).map((m) => m.usuarioId).filter((x): x is string => !!x)),
   );
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
-  const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
+  const set = (k: "dotacionPropia" | "dotacionApoyo", v: string) => setF((p) => ({ ...p, [k]: v }));
+
+  // Supervisores de la disciplina; si no hay ninguno, se muestran todos.
+  const supsDisc = useMemo(() => {
+    const propios = supervisores.filter((s) => s.disciplina === disciplina);
+    return propios.length > 0 ? propios : supervisores;
+  }, [supervisores, disciplina]);
+
+  // Incluye el supervisor ya guardado aunque no esté en la lista filtrada.
+  const opcionesSup = useMemo(() => {
+    const arr = [...supsDisc];
+    if (f.supervisorUsuarioId && !arr.some((s) => s._id === f.supervisorUsuarioId)) {
+      arr.push({ _id: f.supervisorUsuarioId, nombreCompleto: f.supervisorNombre || "(supervisor)", disciplina: null });
+    }
+    return arr;
+  }, [supsDisc, f.supervisorUsuarioId, f.supervisorNombre]);
 
   // Ordena: la disciplina del técnico primero, contratistas al final.
   const orden = useMemo(() => {
@@ -254,14 +339,15 @@ function TarjetaGrupo({
   function toggle(id: string) {
     setSeleccion((prev) => {
       const n = new Set(prev);
-      if (n.has(id)) {
-        n.delete(id);
-        if (liderId === id) setLiderId("");
-      } else {
-        n.add(id);
-      }
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
       return n;
     });
+  }
+
+  function elegirSupervisor(id: string) {
+    const s = supervisores.find((x) => x._id === id);
+    setF((p) => ({ ...p, supervisorUsuarioId: id, supervisorNombre: s?.nombreCompleto ?? "" }));
   }
 
   async function guardar() {
@@ -270,14 +356,16 @@ function TarjetaGrupo({
     try {
       const miembros = orden
         .filter((t) => seleccion.has(t._id))
-        .map((t) => ({ usuarioId: t._id, nombre: t.nombreCompleto, esLider: t._id === liderId }));
+        .map((t) => ({ usuarioId: t._id, nombre: t.nombreCompleto, esLider: false }));
       const res = await fetch(`/api/paradas/${paradaId}/grupos`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           turno,
           disciplina,
+          numero: grupo.numero,
           supervisorNombre: f.supervisorNombre,
+          supervisorUsuarioId: f.supervisorUsuarioId || null,
           dotacionPropia: Number(f.dotacionPropia) || 0,
           dotacionApoyo: Number(f.dotacionApoyo) || 0,
           miembros,
@@ -295,18 +383,51 @@ function TarjetaGrupo({
     }
   }
 
+  async function eliminar() {
+    const etiqueta = `Grupo ${grupo.numero} de ${DISCIPLINA_LABEL[disciplina]} (${turno === "Dia" ? "Día" : "Noche"})`;
+    if (!confirm(`¿Eliminar el ${etiqueta}?`)) return;
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await fetch(`/api/paradas/${paradaId}/grupos/${grupo.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.ok === false) {
+        setMsg(data.error ?? "Error");
+        return;
+      }
+      await onChange();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const seleccionados = orden.filter((t) => seleccion.has(t._id));
 
   return (
     <div style={{ border: "1.5px solid #e2e8f0", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ fontSize: 12, fontWeight: 800, color: "#0f2847" }}>
-        {DISCIPLINA_LABEL[disciplina]}{" "}
-        <span style={{ fontWeight: 600, color: "#94a3b8" }}>· {seleccionados.length} en cuadrilla</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: "#0f2847" }}>
+          Grupo {grupo.numero}{" "}
+          <span style={{ fontWeight: 600, color: "#94a3b8" }}>· {seleccionados.length} integrantes</span>
+        </div>
+        <button
+          onClick={eliminar}
+          disabled={busy}
+          title="Eliminar grupo"
+          style={{ ...btnSec, padding: "2px 8px", color: "#dc2626", borderColor: "#fecaca" }}
+        >
+          ✕
+        </button>
       </div>
 
       <label style={campo}>
         <span style={lbl}>Supervisor</span>
-        <input value={f.supervisorNombre} onChange={(e) => set("supervisorNombre", e.target.value)} style={inp} placeholder="Nombre del supervisor" />
+        <select value={f.supervisorUsuarioId} onChange={(e) => elegirSupervisor(e.target.value)} style={inp}>
+          <option value="">— sin asignar —</option>
+          {opcionesSup.map((s) => (
+            <option key={s._id} value={s._id}>{s.nombreCompleto}</option>
+          ))}
+        </select>
       </label>
 
       <div style={{ display: "flex", gap: 8 }}>
@@ -321,7 +442,7 @@ function TarjetaGrupo({
       </div>
 
       <div>
-        <span style={lbl}>Cuadrilla (técnicos)</span>
+        <span style={lbl}>Integrantes</span>
         <div style={{ maxHeight: 168, overflowY: "auto", border: "1.5px solid #e2e8f0", borderRadius: 6, padding: 6, marginTop: 3 }}>
           {orden.length === 0 && <div style={{ fontSize: 12, color: "#94a3b8" }}>Cargando técnicos…</div>}
           {orden.map((t) => (
@@ -336,19 +457,9 @@ function TarjetaGrupo({
         </div>
       </div>
 
-      <label style={campo}>
-        <span style={lbl}>Líder del grupo</span>
-        <select value={liderId} onChange={(e) => setLiderId(e.target.value)} style={inp}>
-          <option value="">— sin líder —</option>
-          {seleccionados.map((t) => (
-            <option key={t._id} value={t._id}>{t.nombreCompleto}</option>
-          ))}
-        </select>
-      </label>
-
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <button onClick={guardar} disabled={busy} style={{ ...btnSec, padding: "6px 12px" }}>
-          {busy ? "Guardando…" : grupo ? "Actualizar grupo" : "Crear grupo"}
+          {busy ? "Guardando…" : "Guardar grupo"}
         </button>
         {msg && <span style={{ fontSize: 11, color: msg === "Guardado." ? "#15803d" : "#dc2626" }}>{msg}</span>}
       </div>
@@ -700,234 +811,6 @@ function SeccionOtManual({ paradaId, onChange }: { paradaId: string; onChange: (
         </button>
         {msg && <span style={{ fontSize: 12, color: msg.includes("Error") || msg.includes("obligat") ? "#dc2626" : "#15803d" }}>{msg}</span>}
       </div>
-    </div>
-  );
-}
-
-/* ── Cierre de la parada ───────────────────────────────────────────────── */
-function SeccionCierre({
-  parada, tablero, puedeCerrar, usuario, onChange,
-}: {
-  parada: ParadaDetalle;
-  tablero: TableroData | null;
-  puedeCerrar: boolean;
-  usuario: SessionPayload;
-  onChange: () => Promise<void>;
-}) {
-  const cerrada = parada.estado === "cerrada";
-  const [notas, setNotas] = useState({
-    leccionesAprendidas: parada.leccionesAprendidas ?? "",
-    observacionesCierre: parada.observacionesCierre ?? "",
-  });
-  const [busy, setBusy] = useState<"" | "notas" | "cerrar" | "reabrir" | "pdf">("");
-  const [msg, setMsg] = useState("");
-
-  async function patch(body: Record<string, unknown>): Promise<boolean> {
-    const res = await fetch(`/api/paradas/${parada.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (data.ok === false) {
-      setMsg(data.error ?? "Error al guardar");
-      return false;
-    }
-    return true;
-  }
-
-  async function guardarNotas() {
-    setBusy("notas");
-    setMsg("");
-    try {
-      const ok = await patch({
-        leccionesAprendidas: notas.leccionesAprendidas || null,
-        observacionesCierre: notas.observacionesCierre || null,
-      });
-      if (ok) {
-        setMsg("Notas de cierre guardadas.");
-        await onChange();
-      }
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function cerrar() {
-    if (!confirm(`¿Cerrar la parada ${parada.codigo}? Se bloquea el registro de avances y reportes. Podrás reabrirla si hace falta.`)) return;
-    setBusy("cerrar");
-    setMsg("");
-    try {
-      if (await patch({ estado: "cerrada", fechaCierre: new Date().toISOString() })) {
-        setMsg("Parada cerrada.");
-        await onChange();
-      }
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function reabrir() {
-    if (!confirm(`¿Reabrir la parada ${parada.codigo}? Vuelve al estado «En ejecución».`)) return;
-    setBusy("reabrir");
-    setMsg("");
-    try {
-      if (await patch({ estado: "ejecucion", fechaCierre: null })) {
-        setMsg("Parada reabierta.");
-        await onChange();
-      }
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function generarPdf() {
-    setBusy("pdf");
-    setMsg("");
-    try {
-      const res = await fetch(`/api/paradas/${parada.id}/avances`);
-      const avances: AvanceCli[] = res.ok ? await res.json() : [];
-      const hhPorOt = new Map<string, number>();
-      for (const a of avances) {
-        hhPorOt.set(a.paradaOtId, (hhPorOt.get(a.paradaOtId) ?? 0) + a.hhPropias + a.hhApoyo);
-      }
-      const otsEjec = parada.ots.filter((o) => o.fase === "ejecucion");
-      const emitidos = parada.reportesDiarios.filter((r) => r.estado === "emitido");
-
-      const retrasosMap = new Map<string, { numeroOT: string; motivo: string; accion: string }>();
-      for (const r of emitidos) {
-        for (const x of r.otsConRetraso ?? []) {
-          if (!retrasosMap.has(x.numeroOT)) {
-            retrasosMap.set(x.numeroOT, { numeroOT: x.numeroOT, motivo: x.motivo, accion: x.accion });
-          }
-        }
-      }
-      const pendMap = new Map<string, { tipo: string; detalle: string }>();
-      for (const r of emitidos) {
-        for (const p of r.pendientes ?? []) {
-          const k = `${p.tipo}|${p.detalle}`;
-          if (!pendMap.has(k)) pendMap.set(k, { tipo: p.tipo, detalle: p.detalle });
-        }
-      }
-
-      const porDisciplina = tablero
-        ? DISCIPLINAS_PARADA.map((d) => ({ disciplina: d, ...tablero.porDisciplina[d] })).filter((x) => x.otsTotal > 0)
-        : [];
-
-      const datos: DatosInformeCierre = {
-        paradaCodigo: parada.codigo,
-        paradaNombre: parada.nombre,
-        planta: parada.planta,
-        fechaPreparativosInicio: parada.fechaPreparativosInicio,
-        fechaEjecucionInicio: parada.fechaEjecucionInicio,
-        fechaEjecucionFin: parada.fechaEjecucionFin,
-        fechaCierre: parada.fechaCierre,
-        estado: parada.estado,
-        avanceGlobalPct: tablero?.avanceGlobalPct ?? 0,
-        cumplimientoPct: Math.round((tablero?.cumplimientoHoy ?? 0) * 100),
-        otsEjecucion: {
-          total: tablero?.ots.ejecucion.total ?? otsEjec.length,
-          terminadas: tablero?.ots.ejecucion.terminadas ?? 0,
-          enEjecucion: tablero?.ots.ejecucion.enEjecucion ?? 0,
-          noIniciadas: tablero?.ots.ejecucion.noIniciadas ?? 0,
-          conRetraso: tablero?.ots.ejecucion.conRetraso ?? 0,
-        },
-        otsPreparativos: {
-          total: tablero?.ots.preparativos.total ?? 0,
-          terminadas: tablero?.ots.preparativos.terminadas ?? 0,
-        },
-        hh: {
-          hhEst: tablero?.hh.hhEst ?? 0,
-          hhReal: tablero?.hh.hhReal ?? 0,
-          factorProductividad: tablero?.hh.factorProductividad ?? 0,
-        },
-        porDisciplina,
-        serieDiaria: tablero?.serieDiaria ?? [],
-        detalleOts: otsEjec.map((o) => ({
-          numeroOT: o.numeroOT,
-          descripcion: o.descripcion,
-          disciplina: o.disciplina,
-          grupo: o.grupo,
-          hhEst: o.hhEstimadas,
-          hhReal: Math.round((hhPorOt.get(o.id) ?? 0) * 10) / 10,
-          avancePct: o.avancePct,
-          estado: o.estado,
-        })),
-        otsPendientes: otsEjec
-          .filter((o) => o.estado !== "terminada")
-          .map((o) => ({
-            numeroOT: o.numeroOT,
-            descripcion: o.descripcion,
-            disciplina: o.disciplina,
-            avancePct: o.avancePct,
-            estado: o.estado,
-          })),
-        retrasosReportados: [...retrasosMap.values()],
-        pendientesReportados: [...pendMap.values()],
-        leccionesAprendidas: notas.leccionesAprendidas,
-        observacionesCierre: notas.observacionesCierre,
-        generadoPor: usuario.nombre || usuario.email || "—",
-      };
-      generarInformeCierrePdf(datos);
-    } finally {
-      setBusy("");
-    }
-  }
-
-  const ta: React.CSSProperties = { ...inp, minHeight: 76, resize: "vertical", fontFamily: "inherit" };
-
-  return (
-    <div style={{ ...seccion, borderColor: cerrada ? "#bbf7d0" : "#e2e8f0", background: cerrada ? "#f0fdf4" : undefined }}>
-      <h3 style={h3}>Cierre de la parada</h3>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 12 }}>
-        <label style={{ ...campo, minWidth: 0 }}>
-          <span style={lbl}>Lecciones aprendidas</span>
-          <textarea
-            value={notas.leccionesAprendidas}
-            onChange={(e) => setNotas((p) => ({ ...p, leccionesAprendidas: e.target.value }))}
-            style={ta}
-            placeholder="Qué salió bien, qué mejorar para la próxima parada…"
-          />
-        </label>
-        <label style={{ ...campo, minWidth: 0 }}>
-          <span style={lbl}>Observaciones de cierre</span>
-          <textarea
-            value={notas.observacionesCierre}
-            onChange={(e) => setNotas((p) => ({ ...p, observacionesCierre: e.target.value }))}
-            style={ta}
-            placeholder="Pendientes trasladados a operación / mantenimiento normal, acuerdos…"
-          />
-        </label>
-      </div>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <button onClick={guardarNotas} disabled={busy !== ""} style={btnSec}>
-          {busy === "notas" ? "Guardando…" : "Guardar notas de cierre"}
-        </button>
-        <button onClick={generarPdf} disabled={busy !== ""} style={btnPrim}>
-          {busy === "pdf" ? "Generando…" : "Generar informe de cierre (PDF)"}
-        </button>
-        {puedeCerrar && !cerrada && (
-          <button onClick={cerrar} disabled={busy !== ""} style={{ ...btnPrim, background: "#16a34a" }}>
-            {busy === "cerrar" ? "Cerrando…" : "Cerrar parada"}
-          </button>
-        )}
-        {puedeCerrar && cerrada && (
-          <button onClick={reabrir} disabled={busy !== ""} style={{ ...btnSec, borderColor: "#f59e0b", color: "#b45309" }}>
-            {busy === "reabrir" ? "Reabriendo…" : "Reabrir parada"}
-          </button>
-        )}
-        {msg && <span style={{ fontSize: 12, color: msg.includes("Error") ? "#dc2626" : "#15803d" }}>{msg}</span>}
-      </div>
-      {cerrada && parada.fechaCierre && (
-        <p style={{ fontSize: 12, color: "#15803d", margin: "10px 0 0", fontWeight: 700 }}>
-          Parada cerrada el {new Date(parada.fechaCierre).toLocaleDateString("es-BO")}.
-        </p>
-      )}
-      {!puedeCerrar && (
-        <p style={{ fontSize: 11, color: "#94a3b8", margin: "8px 0 0" }}>
-          Sólo Admin y Superintendente pueden cerrar o reabrir la parada.
-        </p>
-      )}
     </div>
   );
 }
