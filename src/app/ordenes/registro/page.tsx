@@ -8,7 +8,7 @@ import { useUser } from "@/context/AuthContext";
 import { getFechaTurno, localDateStr, autoTurno, estaEnVentanaCierreSemanal } from "@/lib/turno";
 import { getWeekNumber, getWeekDates, getSemanaAnioOffset } from "@/lib/semana";
 import { tipoOtDisplay, normalizarACodigoCompleto } from "@/lib/tiposOt";
-import { guardarBorrador, leerBorrador, borrarBorrador, type BorradorGuardado } from "@/lib/borradorOT";
+import { guardarBorrador, leerBorrador, borrarBorrador, asegurarStoragePersistente, type BorradorGuardado } from "@/lib/borradorOT";
 import PanelParadaOts from "./PanelParadaOts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1247,6 +1247,15 @@ export default function RegistroOTPage() {
 
   const [errs, setErrs] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  // Guard SÍNCRONO contra doble envío: `submitting` es estado de React y se
+  // aplica un tick tarde, así que un segundo tap (o un reintento del navegador
+  // con red intermitente) ya disparó otro POST antes de que el botón quede
+  // deshabilitado. El ref se setea en el mismo instante de la llamada.
+  const submittingRef = useRef(false);
+  // Clave estable por intento de registro; el backend la usa para no crear la
+  // misma OT dos veces. Se rota al completar una OT (nueva OT = clave nueva);
+  // un reintento tras error reusa la misma para que el server deduplique.
+  const idempotencyKeyRef = useRef<string>("");
   const [submitErr, setSubmitErr] = useState("");
   const [done, setDone] = useState(false);
   const [doneOT, setDoneOT] = useState<{ numeroOT: string; estado: string; consolidado?: boolean; parentOtNum?: string | null } | null>(null);
@@ -1257,6 +1266,13 @@ export default function RegistroOTPage() {
   const claveBorrador = user ? `otregistro:${user.id}` : null;
   const [borrador, setBorrador] = useState<BorradorGuardado<BorradorOT> | null>(null);
   const [borradorListo, setBorradorListo] = useState(false);
+  // `true` cuando el último intento de autoguardado NO pudo persistir (modo
+  // privado, cuota agotada, IndexedDB bloqueada): se avisa en pantalla para que
+  // el técnico no confíe en un borrador que no existe.
+  const [borradorFallo, setBorradorFallo] = useState(false);
+  // Snapshot vivo del formulario para volcarlo al ocultar/cerrar la pestaña sin
+  // esperar el debounce de 800ms.
+  const borradorSnapRef = useRef<BorradorOT | null>(null);
 
   useEffect(() => {
     if (!claveBorrador) return;
@@ -1273,15 +1289,47 @@ export default function RegistroOTPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claveBorrador]);
 
+  // Persistencia del almacenamiento local: sin esto el navegador puede descartar
+  // IndexedDB al quedarse sin espacio o tras días sin visitar el sitio (Safari
+  // en iOS lo borra a los ~7 días). Se pide una sola vez al montar.
+  useEffect(() => {
+    asegurarStoragePersistente().then((ok) => {
+      if (!ok) console.warn("Almacenamiento local no persistente — el borrador podría borrarse solo.");
+    });
+  }, []);
+
   useEffect(() => {
     if (!claveBorrador || !borradorListo || borrador) return;
     const tieneContenido = form.lineas.length > 0 || lineaTieneContenido(editLinea);
-    if (!tieneContenido) return;
-    const id = setTimeout(() => {
-      guardarBorrador<BorradorOT>(claveBorrador, { form, editLinea, editIdx, isNewLinea, step, view });
+    if (!tieneContenido) {
+      borradorSnapRef.current = null;
+      return;
+    }
+    const snap: BorradorOT = { form, editLinea, editIdx, isNewLinea, step, view };
+    borradorSnapRef.current = snap;
+    const id = setTimeout(async () => {
+      const ok = await guardarBorrador<BorradorOT>(claveBorrador, snap);
+      setBorradorFallo(!ok);
     }, 800);
     return () => clearTimeout(id);
   }, [claveBorrador, borradorListo, borrador, form, editLinea, editIdx, isNewLinea, step, view]);
+
+  // Volcado inmediato al ocultar la pestaña o navegar fuera: en el celular el
+  // técnico bloquea el teléfono o cambia de app antes de que corra el debounce.
+  useEffect(() => {
+    if (!claveBorrador) return;
+    const flush = () => {
+      const snap = borradorSnapRef.current;
+      if (snap) void guardarBorrador<BorradorOT>(claveBorrador, snap);
+    };
+    const onVisibility = () => { if (document.visibilityState === "hidden") flush(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", flush);
+    };
+  }, [claveBorrador]);
 
   function recuperarBorrador() {
     if (!borrador) return;
@@ -1292,11 +1340,14 @@ export default function RegistroOTPage() {
     setStep(borrador.datos.step);
     setView("registro");
     setBorrador(null);
+    setBorradorFallo(false);
   }
 
   function descartarBorrador() {
     if (claveBorrador) borrarBorrador(claveBorrador);
+    borradorSnapRef.current = null;
     setBorrador(null);
+    setBorradorFallo(false);
   }
 
   // Detección de OT madre OPEPLANT al escribir N° OT.
@@ -1817,11 +1868,21 @@ export default function RegistroOTPage() {
   // ─── Submit ────────────────────────────────────────────────────────────────
 
   async function submit(estado: "borrador" | "pendiente_revision" | "en_proceso") {
+    // Guard síncrono: bloquea el 2º disparo antes de que React aplique `submitting`.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    if (!idempotencyKeyRef.current) {
+      idempotencyKeyRef.current =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
     setSubmitting(true); setSubmitErr("");
     try {
       // OTs recurrentes siempre se crean en en_proceso (acumulan avances durante la semana)
       const estadoFinal = form.esRecurrente ? "en_proceso" : estado;
       const payload = {
+        idempotencyKey: idempotencyKeyRef.current,
         fecha: form.fecha, turno: form.turno, areaCodigo: form.areaCodigo,
         tecnicos: form.tecnicos, estado: estadoFinal,
         origenPlan: form.origenPlan,
@@ -1852,11 +1913,16 @@ export default function RegistroOTPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error al guardar");
       if (claveBorrador) borrarBorrador(claveBorrador);
+      borradorSnapRef.current = null;
+      idempotencyKeyRef.current = ""; // OT creada: la próxima usa clave nueva
       setDone(true);
       setDoneOT({ numeroOT: data.ot.numeroOT, estado: data.ot.estado, consolidado: data.consolidado ?? false, parentOtNum: data.ot.parentOtNum ?? null });
     } catch (e: unknown) {
+      // Se conserva idempotencyKeyRef: si el técnico reintenta el mismo envío, el
+      // backend deduplica en vez de crear otra OT.
       setSubmitErr(e instanceof Error ? e.message : "Error desconocido");
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
@@ -1965,6 +2031,17 @@ export default function RegistroOTPage() {
             >
               Descartar
             </button>
+          </div>
+        )}
+
+        {/* Aviso: el autoguardado local NO pudo persistir en este navegador */}
+        {borradorFallo && !done && (
+          <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 10, background: "#fef2f2", border: "1.5px solid #fecaca", display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "#b91c1c", fontWeight: 600 }}>
+            <span style={{ fontSize: 16 }}>⚠️</span>
+            <span>
+              No se pudo guardar el borrador en este dispositivo (modo privado, sin espacio o almacenamiento bloqueado).
+              No cierres la pestaña sin enviar la OT — no quedará copia local.
+            </span>
           </div>
         )}
 
@@ -2746,7 +2823,7 @@ export default function RegistroOTPage() {
                   return (
                     <div style={{ ...S.card, background: "#f8fafc" }}>
                       <p style={{ fontSize: 12, color: "#64748b", lineHeight: 1.7, marginBottom: 12 }}>
-                        <strong style={{ color: "#1e293b" }}>Borrador</strong>: guarda sin enviar.{" "}
+                        <strong style={{ color: "#1e293b" }}>Guardar como borrador de OT</strong>: crea la OT en el servidor sin enviarla (queda editable después).{" "}
                         {!form.origenPlan && <><strong style={{ color: "#2563eb" }}>Guardar y continuar</strong>: deja la OT abierta para agregar avances otro día.{" "}</>}
                         <strong style={{ color: "#1e293b" }}>Enviar a revisión</strong>: el supervisor recibirá para aprobar.
                         {form.origenPlan && <><br /><strong style={{ color: "#1d4ed8" }}>El estado en el plan semanal se actualizará automáticamente.</strong></>}
@@ -2754,7 +2831,7 @@ export default function RegistroOTPage() {
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                         <button onClick={() => setStep(2)} style={S.btnGhost} disabled={submitting}>← Editar</button>
                         <button onClick={() => submit("borrador")} style={{ ...S.btnOutline, opacity: submitting ? 0.6 : 1 }} disabled={submitting}>
-                          {submitting ? "Guardando..." : "💾 Borrador"}
+                          {submitting ? "Guardando..." : "💾 Guardar borrador de OT"}
                         </button>
                         {!form.origenPlan && (
                           <button onClick={() => submit("en_proceso")} style={{ ...S.btnPrimary(submitting), marginLeft: "auto" }} disabled={submitting}>

@@ -40,10 +40,11 @@ export interface BorradorGuardado<T> {
 
 /**
  * Guarda (o reemplaza) el borrador bajo `clave`. Nunca lanza: si falla (modo
- * privado del navegador, cuota agotada, etc.) simplemente no persiste, para
- * no romper el llenado normal del formulario.
+ * privado del navegador, cuota agotada, etc.) devuelve `false` para que la UI
+ * pueda avisar que el borrador NO quedó guardado en este dispositivo, sin
+ * romper el llenado normal del formulario.
  */
-export async function guardarBorrador<T>(clave: string, datos: T): Promise<void> {
+export async function guardarBorrador<T>(clave: string, datos: T): Promise<boolean> {
   try {
     const db = await abrirDB();
     await new Promise<void>((resolve, reject) => {
@@ -54,8 +55,27 @@ export async function guardarBorrador<T>(clave: string, datos: T): Promise<void>
       tx.onerror = () => reject(tx.error);
     });
     db.close();
+    return true;
   } catch (err: unknown) {
     console.error("No se pudo guardar el borrador local:", err);
+    return false;
+  }
+}
+
+/**
+ * Pide al navegador que marque el almacenamiento del sitio como "persistente"
+ * para que no lo borre automáticamente al quedarse sin espacio (o tras días de
+ * inactividad, como hace Safari en iOS). Devuelve el estado real: `true` si ya
+ * era persistente o si el navegador concedió el permiso. No falla si la API no
+ * existe (navegadores viejos / WebView).
+ */
+export async function asegurarStoragePersistente(): Promise<boolean> {
+  try {
+    if (typeof navigator === "undefined" || !navigator.storage?.persist) return false;
+    if (await navigator.storage.persisted()) return true;
+    return await navigator.storage.persist();
+  } catch {
+    return false;
   }
 }
 

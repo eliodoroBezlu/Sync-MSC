@@ -10,6 +10,31 @@ const include = {
   registrosDiarios: { orderBy: { fecha: "asc" as const } },
 };
 
+// ── Idempotencia de creación de OT ──────────────────────────────────────────
+// El formulario de Registro puede disparar dos POST casi simultáneos (doble tap,
+// reintento del navegador con red intermitente). El botón sólo se deshabilita
+// vía estado de React, que es asíncrono y llega tarde a la segunda llamada, así
+// que ambas peticiones entran al handler y crean dos OT idénticas.
+//
+// El cliente manda un `idempotencyKey` (UUID) estable por intento. Guardamos la
+// clave en memoria del proceso apenas llega la petición: la segunda ve la clave
+// "en curso" y se rechaza; si la primera ya terminó, la segunda recibe la MISMA
+// respuesta (misma OT) en vez de crear otra.
+//
+// Es una defensa en memoria (un solo contenedor en Railway). No cubre varias
+// instancias; para eso haría falta una columna única en BD. Con el guard
+// síncrono del cliente alcanza para el doble-envío real.
+const TTL_IDEMPOTENCIA_MS = 60_000;
+type EntradaIdem = { ts: number; respuesta: Record<string, unknown> | null };
+const idempotenciaOT = new Map<string, EntradaIdem>();
+
+function limpiarIdempotenciaVencida() {
+  const ahora = Date.now();
+  for (const [clave, entrada] of idempotenciaOT) {
+    if (ahora - entrada.ts > TTL_IDEMPOTENCIA_MS) idempotenciaOT.delete(clave);
+  }
+}
+
 function serializeOT(ot: Record<string, unknown> & {
   tecnicos?: { usuarioId?: string | null; nombreCompleto: string }[];
   lineas?: Record<string, unknown>[];
@@ -287,14 +312,47 @@ async function siguienteNumeroOT(): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
+  let idemKey: string | null = null;
+  // Marca la respuesta final para la clave de idempotencia (2do POST del mismo
+  // intento recibe esta misma respuesta en vez de crear otra OT).
+  const guardarIdem = (payload: Record<string, unknown>) => {
+    if (idemKey) idempotenciaOT.set(idemKey, { ts: Date.now(), respuesta: payload });
+    return payload;
+  };
+  // Libera la clave: este POST no creó nada, así que un reintento corregido debe
+  // poder pasar.
+  const liberarIdem = () => {
+    if (idemKey) idempotenciaOT.delete(idemKey);
+  };
   try {
     const body = await req.json();
+
+    idemKey =
+      typeof body.idempotencyKey === "string" && body.idempotencyKey.trim()
+        ? body.idempotencyKey.trim()
+        : null;
+    if (idemKey) {
+      limpiarIdempotenciaVencida();
+      const previa = idempotenciaOT.get(idemKey);
+      if (previa) {
+        if (previa.respuesta) {
+          return NextResponse.json(previa.respuesta, { status: 200 });
+        }
+        return NextResponse.json(
+          { ok: false, error: "La OT ya se está registrando (doble envío detectado). Espera unos segundos." },
+          { status: 409 }
+        );
+      }
+      idempotenciaOT.set(idemKey, { ts: Date.now(), respuesta: null });
+    }
+
     const esDePlan = !!body.programacionSemanalId;
     const areaCodigo: string | null = typeof body.areaCodigo === "string" ? body.areaCodigo.trim() || null : null;
     const otJdeNumero = normalizeString(body.otJdeNumero);
     const otJdeDia = normalizeString(body.otJdeDia);
 
     if (!esDePlan && !otJdeNumero) {
+      liberarIdem();
       return NextResponse.json(
         { ok: false, error: "Ingrese el N° de OT del JDE para registrar una OT reactiva." },
         { status: 400 }
@@ -331,6 +389,7 @@ export async function POST(req: NextRequest) {
         // Bloquear avances si la OT ya fue enviada a revisión o está cerrada
         const estadosBloqueados = ["pendiente_revision", "revisado", "concluido"];
         if (estadosBloqueados.includes(existente.estado)) {
+          liberarIdem();
           return NextResponse.json(
             { ok: false, error: `No se puede agregar un avance — la OT está en estado "${existente.estado}". Contacta al supervisor.` },
             { status: 409 }
@@ -439,7 +498,7 @@ export async function POST(req: NextRequest) {
         });
 
         return NextResponse.json(
-          { ok: true, ot: serializeOT(otActualizada as Parameters<typeof serializeOT>[0]), consolidado: true },
+          guardarIdem({ ok: true, ot: serializeOT(otActualizada as Parameters<typeof serializeOT>[0]), consolidado: true }),
           { status: 200 }
         );
       }
@@ -474,6 +533,7 @@ export async function POST(req: NextRequest) {
         });
 
         if (madre && estadosBloqueados.includes(madre.estado)) {
+          liberarIdem();
           return NextResponse.json(
             { ok: false, error: `La OT OPEPLANT ${otJdeNumero} ya fue cerrada (${madre.estado}). Contacta al supervisor.` },
             { status: 409 }
@@ -551,6 +611,7 @@ export async function POST(req: NextRequest) {
             select: { id: true, numeroOT: true, estado: true },
           });
           if (reactivaAbierta) {
+            liberarIdem();
             return NextResponse.json(
               {
                 ok: false,
@@ -669,10 +730,11 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { ok: true, ot: serializeOT(ot as Parameters<typeof serializeOT>[0]) },
+      guardarIdem({ ok: true, ot: serializeOT(ot as Parameters<typeof serializeOT>[0]) }),
       { status: 201 }
     );
   } catch (err: unknown) {
+    liberarIdem();
     const message = err instanceof Error ? err.message : "Error interno";
     return NextResponse.json({ ok: false, error: message }, { status: 400 });
   }
