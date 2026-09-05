@@ -42,6 +42,8 @@ export interface ParadaOtCli {
   fechaProg: string | null;
   fechaProgFin: string | null;
   grupo: "Dia" | "Noche" | "Ambos";
+  grupoCodigo: string;
+  grupoNumero: number | null;
   responsable: string | null;
   critica: boolean;
   estado: string;

@@ -719,7 +719,13 @@ model ParadaOt {
   hhEstimadas       Float     @default(0)
   fechaProg         DateTime?
   fechaProgFin      DateTime?
-  grupo             String    @default("Dia") // Dia | Noche | Ambos
+  grupo             String    @default("Dia") // Dia | Noche | Ambos (turno)
+  // Cuadrilla asignada dentro de la disciplina. `grupoCodigo` conserva el
+  // código crudo del Excel ("ELE-01", "INS-03", "TURNO"); `grupoNumero` es el
+  // número correlativo 1..N por disciplina (ELE-01→1, ELE-02→2, …) que empareja
+  // con ParadaGrupo.numero. Null = OT sin cuadrilla en el listado origen.
+  grupoCodigo       String    @default("")
+  grupoNumero       Int?
   responsable       String?
   critica           Boolean   @default(false)
   estado            String    @default("no_iniciada") // no_iniciada | en_ejecucion | terminada | con_retraso

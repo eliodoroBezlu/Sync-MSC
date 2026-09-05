@@ -4,11 +4,13 @@ import * as XLSX from "xlsx";
 import { parseFilasOts, type FilaImportNormalizada } from "@/lib/parada/importar";
 import { importarJsonSchema, zodError } from "@/lib/parada/validacion";
 import {
+  asignarGruposSecuenciales,
   normalizarCritica,
   normalizarDisciplina,
   normalizarFase,
   normalizarGrupo,
   parseFechaImport,
+  resumirGrupos,
 } from "@/lib/parada/importar";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -53,10 +55,13 @@ export async function POST(req: NextRequest, { params }: Ctx) {
           fechaProg: parseFechaImport(f.fechaProg),
           fechaProgFin: parseFechaImport(f.fechaProgFin),
           grupo: normalizarGrupo(f.grupo),
+          grupoCodigo: "",
+          grupoNumero: null,
           responsable: f.responsable.trim() || null,
           critica: normalizarCritica(f.critica),
         });
       }
+      asignarGruposSecuenciales(filas);
     } else {
       const formData = await req.formData();
       const file = formData.get("file") as File | null;
@@ -94,6 +99,8 @@ export async function POST(req: NextRequest, { params }: Ctx) {
           { status: 400 },
         );
       }
+      // Re-numera las cuadrillas sobre el total (varias hojas = varias disciplinas).
+      asignarGruposSecuenciales(filas);
     }
 
     if (filas.length === 0) {
@@ -105,9 +112,12 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
     const existentes = await prisma.paradaOt.findMany({
       where: { paradaId: id },
-      select: { numeroOT: true },
+      select: { numeroOT: true, grupoNumero: true },
     });
     const vistos = new Set(existentes.map((o) => o.numeroOT));
+    const sinCuadrilla = new Set(
+      existentes.filter((o) => o.grupoNumero == null).map((o) => o.numeroOT),
+    );
     let orden = existentes.length;
     let duplicadas = 0;
 
@@ -116,6 +126,19 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       vistos.add(f.numeroOT);
       return true;
     });
+
+    // Backfill: OTs ya cargadas (de una importación previa sin este campo) que
+    // ahora sí traen cuadrilla en el listado.
+    let cuadrillasBackfill = 0;
+    for (const f of filas) {
+      if (f.grupoNumero == null || !sinCuadrilla.has(f.numeroOT)) continue;
+      sinCuadrilla.delete(f.numeroOT);
+      await prisma.paradaOt.updateMany({
+        where: { paradaId: id, numeroOT: f.numeroOT },
+        data: { grupoCodigo: f.grupoCodigo, grupoNumero: f.grupoNumero },
+      });
+      cuadrillasBackfill++;
+    }
 
     if (nuevas.length > 0) {
       await prisma.paradaOt.createMany({
@@ -131,6 +154,8 @@ export async function POST(req: NextRequest, { params }: Ctx) {
           fechaProg: f.fechaProg,
           fechaProgFin: f.fechaProgFin,
           grupo: f.grupo,
+          grupoCodigo: f.grupoCodigo,
+          grupoNumero: f.grupoNumero,
           responsable: f.responsable,
           critica: f.critica,
           orden: ++orden,
@@ -138,10 +163,44 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       });
     }
 
+    // Crea las cuadrillas (ParadaGrupo) que trae el listado y que aún no existen.
+    // El supervisor sale de la columna "SUPERVISOR"; el turno, del turno
+    // mayoritario de sus OTs. No pisa grupos ya configurados a mano (miembros,
+    // dotación, supervisor cargado).
+    const gruposNuevos = resumirGrupos(filas);
+    const yaExisten = await prisma.paradaGrupo.findMany({
+      where: { paradaId: id },
+      select: { disciplina: true, numero: true, supervisorNombre: true, id: true },
+    });
+    const claveExistente = new Map(yaExisten.map((g) => [`${g.disciplina}|${g.numero}`, g]));
+    let gruposCreados = 0;
+    for (const g of gruposNuevos) {
+      const previo = claveExistente.get(`${g.disciplina}|${g.numero}`);
+      if (!previo) {
+        await prisma.paradaGrupo.create({
+          data: {
+            paradaId: id,
+            turno: g.turno,
+            disciplina: g.disciplina,
+            numero: g.numero,
+            supervisorNombre: g.supervisorNombre,
+          },
+        });
+        gruposCreados++;
+      } else if (!previo.supervisorNombre && g.supervisorNombre) {
+        await prisma.paradaGrupo.update({
+          where: { id: previo.id },
+          data: { supervisorNombre: g.supervisorNombre },
+        });
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       importadas: nuevas.length,
       duplicadasOmitidas: duplicadas,
+      cuadrillasBackfill,
+      gruposCreados,
       sinDisciplina,
       sinNumero,
       seccionesOmitidas,

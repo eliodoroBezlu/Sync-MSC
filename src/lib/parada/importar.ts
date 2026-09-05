@@ -238,8 +238,86 @@ export interface FilaImportNormalizada {
   fechaProg: Date | null;
   fechaProgFin: Date | null;
   grupo: "Dia" | "Noche" | "Ambos";
+  /** Código crudo de cuadrilla de la columna "No. GRUPO" ("ELE-01", "TURNO"). */
+  grupoCodigo: string;
+  /** Correlativo 1..N por disciplina; se completa con `asignarGruposSecuenciales`. */
+  grupoNumero: number | null;
   responsable: string | null;
   critica: boolean;
+}
+
+/**
+ * Traduce los códigos de cuadrilla ("ELE-01", "INS-13", "TURNO") a un número
+ * correlativo 1..N **por disciplina**, en orden natural y sin huecos:
+ * ELE-01→1, ELE-02→2, … , TURNO→8 · INS-01→1, … , INS-11→10, INS-13→11, INS-14→12.
+ * Si una disciplina no trae ningún código (caso TESA), todas sus filas quedan
+ * en el grupo 1. Muta las filas recibidas.
+ */
+export function asignarGruposSecuenciales(filas: FilaImportNormalizada[]): void {
+  const porDisciplina = new Map<DisciplinaParada, FilaImportNormalizada[]>();
+  for (const f of filas) {
+    const arr = porDisciplina.get(f.disciplina) ?? [];
+    arr.push(f);
+    porDisciplina.set(f.disciplina, arr);
+  }
+
+  for (const grupoFilas of porDisciplina.values()) {
+    const codigos = [...new Set(grupoFilas.map((f) => f.grupoCodigo).filter(Boolean))].sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }),
+    );
+    const numeroDe = new Map(codigos.map((c, i) => [c, i + 1]));
+    const sinCodigos = codigos.length === 0;
+    for (const f of grupoFilas) {
+      f.grupoNumero = f.grupoCodigo ? numeroDe.get(f.grupoCodigo) ?? null : sinCodigos ? 1 : null;
+    }
+  }
+}
+
+export interface GrupoResumen {
+  disciplina: DisciplinaParada;
+  numero: number;
+  turno: "Dia" | "Noche";
+  supervisorNombre: string;
+}
+
+/** Cuenta ocurrencias y devuelve la clave más repetida (o `""`). */
+function moda(valores: string[]): string {
+  const cuenta = new Map<string, number>();
+  for (const v of valores) if (v) cuenta.set(v, (cuenta.get(v) ?? 0) + 1);
+  let mejor = "";
+  let max = 0;
+  for (const [v, n] of cuenta) if (n > max) ((max = n), (mejor = v));
+  return mejor;
+}
+
+/**
+ * Deriva las cuadrillas (disciplina + número correlativo) presentes en las
+ * filas ya numeradas: turno = turno mayoritario de sus OTs, supervisor = valor
+ * más frecuente de la columna "SUPERVISOR". Requiere `asignarGruposSecuenciales`
+ * previo.
+ */
+export function resumirGrupos(filas: FilaImportNormalizada[]): GrupoResumen[] {
+  const porClave = new Map<string, FilaImportNormalizada[]>();
+  for (const f of filas) {
+    if (f.grupoNumero == null) continue;
+    const clave = `${f.disciplina}|${f.grupoNumero}`;
+    const arr = porClave.get(clave) ?? [];
+    arr.push(f);
+    porClave.set(clave, arr);
+  }
+
+  const grupos: GrupoResumen[] = [];
+  for (const [clave, arr] of porClave) {
+    const [disciplina, numeroStr] = clave.split("|");
+    const noche = arr.filter((f) => f.grupo === "Noche").length;
+    grupos.push({
+      disciplina: disciplina as DisciplinaParada,
+      numero: Number(numeroStr),
+      turno: noche > arr.length / 2 ? "Noche" : "Dia",
+      supervisorNombre: moda(arr.map((f) => f.responsable ?? "")),
+    });
+  }
+  return grupos.sort((a, b) => a.disciplina.localeCompare(b.disciplina) || a.numero - b.numero);
 }
 
 export interface ResultadoParse {
@@ -309,7 +387,11 @@ export function parseFilasOts(rows: unknown[][], opts: OpcionesParse = {}): Resu
 
     const fechaProg = parseFechaHoraImport(col("fechaProg", row));
     const fechaProgFin = parseFechaHoraImport(col("fechaProgFin", row));
-    const grupo = normalizarGrupoOpt(col("grupo", row)) ?? grupoPorHora(fechaProg);
+    const grupoCrudo = String(col("grupo", row) ?? "").trim();
+    const grupo = normalizarGrupoOpt(grupoCrudo) ?? grupoPorHora(fechaProg);
+    // El código de cuadrilla ("ELE-01") sólo se guarda si NO es un turno suelto
+    // ("Día"/"Noche"), que ya quedó capturado en `grupo`.
+    const grupoCodigo = normalizarGrupoOpt(grupoCrudo) ? "" : grupoCrudo.toUpperCase();
     const responsable = String(col("responsable", row) ?? "").trim() || null;
     const tagCol = String(col("tag", row) ?? "").trim().toUpperCase();
     const tag = tagCol || extraerTagDeDescripcion(descripcion);
@@ -333,11 +415,14 @@ export function parseFilasOts(rows: unknown[][], opts: OpcionesParse = {}): Resu
         fechaProg,
         fechaProgFin,
         grupo,
+        grupoCodigo,
+        grupoNumero: null,
         responsable,
         critica,
       });
     }
   }
 
+  asignarGruposSecuenciales(filas);
   return { filas, sinDisciplina, sinNumero, seccionesOmitidas, columnas };
 }

@@ -329,6 +329,11 @@ const migraciones = [
       FOREIGN KEY ("paradaGrupoId") REFERENCES "ParadaGrupo"(id) ON DELETE CASCADE
   )`,
   "CREATE INDEX IF NOT EXISTS \"ParadaGrupoMiembro_paradaGrupoId_idx\" ON \"ParadaGrupoMiembro\" (\"paradaGrupoId\")",
+
+  // ── Parada: cuadrilla (código + número correlativo) por OT (2026-09) ──────
+  "ALTER TABLE \"ParadaOt\" ADD COLUMN IF NOT EXISTS \"grupoCodigo\" TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE \"ParadaOt\" ALTER COLUMN \"grupoCodigo\" SET DEFAULT ''",
+  "ALTER TABLE \"ParadaOt\" ADD COLUMN IF NOT EXISTS \"grupoNumero\" INTEGER",
 ];
 
 (async () => {

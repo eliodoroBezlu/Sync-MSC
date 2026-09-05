@@ -588,6 +588,11 @@ function FilaAsignacionOt({
         <span style={{ fontWeight: 700, fontSize: 13, color: "#0f2847" }}>{ot.numeroOT}</span>
         <span style={{ fontSize: 12, color: "#64748b" }}>{ot.tag || "—"}</span>
         <span style={{ fontSize: 11, fontWeight: 700, color: "#ea580c" }}>{ot.grupo}</span>
+        {ot.grupoNumero != null && (
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: "#0f2847", borderRadius: 5, padding: "1px 6px" }}>
+            G{ot.grupoNumero}
+          </span>
+        )}
         <span style={{ fontSize: 12, color: "#334155", flex: 1, minWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {ot.descripcion}
         </span>
@@ -644,6 +649,8 @@ function SeccionImportar({ paradaId, onChange }: { paradaId: string; onChange: (
       }
       setMsg(
         `Importadas ${data.importadas} · ${data.duplicadasOmitidas} duplicadas omitidas` +
+          (data.gruposCreados ? ` · ${data.gruposCreados} cuadrillas creadas` : "") +
+          (data.cuadrillasBackfill ? ` · ${data.cuadrillasBackfill} OTs vinculadas a su cuadrilla` : "") +
           (data.sinDisciplina ? ` · ${data.sinDisciplina} sin disciplina` : "") +
           (data.seccionesOmitidas ? ` · ${data.seccionesOmitidas} filas de agrupación` : ""),
       );
