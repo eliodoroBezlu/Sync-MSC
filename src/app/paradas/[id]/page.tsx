@@ -21,6 +21,9 @@ import {
 // Roles 3 (Supervisor) y 4 (Técnico) entran restringidos a su propia disciplina.
 const ROLES_VER = [1, 2, 3, 4, 5];
 const ROLES_CONFIG = [1, 2, 5];
+// El supervisor (rol 3) también entra a Configuración, pero sólo a las secciones
+// Grupos y Asignaciones (armar cuadrillas y asignar personal).
+const ROLES_CONFIG_GRUPOS = [1, 2, 3, 5];
 const ROLES_REPORTE = [3, 5];
 
 type Tab = "resumen" | "preparativos" | "ejecucion" | "reportes" | "config";
@@ -96,6 +99,7 @@ export default function ParadaDetallePage({ params }: { params: Promise<{ id: st
 
   const puedeVer = ROLES_VER.includes(user.rol);
   const puedeConfig = ROLES_CONFIG.includes(user.rol);
+  const puedeConfigGrupos = ROLES_CONFIG_GRUPOS.includes(user.rol);
   const puedeReporte = ROLES_REPORTE.includes(user.rol);
   const cerrada = parada?.estado === "cerrada";
   // Disciplina a la que queda restringido el usuario (null = ve todo).
@@ -149,7 +153,7 @@ export default function ParadaDetallePage({ params }: { params: Promise<{ id: st
     { key: "preparativos", label: "Preparativos" },
     { key: "ejecucion", label: "Ejecución" },
     { key: "reportes", label: "Reportes" },
-    { key: "config", label: "Configuración", oculto: !puedeConfig },
+    { key: "config", label: "Configuración", oculto: !puedeConfigGrupos },
   ];
 
   return (
@@ -234,6 +238,7 @@ export default function ParadaDetallePage({ params }: { params: Promise<{ id: st
           ) : (
             <ConfigParada
               parada={parada}
+              soloGrupos={!puedeConfig}
               onChange={recargar}
               onDeleted={() => router.replace("/paradas")}
             />

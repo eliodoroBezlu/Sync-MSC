@@ -83,6 +83,8 @@ interface Props {
   parada: ParadaDetalle;
   onChange: () => Promise<void>;
   onDeleted: () => void;
+  /** Supervisores (rol 3): sólo ven/editan Grupos y Asignaciones. */
+  soloGrupos?: boolean;
 }
 
 const DISCIPLINAS: DisciplinaParada[] = ["ELEC", "INST", "TESA"];
@@ -98,7 +100,15 @@ const h3: React.CSSProperties = { fontSize: 14, fontWeight: 800, color: "#0f2847
 const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" };
 const campo: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 3, minWidth: 130 };
 
-export default function ConfigParada({ parada, onChange, onDeleted }: Props) {
+export default function ConfigParada({ parada, onChange, onDeleted, soloGrupos = false }: Props) {
+  if (soloGrupos) {
+    return (
+      <div>
+        <SeccionGrupos parada={parada} onChange={onChange} />
+        <SeccionAsignaciones parada={parada} onChange={onChange} />
+      </div>
+    );
+  }
   return (
     <div>
       <SeccionDatos parada={parada} onChange={onChange} />
