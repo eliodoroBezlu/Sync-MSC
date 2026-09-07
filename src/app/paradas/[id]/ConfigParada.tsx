@@ -381,7 +381,7 @@ function TarjetaGrupoAccordion({
   const supNombre = grupo.supervisorNombre ?? "";
   const supUsuarioId = grupo.supervisorUsuarioId ?? null;
 
-  // Personal MSC (con cuenta) del grupo: usuarioId -> nombre.
+  // Personal con cuenta (minera / contratista fijo) del grupo: usuarioId -> nombre.
   const [propios, setPropios] = useState<Map<string, string>>(
     () =>
       new Map(
@@ -390,17 +390,13 @@ function TarjetaGrupoAccordion({
           .map((m) => [m.usuarioId as string, m.nombre]),
       ),
   );
-  // Personal de apoyo (contratistas sin cuenta): miembros sin usuarioId.
+  // Contratistas de parada (sin cuenta en el sistema): miembros sin usuarioId.
+  // Se muestran en la misma columna PERSONAL pero con otro color.
   const [apoyo, setApoyo] = useState<{ key: string; nombre: string }[]>(
     () =>
       (grupo.miembros ?? [])
         .filter((m) => !m.usuarioId)
         .map((m) => ({ key: rid(), nombre: m.nombre })),
-  );
-  // Apoyo del que todavía no se tiene el nombre — sólo cuenta.
-  const apoyoNombradoInicial = (grupo.miembros ?? []).filter((m) => !m.usuarioId).length;
-  const [apoyoSinNombre, setApoyoSinNombre] = useState<string>(
-    String(Math.max(0, (grupo.dotacionApoyo ?? 0) - apoyoNombradoInicial) || ""),
   );
   // Personas creadas con «Persona nueva» en esta sesión (para que aparezcan en la lista).
   const [extra, setExtra] = useState<{ usuarioId: string; nombre: string }[]>([]);
@@ -429,7 +425,9 @@ function TarjetaGrupoAccordion({
     [propios],
   );
 
-  const apoyoTotal = apoyo.filter((a) => a.nombre.trim()).length + (Number(apoyoSinNombre) || 0);
+  // Contratistas de parada con nombre puesto, y total de personal del grupo.
+  const apoyoConNombre = apoyo.filter((a) => a.nombre.trim()).length;
+  const personalTotal = propios.size + apoyoConNombre;
 
   function toggleTecnico(id: string, nombre: string) {
     setPropios((prev) => {
@@ -441,10 +439,10 @@ function TarjetaGrupoAccordion({
     marcar();
   }
 
-  // Pasar a alguien de «Personal MSC» a «Personal de apoyo»: se le quita la
-  // cuenta (queda como nombre suelto). Útil cuando el roster metió contratistas
-  // en la columna equivocada.
-  function moverAApoyo(id: string, nombre: string) {
+  // Marcar a alguien como «contratista de parada»: se le quita la cuenta y queda
+  // como nombre suelto (color ámbar). Útil cuando el roster metió contratistas
+  // como personal de minera.
+  function pasarAParada(id: string, nombre: string) {
     setPropios((prev) => {
       const n = new Map(prev);
       n.delete(id);
@@ -544,7 +542,7 @@ function TarjetaGrupoAccordion({
           supervisorNombre: supNombre,
           supervisorUsuarioId: supUsuarioId || null,
           dotacionPropia: propios.size,
-          dotacionApoyo: apoyoLimpio.length + (Number(apoyoSinNombre) || 0),
+          dotacionApoyo: apoyoLimpio.length,
           miembros,
         }),
       });
@@ -610,7 +608,10 @@ function TarjetaGrupoAccordion({
         </span>
         <span style={{ fontSize: 12, color: "#64748b", flex: 1, minWidth: 40 }}>{otsGrupo.length} OT</span>
         <span style={{ fontSize: 12, color: "#334155", whiteSpace: "nowrap" }}>
-          👷 {propios.size}&nbsp;MSC&nbsp;&nbsp;🤝 {apoyoTotal}&nbsp;apoyo
+          👥 {personalTotal}
+          {apoyoConNombre > 0 && (
+            <span style={{ color: "#b45309" }}>&nbsp;·&nbsp;{apoyoConNombre}&nbsp;de&nbsp;parada</span>
+          )}
         </span>
         {dirty && (
           <span
@@ -698,20 +699,42 @@ function TarjetaGrupoAccordion({
               )}
             </div>
 
-            {/* 2 · Personal MSC (con cuenta) */}
-            <div style={colCfg}>
+            {/* 2 · PERSONAL — con cuenta (minera / contratista fijo) + contratistas de parada */}
+            <div style={{ ...colCfg, flex: 1.6, minWidth: 300 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                <span style={lbl}>Personal MSC · {propios.size}</span>
-                <button
-                  onClick={() => setVerPicker((v) => !v)}
-                  disabled={busy}
-                  style={{ ...btnSec, padding: "3px 10px", fontSize: 12 }}
-                >
-                  {verPicker ? "Listo" : "＋ Técnico"}
-                </button>
+                <span style={lbl}>Personal · {personalTotal}</span>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    onClick={agregarApoyo}
+                    disabled={busy}
+                    style={{ ...btnSec, padding: "3px 10px", fontSize: 12 }}
+                  >
+                    ＋ Agregar nombre
+                  </button>
+                  <button
+                    onClick={() => setVerPicker((v) => !v)}
+                    disabled={busy}
+                    style={{ ...btnSec, padding: "3px 10px", fontSize: 12 }}
+                  >
+                    {verPicker ? "Listo" : "＋ Técnico"}
+                  </button>
+                </div>
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
-                {propiosLista.length === 0 && <div style={vacioTxt}>Sin personal confirmado.</div>}
+
+              <div style={{ display: "flex", gap: 12, fontSize: 10, color: "#94a3b8", marginTop: 2 }}>
+                <span>
+                  <span style={{ color: "#1d4ed8" }}>●</span> minera / contratista fijo
+                </span>
+                <span>
+                  <span style={{ color: "#b45309" }}>●</span> contratista de parada
+                </span>
+              </div>
+
+              {/* Con cuenta — chips azules */}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
+                {propiosLista.length === 0 && apoyo.length === 0 && (
+                  <div style={vacioTxt}>Sin personal en este grupo.</div>
+                )}
                 {propiosLista.map(([id, nom]) => (
                   <span
                     key={id}
@@ -729,8 +752,8 @@ function TarjetaGrupoAccordion({
                   >
                     {nom}
                     <button
-                      onClick={() => moverAApoyo(id, nom)}
-                      title="Pasar a Personal de apoyo (no tiene cuenta)"
+                      onClick={() => pasarAParada(id, nom)}
+                      title="Marcar como contratista de parada (sin cuenta)"
                       style={{ border: "none", background: "transparent", color: "#0369a1", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "2px 1px" }}
                     >
                       →
@@ -745,6 +768,38 @@ function TarjetaGrupoAccordion({
                   </span>
                 ))}
               </div>
+
+              {/* Contratistas de parada — nombres sueltos, editables, color ámbar */}
+              {apoyo.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 6 }}>
+                  {apoyo.map((a) => (
+                    <div key={a.key} style={{ display: "flex", gap: 5 }}>
+                      <input
+                        value={a.nombre}
+                        onChange={(e) => setApoyoAt(a.key, e.target.value)}
+                        placeholder="Nombre y apellido"
+                        style={{
+                          ...inp,
+                          flex: 1,
+                          fontSize: 12,
+                          padding: "5px 7px",
+                          background: "#fffbeb",
+                          borderColor: "#fde68a",
+                          color: "#92400e",
+                        }}
+                      />
+                      <button
+                        onClick={() => quitarApoyo(a.key)}
+                        title="Quitar"
+                        style={{ ...btnSec, padding: "2px 8px", color: "#dc2626", borderColor: "#fecaca" }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {verPicker && (
                 <div style={{ marginTop: 8 }}>
                   <button
@@ -776,46 +831,6 @@ function TarjetaGrupoAccordion({
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* 3 · Personal de apoyo (contratistas sin cuenta) */}
-            <div style={colCfg}>
-              <span style={lbl}>Personal de apoyo · {apoyoTotal}</span>
-              <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 5 }}>
-                {apoyo.map((a) => (
-                  <div key={a.key} style={{ display: "flex", gap: 5 }}>
-                    <input
-                      value={a.nombre}
-                      onChange={(e) => setApoyoAt(a.key, e.target.value)}
-                      placeholder="Nombre y apellido"
-                      style={{ ...inp, flex: 1, fontSize: 12, padding: "5px 7px" }}
-                    />
-                    <button
-                      onClick={() => quitarApoyo(a.key)}
-                      title="Quitar"
-                      style={{ ...btnSec, padding: "2px 8px", color: "#dc2626", borderColor: "#fecaca" }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-                <button onClick={agregarApoyo} style={{ ...btnSec, padding: "5px 10px", alignSelf: "flex-start" }}>
-                  ＋ Agregar nombre
-                </button>
-                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#64748b" }}>
-                  Sin nombre aún:
-                  <input
-                    type="number"
-                    min={0}
-                    value={apoyoSinNombre}
-                    onChange={(e) => {
-                      setApoyoSinNombre(e.target.value);
-                      marcar();
-                    }}
-                    style={{ ...inp, width: 56, padding: "4px 6px" }}
-                  />
-                </label>
-              </div>
             </div>
           </div>
 
