@@ -632,8 +632,8 @@ function TarjetaGrupoAccordion({
       {abierto && (
         <div style={{ padding: 12, borderTop: "1.5px solid #e2e8f0" }}>
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
-            {/* 1 · OT del grupo */}
-            <div style={colCfg}>
+            {/* 1 · OT del grupo — 60% del ancho */}
+            <div style={{ ...colCfg, flex: 3, minWidth: 280 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
                 <span style={lbl}>OT del grupo · {otsGrupo.length}</span>
                 <button
@@ -649,9 +649,12 @@ function TarjetaGrupoAccordion({
                 {otsGrupo.map((o) => (
                   <div
                     key={o.id}
-                    style={{ display: "flex", gap: 6, alignItems: "flex-start", padding: "4px 0", fontSize: 12, borderBottom: "1px solid #f1f5f9" }}
+                    style={{ display: "flex", gap: 6, alignItems: "center", padding: "4px 0", fontSize: 12, borderBottom: "1px solid #f1f5f9" }}
                   >
-                    <span style={{ flex: 1 }}>
+                    <span
+                      title={`${o.numeroOT} ${o.descripcion}`}
+                      style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                    >
                       <span style={{ fontWeight: 700, color: "#0f2847" }}>{o.numeroOT}</span>{" "}
                       <span style={{ color: "#475569" }}>{o.descripcion}</span>
                     </span>
@@ -676,7 +679,7 @@ function TarjetaGrupoAccordion({
                   {otsFuera.map((o) => (
                     <div
                       key={o.id}
-                      style={{ display: "flex", gap: 6, alignItems: "flex-start", fontSize: 12, padding: "3px 0" }}
+                      style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, padding: "3px 0" }}
                     >
                       <button
                         onClick={() => vincularOt(o.id, grupo.numero)}
@@ -686,7 +689,10 @@ function TarjetaGrupoAccordion({
                       >
                         ＋
                       </button>
-                      <span style={{ flex: 1 }}>
+                      <span
+                        title={`${o.numeroOT} ${o.descripcion}`}
+                        style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                      >
                         <span style={{ fontWeight: 700, color: "#0f2847" }}>{o.numeroOT}</span>{" "}
                         <span style={{ color: "#475569" }}>{o.descripcion}</span>
                         {o.grupoNumero != null && (
@@ -699,8 +705,8 @@ function TarjetaGrupoAccordion({
               )}
             </div>
 
-            {/* 2 · PERSONAL — con cuenta (minera / contratista fijo) + contratistas de parada */}
-            <div style={{ ...colCfg, flex: 1.6, minWidth: 300 }}>
+            {/* 2 · PERSONAL — con cuenta (minera / contratista fijo) + contratistas de parada — 40% del ancho */}
+            <div style={{ ...colCfg, flex: 2, minWidth: 240 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
                 <span style={lbl}>Personal · {personalTotal}</span>
                 <div style={{ display: "flex", gap: 6 }}>

@@ -55,6 +55,20 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     });
 
     if (d.miembros) {
+      // El roster de la cuadrilla es la fuente de verdad de quién ejecuta SUS
+      // OT: se replica a las OT de esta cuadrilla (mismo grupoNumero + turno, y
+      // disciplina salvo MIXTO) para que el técnico las vea en "Registro de OT".
+      const idsMiembros = d.miembros
+        .map((m) => m.usuarioId)
+        .filter((x): x is string => !!x);
+      const nombresMiembros = d.miembros.map((m) => m.nombre);
+      const otWhere = {
+        paradaId: id,
+        grupoNumero: d.numero,
+        OR: [{ grupo: d.turno }, { grupo: "Ambos" }],
+        ...(d.disciplina !== "MIXTO" ? { disciplina: d.disciplina } : {}),
+      };
+
       await prisma.$transaction([
         prisma.paradaGrupoMiembro.deleteMany({ where: { paradaGrupoId: grupo.id } }),
         prisma.paradaGrupoMiembro.createMany({
@@ -64,6 +78,10 @@ export async function POST(req: NextRequest, { params }: Ctx) {
             nombre: m.nombre,
             esLider: m.esLider,
           })),
+        }),
+        prisma.paradaOt.updateMany({
+          where: otWhere,
+          data: { personalAsignado: nombresMiembros, personalAsignadoIds: idsMiembros },
         }),
       ]);
     }
