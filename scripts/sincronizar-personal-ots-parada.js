@@ -102,6 +102,15 @@ async function main() {
 
     for (const g of grupos) {
       const label = `${g.disciplina} ${g.turno} G${g.numero}`;
+
+      // No tocar grupos MIXTO: su OT-where no puede filtrar por disciplina y
+      // barrería OT de otras cuadrillas con el mismo grupoNumero. Tampoco tocar
+      // grupos sin roster: no queremos vaciar el personal ya asignado a sus OT.
+      if (g.disciplina === "MIXTO" || g.miembros.length === 0) {
+        console.log(`── ${label}  (saltado: ${g.disciplina === "MIXTO" ? "MIXTO" : "sin roster"})`);
+        continue;
+      }
+
       const nombresEfectivos = [];
       const ids = [];
 
