@@ -270,6 +270,10 @@ export default function ReporteOTPage() {
   const esAdmin     = user?.rol === 1;
 
   const [ordenes, setOrdenes] = useState<OTDoc[]>([]);
+  // IDs de OTs traídas por búsqueda directa por número (fuera del filtro de período).
+  // Se conservan aunque la recarga normal de la lista no las incluya, para que no
+  // "aparezcan y desaparezcan" al competir las dos peticiones.
+  const otsDirectasRef = useRef<Set<string>>(new Set());
   const [loadError, setLoadError] = useState("");
   const [areas, setAreas] = useState<AreaOpt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -382,6 +386,7 @@ export default function ReporteOTPage() {
       if (buscarDirecto) {
         // Fusionar resultado de búsqueda directa sin reemplazar toda la lista
         if (Array.isArray(data) && data.length > 0) {
+          data.forEach((o: OTDoc) => otsDirectasRef.current.add(o._id));
           setOrdenes(prev => {
             const ids = new Set(prev.map(o => o._id));
             const nuevas = data.filter((o: OTDoc) => !ids.has(o._id));
@@ -389,7 +394,17 @@ export default function ReporteOTPage() {
           });
         }
       } else {
-        setOrdenes(Array.isArray(data) ? data : []);
+        const arr: OTDoc[] = Array.isArray(data) ? data : [];
+        setOrdenes(prev => {
+          if (otsDirectasRef.current.size === 0) return arr;
+          // Conservar las OTs halladas por búsqueda directa que la lista normal
+          // no devuelve (p. ej. están fuera del filtro de período).
+          const ids = new Set(arr.map(o => o._id));
+          const conservadas = prev.filter(
+            o => otsDirectasRef.current.has(o._id) && !ids.has(o._id),
+          );
+          return [...arr, ...conservadas];
+        });
       }
     } catch {
       if (!buscarDirecto) {
@@ -408,6 +423,9 @@ export default function ReporteOTPage() {
     const num = filtroBuscar.trim();
     if (/^\d{4,6}$/.test(num)) {
       loadOrdenes(num);
+    } else if (num === "") {
+      // Al limpiar la búsqueda, dejar de conservar las OTs traídas por número.
+      otsDirectasRef.current.clear();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtroBuscar]);
