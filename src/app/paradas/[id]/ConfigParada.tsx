@@ -19,39 +19,6 @@ interface TecnicoOpt {
   esContratista: boolean;
 }
 
-/** Supervisor (rol 3) elegible como responsable de un grupo. */
-interface SupervisorOpt {
-  _id: string;
-  nombreCompleto: string;
-  disciplina: string | null;
-}
-
-/** Carga una sola vez la lista de supervisores (rol 3). */
-function useSupervisores(): SupervisorOpt[] {
-  const [lista, setLista] = useState<SupervisorOpt[]>([]);
-  useEffect(() => {
-    let vivo = true;
-    fetch("/api/usuarios?rol=3")
-      .then((r) => r.json())
-      .then((data: Array<{ _id: string; nombreCompleto: string; disciplina: string | null }>) => {
-        if (vivo && Array.isArray(data)) {
-          setLista(
-            data.map((u) => ({
-              _id: u._id,
-              nombreCompleto: u.nombreCompleto,
-              disciplina: u.disciplina ?? null,
-            })),
-          );
-        }
-      })
-      .catch(() => {});
-    return () => {
-      vivo = false;
-    };
-  }, []);
-  return lista;
-}
-
 /** Carga una sola vez la lista de técnicos + contratistas (rol 4 y 6). */
 function useTecnicos(): TecnicoOpt[] {
   const [lista, setLista] = useState<TecnicoOpt[]>([]);
@@ -103,6 +70,9 @@ const seccion: React.CSSProperties = {
 const h3: React.CSSProperties = { fontSize: 14, fontWeight: 800, color: "#0f2847", margin: "0 0 12px" };
 const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" };
 const campo: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 3, minWidth: 130 };
+const colCfg: React.CSSProperties = { flex: 1, minWidth: 220, display: "flex", flexDirection: "column", gap: 3 };
+const cajaLista: React.CSSProperties = { border: "1.5px solid #e2e8f0", borderRadius: 6, padding: "4px 8px", background: "#fff" };
+const vacioTxt: React.CSSProperties = { fontSize: 12, color: "#94a3b8", padding: "4px 0" };
 
 export default function ConfigParada({
   parada,
@@ -228,7 +198,6 @@ function SeccionGrupos({
   onChange: () => Promise<void>;
   discFiltro: DisciplinaParada | null;
 }) {
-  const supervisores = useSupervisores();
   const [turnoAct, setTurnoAct] = useState<TurnoParada>("Dia");
   const [creando, setCreando] = useState("");
 
@@ -251,6 +220,21 @@ function SeccionGrupos({
     for (const arr of m.values()) arr.sort((a, b) => a.nombre.localeCompare(b.nombre));
     return m;
   }, [parada.grupos]);
+
+  // OTs vinculadas a cada grupo del turno activo: `${disciplina}|${numero}` -> OTs.
+  const otsPorGrupo = useMemo(() => {
+    const m = new Map<string, ParadaOtCli[]>();
+    for (const ot of parada.ots) {
+      if (ot.grupoNumero == null) continue;
+      if (ot.grupo !== turnoAct && ot.grupo !== "Ambos") continue;
+      const k = `${ot.disciplina}|${ot.grupoNumero}`;
+      const arr = m.get(k) ?? [];
+      arr.push(ot);
+      m.set(k, arr);
+    }
+    for (const arr of m.values()) arr.sort((a, b) => a.numeroOT.localeCompare(b.numeroOT));
+    return m;
+  }, [parada.ots, turnoAct]);
 
   // Grupos existentes agrupados por `${turno}|${disciplina}`, ordenados por número.
   const porTurnoDisc = useMemo(() => {
@@ -286,7 +270,7 @@ function SeccionGrupos({
     <div style={seccion}>
       <h3 style={h3}>Grupos</h3>
       <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 12px" }}>
-        Elegí el turno, tocá un grupo para abrirlo y ahí asignás supervisor, técnicos y personal de apoyo.
+        Elegí el turno y tocá un grupo para abrirlo: ahí ves sus OT y asignás el personal.
         {discFiltro && ` Sólo ves los grupos de ${DISCIPLINA_LABEL[discFiltro]}.`}
       </p>
 
@@ -329,7 +313,7 @@ function SeccionGrupos({
                     turno={turnoAct}
                     disciplina={disc}
                     grupo={g}
-                    supervisores={supervisores}
+                    otsGrupo={otsPorGrupo.get(`${disc}|${g.numero}`) ?? []}
                     rosterDisc={rosterPorDisc.get(disc) ?? []}
                     onChange={onChange}
                   />
@@ -360,7 +344,7 @@ function TarjetaGrupoAccordion({
   turno,
   disciplina,
   grupo,
-  supervisores,
+  otsGrupo,
   rosterDisc,
   onChange,
 }: {
@@ -368,15 +352,18 @@ function TarjetaGrupoAccordion({
   turno: TurnoParada;
   disciplina: DisciplinaParada;
   grupo: ParadaGrupoCli;
-  supervisores: SupervisorOpt[];
+  otsGrupo: ParadaOtCli[];
   rosterDisc: { usuarioId: string; nombre: string }[];
   onChange: () => Promise<void>;
 }) {
   const [abierto, setAbierto] = useState(false);
-  const [supUsuarioId, setSupUsuarioId] = useState(grupo.supervisorUsuarioId ?? "");
-  const [supNombre, setSupNombre] = useState(grupo.supervisorNombre ?? "");
+  const [verPicker, setVerPicker] = useState(false);
 
-  // Técnicos propios del grupo: usuarioId -> nombre.
+  // El supervisor ya no se edita acá; se conserva lo que el grupo tenga.
+  const supNombre = grupo.supervisorNombre ?? "";
+  const supUsuarioId = grupo.supervisorUsuarioId ?? null;
+
+  // Personal MSC (con cuenta) del grupo: usuarioId -> nombre.
   const [propios, setPropios] = useState<Map<string, string>>(
     () =>
       new Map(
@@ -385,7 +372,7 @@ function TarjetaGrupoAccordion({
           .map((m) => [m.usuarioId as string, m.nombre]),
       ),
   );
-  // Personal de apoyo (contratistas) con nombre: se guardan como miembros sin usuarioId.
+  // Personal de apoyo (contratistas sin cuenta): miembros sin usuarioId.
   const [apoyo, setApoyo] = useState<{ key: string; nombre: string }[]>(
     () =>
       (grupo.miembros ?? [])
@@ -408,7 +395,7 @@ function TarjetaGrupoAccordion({
     setMsg("");
   };
 
-  // Lista para elegir: roster de la disciplina + ya seleccionados + nuevos de esta sesión.
+  // Lista del «＋ Técnico»: roster de la disciplina + ya elegidos + nuevos de esta sesión.
   const candidatos = useMemo(() => {
     const m = new Map<string, string>();
     for (const t of rosterDisc) m.set(t.usuarioId, t.nombre);
@@ -419,18 +406,10 @@ function TarjetaGrupoAccordion({
       .sort((a, b) => a.nombre.localeCompare(b.nombre));
   }, [rosterDisc, propios, extra]);
 
-  // Supervisores de la disciplina; si no hay ninguno, todos. Incluye el ya guardado.
-  const supsDisc = useMemo(() => {
-    const propiosSup = supervisores.filter((s) => s.disciplina === disciplina);
-    const base = propiosSup.length > 0 ? propiosSup : supervisores;
-    if (supUsuarioId && !base.some((s) => s._id === supUsuarioId)) {
-      return [
-        ...base,
-        { _id: supUsuarioId, nombreCompleto: supNombre || "(supervisor)", disciplina: null },
-      ];
-    }
-    return base;
-  }, [supervisores, disciplina, supUsuarioId, supNombre]);
+  const propiosLista = useMemo(
+    () => [...propios.entries()].sort((a, b) => a[1].localeCompare(b[1])),
+    [propios],
+  );
 
   const apoyoTotal = apoyo.filter((a) => a.nombre.trim()).length + (Number(apoyoSinNombre) || 0);
 
@@ -441,13 +420,6 @@ function TarjetaGrupoAccordion({
       else n.set(id, nombre);
       return n;
     });
-    marcar();
-  }
-
-  function elegirSupervisor(id: string) {
-    const s = supervisores.find((x) => x._id === id);
-    setSupUsuarioId(id);
-    setSupNombre(s?.nombreCompleto ?? "");
     marcar();
   }
 
@@ -550,7 +522,7 @@ function TarjetaGrupoAccordion({
 
   return (
     <div style={{ border: "1.5px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
-      {/* Cabecera / resumen — clic para desplegar */}
+      {/* Cabecera — clic para desplegar */}
       <div
         role="button"
         tabIndex={0}
@@ -564,7 +536,7 @@ function TarjetaGrupoAccordion({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 8,
+          gap: 10,
           padding: "10px 12px",
           cursor: "pointer",
           background: abierto ? "#f8fafc" : "white",
@@ -574,21 +546,9 @@ function TarjetaGrupoAccordion({
         <span style={{ fontSize: 13, fontWeight: 800, color: "#0f2847", whiteSpace: "nowrap" }}>
           Grupo {grupo.numero}
         </span>
-        <span
-          style={{
-            fontSize: 12,
-            color: supNombre ? "#334155" : "#94a3b8",
-            flex: 1,
-            minWidth: 60,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {supNombre || "sin supervisor"}
-        </span>
+        <span style={{ fontSize: 12, color: "#64748b", flex: 1, minWidth: 40 }}>{otsGrupo.length} OT</span>
         <span style={{ fontSize: 12, color: "#334155", whiteSpace: "nowrap" }}>
-          👷 {propios.size}&nbsp;&nbsp;🤝 {apoyoTotal}
+          👷 {propios.size}&nbsp;MSC&nbsp;&nbsp;🤝 {apoyoTotal}&nbsp;apoyo
         </span>
         {dirty && (
           <span
@@ -607,89 +567,121 @@ function TarjetaGrupoAccordion({
       </div>
 
       {abierto && (
-        <div
-          style={{
-            padding: 12,
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-            borderTop: "1.5px solid #e2e8f0",
-          }}
-        >
-          <label style={campo}>
-            <span style={lbl}>Supervisor</span>
-            <select value={supUsuarioId} onChange={(e) => elegirSupervisor(e.target.value)} style={inp}>
-              <option value="">— sin asignar —</option>
-              {supsDisc.map((s) => (
-                <option key={s._id} value={s._id}>{s.nombreCompleto}</option>
-              ))}
-            </select>
-          </label>
-
-          {/* Técnicos */}
-          <div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
-              <span style={lbl}>Técnicos · {propios.size}</span>
-              <button
-                onClick={personaNueva}
-                disabled={busy}
-                style={{ ...btnSec, padding: "3px 10px", fontSize: 12 }}
-              >
-                ＋ Persona nueva
-              </button>
+        <div style={{ padding: 12, borderTop: "1.5px solid #e2e8f0" }}>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
+            {/* 1 · OT del grupo */}
+            <div style={colCfg}>
+              <span style={lbl}>OT del grupo · {otsGrupo.length}</span>
+              <div style={cajaLista}>
+                {otsGrupo.length === 0 && <div style={vacioTxt}>Sin OT vinculadas a este grupo.</div>}
+                {otsGrupo.map((o) => (
+                  <div key={o.id} style={{ padding: "4px 0", fontSize: 12, borderBottom: "1px solid #f1f5f9" }}>
+                    <span style={{ fontWeight: 700, color: "#0f2847" }}>{o.numeroOT}</span>{" "}
+                    <span style={{ color: "#475569" }}>{o.descripcion}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div style={{ maxHeight: 180, overflowY: "auto", border: "1.5px solid #e2e8f0", borderRadius: 6, padding: 6 }}>
-              {candidatos.length === 0 && (
-                <div style={{ fontSize: 12, color: "#94a3b8" }}>
-                  Sin técnicos en el roster de esta disciplina. Usá «Persona nueva».
-                </div>
-              )}
-              {candidatos.map((t) => (
-                <label
-                  key={t.usuarioId}
-                  style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "2px 0", cursor: "pointer" }}
+
+            {/* 2 · Personal MSC (con cuenta) */}
+            <div style={colCfg}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                <span style={lbl}>Personal MSC · {propios.size}</span>
+                <button
+                  onClick={() => setVerPicker((v) => !v)}
+                  disabled={busy}
+                  style={{ ...btnSec, padding: "3px 10px", fontSize: 12 }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={propios.has(t.usuarioId)}
-                    onChange={() => toggleTecnico(t.usuarioId, t.nombre)}
-                  />
-                  <span style={{ color: "#0f2847" }}>{t.nombre}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Personal de apoyo */}
-          <div>
-            <span style={lbl}>Personal de apoyo (contratistas)</span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 3 }}>
-              {apoyo.length === 0 && (
-                <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin nombres de apoyo cargados.</div>
-              )}
-              {apoyo.map((a) => (
-                <div key={a.key} style={{ display: "flex", gap: 6 }}>
-                  <input
-                    value={a.nombre}
-                    onChange={(e) => setApoyoAt(a.key, e.target.value)}
-                    placeholder="Nombre y apellido"
-                    style={{ ...inp, flex: 1 }}
-                  />
-                  <button
-                    onClick={() => quitarApoyo(a.key)}
-                    title="Quitar"
-                    style={{ ...btnSec, padding: "2px 10px", color: "#dc2626", borderColor: "#fecaca" }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <button onClick={agregarApoyo} style={{ ...btnSec, padding: "6px 12px" }}>
-                  ＋ Agregar apoyo
+                  {verPicker ? "Listo" : "＋ Técnico"}
                 </button>
-                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#64748b" }}>
-                  o cantidad sin nombre:
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
+                {propiosLista.length === 0 && <div style={vacioTxt}>Sin personal confirmado.</div>}
+                {propiosLista.map(([id, nom]) => (
+                  <span
+                    key={id}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      background: "#eff6ff",
+                      border: "1px solid #bfdbfe",
+                      borderRadius: 999,
+                      padding: "2px 4px 2px 9px",
+                      fontSize: 12,
+                      color: "#0f2847",
+                    }}
+                  >
+                    {nom}
+                    <button
+                      onClick={() => toggleTecnico(id, nom)}
+                      title="Quitar"
+                      style={{ border: "none", background: "transparent", color: "#94a3b8", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 2 }}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+              {verPicker && (
+                <div style={{ marginTop: 8 }}>
+                  <button
+                    onClick={personaNueva}
+                    disabled={busy}
+                    style={{ ...btnSec, padding: "3px 10px", fontSize: 12, marginBottom: 6 }}
+                  >
+                    ＋ Persona nueva
+                  </button>
+                  <div style={{ ...cajaLista, maxHeight: 170, overflowY: "auto" }}>
+                    {candidatos.length === 0 && (
+                      <div style={vacioTxt}>
+                        Nadie en el roster de {DISCIPLINA_LABEL[disciplina]}. Usá «Persona nueva».
+                      </div>
+                    )}
+                    {candidatos.map((t) => (
+                      <label
+                        key={t.usuarioId}
+                        style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "2px 0", cursor: "pointer" }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={propios.has(t.usuarioId)}
+                          onChange={() => toggleTecnico(t.usuarioId, t.nombre)}
+                        />
+                        <span style={{ color: "#0f2847" }}>{t.nombre}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 3 · Personal de apoyo (contratistas sin cuenta) */}
+            <div style={colCfg}>
+              <span style={lbl}>Personal de apoyo · {apoyoTotal}</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 5 }}>
+                {apoyo.map((a) => (
+                  <div key={a.key} style={{ display: "flex", gap: 5 }}>
+                    <input
+                      value={a.nombre}
+                      onChange={(e) => setApoyoAt(a.key, e.target.value)}
+                      placeholder="Nombre y apellido"
+                      style={{ ...inp, flex: 1, fontSize: 12, padding: "5px 7px" }}
+                    />
+                    <button
+                      onClick={() => quitarApoyo(a.key)}
+                      title="Quitar"
+                      style={{ ...btnSec, padding: "2px 8px", color: "#dc2626", borderColor: "#fecaca" }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                <button onClick={agregarApoyo} style={{ ...btnSec, padding: "5px 10px", alignSelf: "flex-start" }}>
+                  ＋ Agregar nombre
+                </button>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#64748b" }}>
+                  Sin nombre aún:
                   <input
                     type="number"
                     min={0}
@@ -698,14 +690,14 @@ function TarjetaGrupoAccordion({
                       setApoyoSinNombre(e.target.value);
                       marcar();
                     }}
-                    style={{ ...inp, width: 70 }}
+                    style={{ ...inp, width: 56, padding: "4px 6px" }}
                   />
                 </label>
               </div>
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}>
             <button
               onClick={guardar}
               disabled={busy || !dirty}
