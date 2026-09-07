@@ -236,6 +236,19 @@ function SeccionGrupos({
     return m;
   }, [parada.ots, turnoAct]);
 
+  // Todas las OTs del turno activo por disciplina (para el picker «＋ OT» del grupo).
+  const otsPorDisc = useMemo(() => {
+    const m = new Map<string, ParadaOtCli[]>();
+    for (const ot of parada.ots) {
+      if (ot.grupo !== turnoAct && ot.grupo !== "Ambos") continue;
+      const arr = m.get(ot.disciplina) ?? [];
+      arr.push(ot);
+      m.set(ot.disciplina, arr);
+    }
+    for (const arr of m.values()) arr.sort((a, b) => a.numeroOT.localeCompare(b.numeroOT));
+    return m;
+  }, [parada.ots, turnoAct]);
+
   // Grupos existentes agrupados por `${turno}|${disciplina}`, ordenados por número.
   const porTurnoDisc = useMemo(() => {
     const m = new Map<string, ParadaGrupoCli[]>();
@@ -314,6 +327,7 @@ function SeccionGrupos({
                     disciplina={disc}
                     grupo={g}
                     otsGrupo={otsPorGrupo.get(`${disc}|${g.numero}`) ?? []}
+                    otsDisc={otsPorDisc.get(disc) ?? []}
                     rosterDisc={rosterPorDisc.get(disc) ?? []}
                     onChange={onChange}
                   />
@@ -345,6 +359,7 @@ function TarjetaGrupoAccordion({
   disciplina,
   grupo,
   otsGrupo,
+  otsDisc,
   rosterDisc,
   onChange,
 }: {
@@ -353,11 +368,14 @@ function TarjetaGrupoAccordion({
   disciplina: DisciplinaParada;
   grupo: ParadaGrupoCli;
   otsGrupo: ParadaOtCli[];
+  otsDisc: ParadaOtCli[];
   rosterDisc: { usuarioId: string; nombre: string }[];
   onChange: () => Promise<void>;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [verPicker, setVerPicker] = useState(false);
+  const [verOtPicker, setVerOtPicker] = useState(false);
+  const [otBusy, setOtBusy] = useState(false);
 
   // El supervisor ya no se edita acá; se conserva lo que el grupo tenga.
   const supNombre = grupo.supervisorNombre ?? "";
@@ -421,6 +439,50 @@ function TarjetaGrupoAccordion({
       return n;
     });
     marcar();
+  }
+
+  // Pasar a alguien de «Personal MSC» a «Personal de apoyo»: se le quita la
+  // cuenta (queda como nombre suelto). Útil cuando el roster metió contratistas
+  // en la columna equivocada.
+  function moverAApoyo(id: string, nombre: string) {
+    setPropios((prev) => {
+      const n = new Map(prev);
+      n.delete(id);
+      return n;
+    });
+    setApoyo((p) => [...p, { key: rid(), nombre }]);
+    marcar();
+  }
+
+  // OTs del turno/disciplina que todavía no están en este grupo.
+  const otsFuera = useMemo(
+    () => otsDisc.filter((o) => o.grupoNumero !== grupo.numero),
+    [otsDisc, grupo.numero],
+  );
+
+  // Vincular (numero) o sacar (null) una OT de este grupo — se guarda al toque.
+  async function vincularOt(otId: string, numero: number | null) {
+    setOtBusy(true);
+    setMsg("");
+    try {
+      const res = await fetch(`/api/paradas/${paradaId}/ots/${otId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          numero == null
+            ? { grupoNumero: null, grupoCodigo: "" }
+            : { grupoNumero: numero },
+        ),
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) {
+        setMsg(data.error ?? "No se pudo cambiar la OT");
+        return;
+      }
+      await onChange();
+    } finally {
+      setOtBusy(false);
+    }
   }
 
   async function personaNueva() {
@@ -571,16 +633,69 @@ function TarjetaGrupoAccordion({
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
             {/* 1 · OT del grupo */}
             <div style={colCfg}>
-              <span style={lbl}>OT del grupo · {otsGrupo.length}</span>
-              <div style={cajaLista}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                <span style={lbl}>OT del grupo · {otsGrupo.length}</span>
+                <button
+                  onClick={() => setVerOtPicker((v) => !v)}
+                  disabled={otBusy}
+                  style={{ ...btnSec, padding: "3px 10px", fontSize: 12 }}
+                >
+                  {verOtPicker ? "Listo" : "＋ OT"}
+                </button>
+              </div>
+              <div style={{ ...cajaLista, marginTop: 5 }}>
                 {otsGrupo.length === 0 && <div style={vacioTxt}>Sin OT vinculadas a este grupo.</div>}
                 {otsGrupo.map((o) => (
-                  <div key={o.id} style={{ padding: "4px 0", fontSize: 12, borderBottom: "1px solid #f1f5f9" }}>
-                    <span style={{ fontWeight: 700, color: "#0f2847" }}>{o.numeroOT}</span>{" "}
-                    <span style={{ color: "#475569" }}>{o.descripcion}</span>
+                  <div
+                    key={o.id}
+                    style={{ display: "flex", gap: 6, alignItems: "flex-start", padding: "4px 0", fontSize: 12, borderBottom: "1px solid #f1f5f9" }}
+                  >
+                    <span style={{ flex: 1 }}>
+                      <span style={{ fontWeight: 700, color: "#0f2847" }}>{o.numeroOT}</span>{" "}
+                      <span style={{ color: "#475569" }}>{o.descripcion}</span>
+                    </span>
+                    {verOtPicker && (
+                      <button
+                        onClick={() => vincularOt(o.id, null)}
+                        disabled={otBusy}
+                        title="Sacar del grupo"
+                        style={{ border: "none", background: "transparent", color: "#dc2626", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 2 }}
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
+              {verOtPicker && (
+                <div style={{ ...cajaLista, marginTop: 6, maxHeight: 170, overflowY: "auto" }}>
+                  {otsFuera.length === 0 && (
+                    <div style={vacioTxt}>No hay más OT de {DISCIPLINA_LABEL[disciplina]} en este turno.</div>
+                  )}
+                  {otsFuera.map((o) => (
+                    <div
+                      key={o.id}
+                      style={{ display: "flex", gap: 6, alignItems: "flex-start", fontSize: 12, padding: "3px 0" }}
+                    >
+                      <button
+                        onClick={() => vincularOt(o.id, grupo.numero)}
+                        disabled={otBusy}
+                        title="Agregar a este grupo"
+                        style={{ border: "none", background: "transparent", color: "#16a34a", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "0 2px" }}
+                      >
+                        ＋
+                      </button>
+                      <span style={{ flex: 1 }}>
+                        <span style={{ fontWeight: 700, color: "#0f2847" }}>{o.numeroOT}</span>{" "}
+                        <span style={{ color: "#475569" }}>{o.descripcion}</span>
+                        {o.grupoNumero != null && (
+                          <span style={{ color: "#94a3b8" }}> · en G{o.grupoNumero}</span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* 2 · Personal MSC (con cuenta) */}
@@ -614,8 +729,15 @@ function TarjetaGrupoAccordion({
                   >
                     {nom}
                     <button
+                      onClick={() => moverAApoyo(id, nom)}
+                      title="Pasar a Personal de apoyo (no tiene cuenta)"
+                      style={{ border: "none", background: "transparent", color: "#0369a1", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "2px 1px" }}
+                    >
+                      →
+                    </button>
+                    <button
                       onClick={() => toggleTecnico(id, nom)}
-                      title="Quitar"
+                      title="Quitar del grupo"
                       style={{ border: "none", background: "transparent", color: "#94a3b8", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 2 }}
                     >
                       ✕

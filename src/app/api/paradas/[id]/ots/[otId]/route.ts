@@ -24,6 +24,8 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     if (d.fechaProg !== undefined) data.fechaProg = d.fechaProg ?? null;
     if (d.fechaProgFin !== undefined) data.fechaProgFin = d.fechaProgFin ?? null;
     if (d.grupo !== undefined) data.grupo = d.grupo;
+    if (d.grupoCodigo !== undefined) data.grupoCodigo = d.grupoCodigo;
+    if (d.grupoNumero !== undefined) data.grupoNumero = d.grupoNumero;
     if (d.responsable !== undefined) data.responsable = d.responsable ?? null;
     if (d.critica !== undefined) data.critica = d.critica;
     if (d.estado !== undefined) data.estado = d.estado;

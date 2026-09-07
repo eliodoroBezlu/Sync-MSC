@@ -91,6 +91,9 @@ export const editarOtSchema = z.object({
   fechaProg: fechaNul.optional(),
   fechaProgFin: fechaNul.optional(),
   grupo: GRUPO_OT.optional(),
+  // Vincular / desvincular la OT de una cuadrilla (grupoNumero null = sacarla).
+  grupoCodigo: z.string().trim().optional(),
+  grupoNumero: z.coerce.number().int().min(1).nullable().optional(),
   responsable: z.string().trim().nullish(),
   critica: z.boolean().optional(),
   estado: ESTADO_OT.optional(),
