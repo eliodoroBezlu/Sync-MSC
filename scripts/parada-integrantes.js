@@ -13,6 +13,9 @@
 //   --codigo=PPML060   código de la parada (default PPML060)
 //   --xlsx=<ruta>      Excel a leer (default docs/plantilla_integrantes_parada.xlsx)
 //   --commit           aplica los cambios (sin esto es solo informe / dry-run)
+//   --crear-usuarios   crea como Usuario (rol 4, Técnico) a los integrantes que
+//                      no coincidan con nadie del sistema, y liga TODOS los
+//                      miembros a su usuario (así aparecen en Configuración).
 //
 // Reglas acordadas:
 //   - Todos los grupos van a turno "Dia".
@@ -27,6 +30,13 @@
 //          de esa disciplina, después del máximo existente.
 //   - Reemplaza el roster completo de cada cuadrilla del Excel
 //     (deleteMany + createMany). No toca cuadrillas que no estén en el Excel.
+//
+// Matcheo de nombres contra Usuario:
+//   1) exacto por conjunto de tokens (orden indistinto).
+//   2) flexible: si TODOS los tokens del nombre del Excel están contenidos en
+//      el nombre de UN solo usuario (≥2 tokens), se liga a ese — evita crear
+//      duplicados de gente que ya existe con el nombre algo distinto.
+//   3) con --crear-usuarios: los que siguen sin match se crean como Técnico.
 
 const path = require("path");
 const xlsx = require("xlsx");
@@ -41,6 +51,7 @@ const val = (name, def) => {
   return p ? p.slice(name.length + 3) : def;
 };
 const COMMIT = has("--commit");
+const CREAR_USUARIOS = has("--crear-usuarios");
 const CODIGO = val("codigo", "PPML060");
 const XLSX_PATH = path.resolve(
   process.cwd(),
@@ -61,6 +72,8 @@ const esRailway = /rlwy\.net|railway|proxy\.rlwy/.test(URL);
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const DISCIPLINA_DB = { ELE: "ELEC", INS: "INST", TESA: "TESA" };
+// disciplina del Usuario que se crea para un integrante de esa cuadrilla
+const DISCIPLINA_USUARIO = { ELEC: "ELEC", INST: "INST", TESA: "GENERAL" };
 
 function norm(s) {
   return String(s ?? "")
@@ -73,8 +86,17 @@ function norm(s) {
 function tokenSet(s) {
   return norm(s).split(" ").filter(Boolean).sort().join(" ");
 }
+function tokens(s) {
+  return norm(s).split(" ").filter(Boolean);
+}
 function limpiarNombre(s) {
   return String(s ?? "").replace(/\s+/g, " ").trim();
+}
+function tituloCase(s) {
+  return limpiarNombre(s)
+    .split(" ")
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+    .join(" ");
 }
 function mask(u) {
   return u.replace(/:\/\/[^@]+@/, "://***@");
@@ -164,6 +186,9 @@ function numeroPorRegla(g, otCodigoMap) {
   console.log(`BD    : ${mask(URL)}`);
   console.log(`Parada: ${CODIGO}`);
   console.log(`Modo  : ${COMMIT ? "COMMIT (escribe)" : "DRY-RUN (solo informe)"}`);
+  console.log(
+    `Crear usuarios: ${CREAR_USUARIOS ? "SÍ (rol 4 para los sin match)" : "no"}`,
+  );
   console.log("");
 
   const prisma = new PrismaClient({
@@ -187,7 +212,10 @@ function numeroPorRegla(g, otCodigoMap) {
       }),
       prisma.paradaGrupo.findMany({
         where: { paradaId: parada.id },
-        include: { _count: { select: { miembros: true } } },
+        include: {
+          _count: { select: { miembros: true } },
+          miembros: { select: { nombre: true } },
+        },
       }),
       prisma.usuario.findMany({
         select: { id: true, nombre: true, apellido: true, activo: true },
@@ -230,8 +258,10 @@ function numeroPorRegla(g, otCodigoMap) {
       ocupados.set(g.disciplina, s);
     }
 
-    // índice de usuarios por conjunto de tokens del nombre
+    // índice de usuarios por conjunto de tokens del nombre (match exacto)
     const idxUsuario = new Map();
+    // conjunto de tokens completo por usuario (match flexible por subconjunto)
+    const tokensUsuario = new Map();
     for (const u of usuarios) {
       const variantes = [
         u.nombre,
@@ -245,13 +275,31 @@ function numeroPorRegla(g, otCodigoMap) {
         arr.push(u);
         idxUsuario.set(k, arr);
       }
+      tokensUsuario.set(
+        u.id,
+        new Set([...tokens(u.nombre), ...tokens(u.apellido)]),
+      );
     }
     const matchUsuario = (nombre) => {
       const arr = idxUsuario.get(tokenSet(nombre));
-      if (!arr || arr.length === 0) return { estado: "sin match", usuario: null };
-      const unicos = [...new Map(arr.map((u) => [u.id, u])).values()];
-      if (unicos.length > 1) return { estado: "ambiguo", usuario: null };
-      return { estado: "ok", usuario: unicos[0] };
+      if (arr && arr.length) {
+        const unicos = [...new Map(arr.map((u) => [u.id, u])).values()];
+        if (unicos.length > 1) return { estado: "ambiguo", usuario: null };
+        return { estado: "ok", usuario: unicos[0] };
+      }
+      // match flexible: todos los tokens del Excel dentro de un único usuario
+      const ts = tokens(nombre);
+      if (ts.length >= 2) {
+        const cand = [];
+        for (const u of usuarios) {
+          const set = tokensUsuario.get(u.id);
+          if (ts.every((t) => set.has(t))) cand.push(u);
+        }
+        const unicos = [...new Map(cand.map((u) => [u.id, u])).values()];
+        if (unicos.length === 1)
+          return { estado: "ok~", usuario: unicos[0] };
+      }
+      return { estado: "sin match", usuario: null };
     };
 
     const { grupos, dotApoyo } = leerPlantilla();
@@ -279,7 +327,28 @@ function numeroPorRegla(g, otCodigoMap) {
       }
     }
 
-    // Fase 2: los que quedaron sin número → siguiente libre de la disciplina
+    // ids de grupos existentes ya "tomados" por un match de fase 1
+    const usados = new Set();
+    for (const g of grupos) {
+      if (g.numero == null) continue;
+      const e = existentePorDiscNum.get(`${g.disciplina}|${g.numero}`);
+      if (e) usados.add(e.id);
+    }
+
+    // Fase 2: los que quedaron sin número.
+    //   2a) idempotencia: si ya existe una cuadrilla de esa disciplina (creada
+    //       en una corrida anterior de este script, sin OTs que la anclen) cuyo
+    //       roster coincide con el del Excel, se reutiliza esa — no se duplica.
+    //   2b) si no, se le da el siguiente número libre de la disciplina.
+    const setNombres = (arr) =>
+      new Set(arr.map((x) => norm(typeof x === "string" ? x : x.nombre)));
+    const rosterCoincide = (aSet, bSet) => {
+      if (aSet.size === 0 || bSet.size === 0) return false;
+      let comunes = 0;
+      for (const x of aSet) if (bSet.has(x)) comunes++;
+      // igualdad de conjuntos, o uno contenido en el otro (re-run tras editar)
+      return comunes === aSet.size || comunes === bSet.size;
+    };
     const pendientes = grupos
       .filter((g) => g.numero == null)
       .sort(
@@ -287,6 +356,22 @@ function numeroPorRegla(g, otCodigoMap) {
       );
     for (const g of pendientes) {
       const s = ocupados.get(g.disciplina) ?? new Set();
+      const gSet = setNombres(g.miembros);
+      const previo = gruposExistentes.find(
+        (e) =>
+          e.disciplina === g.disciplina &&
+          !usados.has(e.id) &&
+          rosterCoincide(gSet, setNombres(e.miembros)),
+      );
+      if (previo) {
+        g.numero = previo.numero;
+        g.fuente = "roster previo";
+        g.existenteForzado = previo;
+        usados.add(previo.id);
+        s.add(previo.numero);
+        ocupados.set(g.disciplina, s);
+        continue;
+      }
       let n = 1;
       while (s.has(n)) n++;
       g.numero = n;
@@ -298,10 +383,23 @@ function numeroPorRegla(g, otCodigoMap) {
     // armar plan final
     const plan = grupos.map((g) => {
       const existente =
-        existentePorDiscNum.get(`${g.disciplina}|${g.numero}`) ?? null;
+        g.existenteForzado ??
+        existentePorDiscNum.get(`${g.disciplina}|${g.numero}`) ??
+        null;
       const miembros = g.miembros.map((nombre) => {
         const m = matchUsuario(nombre);
-        return { nombre, usuarioId: m.usuario?.id ?? null, match: m.estado };
+        const u = m.usuario;
+        const usuarioNombre = u
+          ? u.apellido
+            ? `${u.nombre} ${u.apellido}`
+            : u.nombre
+          : null;
+        return {
+          nombre,
+          usuarioId: u?.id ?? null,
+          usuarioNombre,
+          match: m.estado,
+        };
       });
       return {
         ...g,
@@ -314,6 +412,31 @@ function numeroPorRegla(g, otCodigoMap) {
     plan.sort(
       (a, b) => a.disciplina.localeCompare(b.disciplina) || a.numero - b.numero,
     );
+
+    // ─── usuarios a crear (--crear-usuarios) ─────────────────────────────────
+    // dedup por nombre normalizado: una persona en 2 cuadrillas = 1 usuario.
+    const usuariosACrear = new Map(); // norm(nombre) -> { nombre, disciplina, grupos:[] }
+    for (const g of plan) {
+      for (const m of g.miembros) {
+        if (m.usuarioId) continue;
+        const k = norm(m.nombre);
+        if (!k) continue;
+        const discU = DISCIPLINA_USUARIO[g.disciplina] ?? "GENERAL";
+        const prev = usuariosACrear.get(k);
+        if (!prev) {
+          usuariosACrear.set(k, {
+            nombre: tituloCase(m.nombre),
+            disciplina: discU,
+            grupos: [`${g.disciplina} ${g.codigo}`],
+          });
+        } else {
+          prev.grupos.push(`${g.disciplina} ${g.codigo}`);
+          // preferir disciplina específica sobre GENERAL
+          if (prev.disciplina === "GENERAL" && discU !== "GENERAL")
+            prev.disciplina = discU;
+        }
+      }
+    }
 
     // ─── informe ─────────────────────────────────────────────────────────────
     console.log("CUADRILLAS A CARGAR");
@@ -355,13 +478,21 @@ function numeroPorRegla(g, otCodigoMap) {
 
     const sinMatch = [];
     const ambiguos = [];
+    const flexList = [];
     let totalMiembros = 0;
     let totalOk = 0;
+    let totalFlex = 0;
     for (const g of plan)
       for (const m of g.miembros) {
         totalMiembros++;
         if (m.match === "ok") totalOk++;
-        else if (m.match === "ambiguo")
+        else if (m.match === "ok~") {
+          totalOk++;
+          totalFlex++;
+          flexList.push(
+            `${g.disciplina} ${g.codigo}: "${m.nombre}"  →  "${m.usuarioNombre}"`,
+          );
+        } else if (m.match === "ambiguo")
           ambiguos.push(`${g.disciplina} ${g.codigo}: ${m.nombre}`);
         else sinMatch.push(`${g.disciplina} ${g.codigo}: ${m.nombre}`);
       }
@@ -377,11 +508,18 @@ function numeroPorRegla(g, otCodigoMap) {
       `  ya existentes             : ${plan.filter((g) => g.existente).length}`,
     );
     console.log(`Personas (sin repetir/grupo): ${totalMiembros}`);
-    console.log(`  con usuario del sistema   : ${totalOk}`);
+    console.log(
+      `  con usuario del sistema   : ${totalOk}  (de ellos, match flexible: ${totalFlex})`,
+    );
     console.log(
       `  sin match / ambiguos      : ${sinMatch.length} / ${ambiguos.length}`,
     );
-    console.log(`  (se cargan igual como texto; usuarioId = null)`);
+    if (CREAR_USUARIOS)
+      console.log(
+        `  usuarios NUEVOS a crear   : ${usuariosACrear.size}  (rol 4, Técnico)`,
+      );
+    else
+      console.log(`  (se cargan igual como texto; usuarioId = null)`);
 
     if (conflictos.length) {
       console.log("");
@@ -393,15 +531,31 @@ function numeroPorRegla(g, otCodigoMap) {
       console.log("ℹ Personas en más de una cuadrilla (se cargan en ambas):");
       for (const [k, a] of repetidos) console.log(`  ${k}  →  ${a.join(" | ")}`);
     }
-    if (sinMatch.length) {
-      console.log("");
-      console.log("ℹ Nombres sin usuario en el sistema:");
-      for (const s of sinMatch) console.log(`  ${s}`);
-    }
     if (ambiguos.length) {
       console.log("");
-      console.log("ℹ Nombres que coinciden con más de un usuario:");
+      console.log("ℹ Nombres que coinciden con más de un usuario (quedan como texto):");
       for (const s of ambiguos) console.log(`  ${s}`);
+    }
+    if (flexList.length) {
+      console.log("");
+      console.log(
+        `MATCH FLEXIBLE — se ligan a un usuario existente (revisá que sean la misma persona): ${flexList.length}`,
+      );
+      for (const s of flexList) console.log(`  ${s}`);
+    }
+    if (CREAR_USUARIOS && usuariosACrear.size) {
+      console.log("");
+      console.log("USUARIOS NUEVOS QUE SE CREARÁN (rol 4):");
+      for (const [, u] of usuariosACrear)
+        console.log(
+          `  ${u.nombre.padEnd(38)} disc:${u.disciplina.padEnd(8)} ${[
+            ...new Set(u.grupos),
+          ].join(", ")}`,
+        );
+    } else if (!CREAR_USUARIOS && sinMatch.length) {
+      console.log("");
+      console.log("ℹ Nombres sin usuario en el sistema (usá --crear-usuarios):");
+      for (const s of sinMatch) console.log(`  ${s}`);
     }
 
     // ─── commit ──────────────────────────────────────────────────────────────
@@ -419,9 +573,33 @@ function numeroPorRegla(g, otCodigoMap) {
 
     console.log("");
     console.log("APLICANDO…");
+
+    // 1) crear los usuarios nuevos y armar mapa norm(nombre) -> id
+    const nuevoIdPorNombre = new Map();
+    let usuariosCreados = 0;
+    if (CREAR_USUARIOS) {
+      for (const [k, u] of usuariosACrear) {
+        const creado = await prisma.usuario.create({
+          data: {
+            nombre: u.nombre,
+            rol: 4,
+            disciplina: u.disciplina,
+            esContratista: false,
+            activo: true,
+          },
+          select: { id: true },
+        });
+        nuevoIdPorNombre.set(k, creado.id);
+        usuariosCreados++;
+      }
+      console.log(`  usuarios creados: ${usuariosCreados}`);
+    }
+
+    // 2) crear/actualizar cuadrillas y reemplazar roster
     let creados = 0;
     let actualizados = 0;
     let miembrosInsertados = 0;
+    let miembrosLigados = 0;
 
     for (const g of plan) {
       const dotacionPropia = g.miembros.length;
@@ -457,22 +635,26 @@ function numeroPorRegla(g, otCodigoMap) {
           where: { paradaGrupoId: grupo.id },
         });
         if (g.miembros.length) {
-          await tx.paradaGrupoMiembro.createMany({
-            data: g.miembros.map((m) => ({
+          const data = g.miembros.map((m) => {
+            const nuevoId = nuevoIdPorNombre.get(norm(m.nombre)) ?? null;
+            const usuarioId = m.usuarioId ?? nuevoId;
+            if (usuarioId) miembrosLigados++;
+            return {
               paradaGrupoId: grupo.id,
-              nombre: m.nombre,
-              usuarioId: m.usuarioId,
+              nombre: nuevoId ? tituloCase(m.nombre) : m.nombre,
+              usuarioId,
               esLider: false,
-            })),
+            };
           });
-          miembrosInsertados += g.miembros.length;
+          await tx.paradaGrupoMiembro.createMany({ data });
+          miembrosInsertados += data.length;
         }
       });
     }
 
     console.log("");
     console.log(
-      `Listo. Cuadrillas creadas: ${creados} · actualizadas: ${actualizados} · miembros insertados: ${miembrosInsertados}`,
+      `Listo. Usuarios nuevos: ${usuariosCreados} · cuadrillas creadas: ${creados} · actualizadas: ${actualizados} · miembros insertados: ${miembrosInsertados} (ligados a usuario: ${miembrosLigados})`,
     );
   } finally {
     await prisma.$disconnect();
