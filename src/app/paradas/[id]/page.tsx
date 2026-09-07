@@ -239,6 +239,7 @@ export default function ParadaDetallePage({ params }: { params: Promise<{ id: st
             <ConfigParada
               parada={parada}
               soloGrupos={!puedeConfig}
+              discFiltro={discFiltro}
               onChange={recargar}
               onDeleted={() => router.replace("/paradas")}
             />
