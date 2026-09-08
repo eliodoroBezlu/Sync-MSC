@@ -164,8 +164,16 @@ function SeccionGrupos({
 }) {
   const [turnoAct, setTurnoAct] = useState<TurnoParada>("Dia");
   const [creando, setCreando] = useState("");
+  // Área a imprimir: sólo aplica para admin/planificador (sin discFiltro).
+  const [discImprimir, setDiscImprimir] = useState<DisciplinaParada | "TODAS">("TODAS");
 
   const discsVisibles = discFiltro ? [discFiltro] : DISCIPLINAS;
+  // Para el PDF: el supervisor imprime su área; admin, la que elija en el selector.
+  const discsImprimir: DisciplinaParada[] = discFiltro
+    ? [discFiltro]
+    : discImprimir === "TODAS"
+      ? DISCIPLINAS
+      : [discImprimir];
 
   // Roster de la parada por disciplina: los técnicos que ya están en algún
   // grupo de esa disciplina (los que se cargaron del Excel). De acá sale la
@@ -246,7 +254,7 @@ function SeccionGrupos({
   // Arma el PDF "Grupos y OTs" del turno visible (para publicar / imprimir).
   function imprimir() {
     const grupos: GrupoImpresion[] = [];
-    for (const disc of discsVisibles) {
+    for (const disc of discsImprimir) {
       for (const g of porTurnoDisc.get(`${turnoAct}|${disc}`) ?? []) {
         const ots = otsPorGrupo.get(`${disc}|${g.numero}`) ?? [];
         grupos.push({
@@ -265,11 +273,14 @@ function SeccionGrupos({
       alert(`No hay grupos de ${turnoAct === "Dia" ? "día" : "noche"} para imprimir.`);
       return;
     }
+    const areaTxt =
+      discsImprimir.length === 1 ? DISCIPLINA_LABEL[discsImprimir[0]] : "Todas las áreas";
     generarGruposOtsPdf({
       paradaCodigo: parada.codigo,
       paradaNombre: parada.nombre,
       turno: turnoAct,
-      disciplinaUnica: discsVisibles.length === 1,
+      areaTxt,
+      disciplinaUnica: discsImprimir.length === 1,
       grupos,
     });
   }
@@ -302,10 +313,40 @@ function SeccionGrupos({
             Turno {t === "Dia" ? "Día" : "Noche"}
           </button>
         ))}
+        {!discFiltro && (
+          <select
+            value={discImprimir}
+            onChange={(e) => setDiscImprimir(e.target.value as DisciplinaParada | "TODAS")}
+            title="Área que saldrá en el PDF de impresión"
+            style={{
+              marginLeft: "auto",
+              padding: "6px 10px",
+              borderRadius: 8,
+              border: "1.5px solid #e2e8f0",
+              background: "white",
+              fontSize: 12,
+              fontWeight: 600,
+              color: "#334155",
+              cursor: "pointer",
+            }}
+          >
+            <option value="TODAS">Imprimir: todas las áreas</option>
+            {DISCIPLINAS.map((d) => (
+              <option key={d} value={d}>
+                Imprimir: {DISCIPLINA_LABEL[d]}
+              </option>
+            ))}
+          </select>
+        )}
         <button
           onClick={imprimir}
           title="Abrir el PDF de grupos y OTs del turno para imprimir / publicar"
-          style={{ ...btnSec, marginLeft: "auto", padding: "6px 14px", fontSize: 12 }}
+          style={{
+            ...btnSec,
+            marginLeft: discFiltro ? "auto" : 0,
+            padding: "6px 14px",
+            fontSize: 12,
+          }}
         >
           🖨 Imprimir grupos y OTs
         </button>
