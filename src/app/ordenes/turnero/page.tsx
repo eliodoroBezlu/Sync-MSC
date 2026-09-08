@@ -64,6 +64,7 @@ type RegistroDiario = {
   fecha: string;
   turno?: string | null;
   tecnico: string;
+  usuarioId?: string | null;
   hhTrabajadas: number;
   tareasEjecutadas: string[];
   observaciones?: string | null;
@@ -93,6 +94,9 @@ type Avance = {
   fecha: string;
   turno: string;
   tecnico: string;
+  // Autor del avance (registro diario). Sirve para que el técnico pueda editar
+  // solo lo que él mismo cargó. En OTs legacy sin registros diarios queda null.
+  usuarioId?: string | null;
   hhTrabajadas: number;
   tareasEjecutadas: string[];
   observaciones?: string | null;
@@ -107,6 +111,7 @@ function avancesDeOT(ot: OTReactiva): Avance[] {
       fecha: r.fecha,
       turno: r.turno || ot.turno,
       tecnico: r.tecnico,
+      usuarioId: r.usuarioId ?? null,
       hhTrabajadas: r.hhTrabajadas,
       tareasEjecutadas: r.tareasEjecutadas,
       observaciones: r.observaciones,
@@ -128,6 +133,7 @@ function avancesDeOT(ot: OTReactiva): Avance[] {
     fecha: ot.fecha,
     turno: ot.turno,
     tecnico: ot.tecnicos.map(t => t.nombreCompleto).join(" · ") || "—",
+    usuarioId: ot.tecnicos.length === 1 ? (ot.tecnicos[0].usuarioId ?? null) : null,
     hhTrabajadas: ot.lineas.reduce((s, l) => s + (l.tiempoRealHrs ?? 0), 0),
     tareasEjecutadas: ot.lineas.flatMap(l =>
       (l.tareasEjecutadas ?? []).map(t => multiplesLineas ? `[${l.tag}] ${t}` : t)
@@ -522,6 +528,10 @@ export default function TurneroPage() {
                                 const ot = a.ot;
                                 const estadoColor = ESTADO_COLOR[ot.estado] ?? "#64748b";
                                 const esLegacy = !ot.registrosDiarios || ot.registrosDiarios.length === 0;
+                                // El técnico puede editar los avances que él mismo cargó;
+                                // el supervisor/admin editan cualquiera.
+                                const esAutor = !!a.usuarioId && a.usuarioId === user.id;
+                                const puedeEditar = esSup || esAutor;
                                 return (
                                   <div key={a.cardId} style={{ background: "#fafafa", borderRadius: 10, border: "1px solid #e2e8f0", padding: "10px 14px", borderLeft: "3px solid #d97706" }}>
                                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
@@ -533,7 +543,7 @@ export default function TurneroPage() {
                                       {a.hhTrabajadas > 0 && (
                                         <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: "#d97706" }}>{Math.round(a.hhTrabajadas * 10) / 10}HH</span>
                                       )}
-                                      {esSup && (
+                                      {puedeEditar && (
                                         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
                                           <button
                                             onClick={(e) => { e.stopPropagation(); abrirEditar(ot); }}
@@ -683,7 +693,12 @@ export default function TurneroPage() {
               onChange={e => setEditForm(f => f ? { ...f, estado: e.target.value } : f)}
               style={{ width: "100%", border: "1px solid #cbd5e1", borderRadius: 8, padding: "8px 10px", fontSize: 14, color: "#1e293b" }}
             >
-              {["borrador","en_proceso","pendiente_revision","solicitar_correccion","revisado","concluido"].map(s => (
+              {(esSup
+                ? ["borrador","en_proceso","pendiente_revision","solicitar_correccion","revisado","concluido"]
+                // El técnico no puede autoaprobar: solo estados previos a la revisión
+                // del supervisor. Si el reporte ya está revisado/concluido se conserva.
+                : Array.from(new Set(["borrador","en_proceso","pendiente_revision", editForm.estado]))
+              ).map(s => (
                 <option key={s} value={s}>{ESTADO_LABEL[s] ?? s}</option>
               ))}
             </select>
