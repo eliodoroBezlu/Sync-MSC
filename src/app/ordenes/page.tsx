@@ -61,17 +61,17 @@ const TODOS_MODULOS: Modulo[] = [
     ),
   },
   {
-    href: "/ordenes/indicadores",
-    label: "Indicadores",
-    descripcion: "Cumplimiento, reactivo y Pareto de correctivas por semana",
+    href: "/paradas",
+    label: "Parada de Planta",
+    descripcion: "Preparativos, ejecución y reporte diario de paradas mayores",
     badge: "Planificación",
-    color: "#7c3aed",
+    color: "#ea580c",
     soloGestion: true,
     icon: (
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="18" y1="20" x2="18" y2="10" />
-        <line x1="12" y1="20" x2="12" y2="4" />
-        <line x1="6" y1="20" x2="6" y2="14" />
+        <path d="M2 20h20" />
+        <path d="M4 20V9l6 4V9l6 4V9l4 3v8" />
+        <path d="M4 9V5l3-2v4" />
       </svg>
     ),
   },
@@ -145,17 +145,17 @@ const TODOS_MODULOS: Modulo[] = [
     ),
   },
   {
-    href: "/paradas",
-    label: "Parada de Planta",
-    descripcion: "Preparativos, ejecución y reporte diario de paradas mayores",
+    href: "/ordenes/indicadores",
+    label: "Indicadores",
+    descripcion: "Cumplimiento, reactivo y Pareto de correctivas por semana",
     badge: "Planificación",
-    color: "#ea580c",
+    color: "#7c3aed",
     soloGestion: true,
     icon: (
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M2 20h20" />
-        <path d="M4 20V9l6 4V9l6 4V9l4 3v8" />
-        <path d="M4 9V5l3-2v4" />
+        <line x1="18" y1="20" x2="18" y2="10" />
+        <line x1="12" y1="20" x2="12" y2="4" />
+        <line x1="6" y1="20" x2="6" y2="14" />
       </svg>
     ),
   },
