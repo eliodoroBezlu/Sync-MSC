@@ -10,6 +10,7 @@ import { getWeekNumber, getWeekDates, getSemanaAnioOffset } from "@/lib/semana";
 import { tipoOtDisplay, normalizarACodigoCompleto } from "@/lib/tiposOt";
 import { guardarBorrador, leerBorrador, borrarBorrador, asegurarStoragePersistente, type BorradorGuardado } from "@/lib/borradorOT";
 import { disciplinaToArea } from "@/lib/planificacion/areaToDisciplina";
+import ImportarTagsJde, { type EquipoBusqueda } from "./ImportarTagsJde";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -728,10 +729,15 @@ function AvanceDiarioMiniForm({
 // ─── LineaEditor ─────────────────────────────────────────────────────────────
 
 function LineaEditor({
-  linea, area, isNew, soloCorrectivos, fecha, onFechaChange, onConfirm, onCancel,
+  linea, area, isNew, soloCorrectivos, fecha, plantillaPrevia, onFechaChange, onConfirm, onCancel,
 }: {
   linea: LineaForm; area: string; isNew: boolean; soloCorrectivos?: boolean;
-  fecha?: string; onFechaChange?: (fecha: string) => void;
+  fecha?: string;
+  // Última línea confirmada: cuando se agrega otro equipo de la misma OT
+  // (mismo trabajo en N instrumentos iguales), permite copiar su detalle,
+  // tareas, resolución y estado final sin retipear. Nunca copia TAG ni equipo.
+  plantillaPrevia?: LineaForm | null;
+  onFechaChange?: (fecha: string) => void;
   onConfirm: (l: LineaForm) => void;
   onCancel: () => void;
 }) {
@@ -938,6 +944,30 @@ function LineaEditor({
             : <span style={{ color: "#dc2626", fontWeight: 600 }}> · ISO: genérico</span>}
         </p>}
       </div>
+
+      {/* Copiar datos del equipo anterior (mismo trabajo en varios instrumentos) */}
+      {isNew && plantillaPrevia && plantillaPrevia.tipoOT && (
+        <div style={{ marginBottom: 13 }}>
+          <button type="button"
+            onClick={() => patch({
+              tipoOT: plantillaPrevia.tipoOT,
+              descripcionTrabajo: plantillaPrevia.descripcionTrabajo,
+              resolucionAplicada: plantillaPrevia.resolucionAplicada,
+              tareasEjecutadas: [...plantillaPrevia.tareasEjecutadas],
+              estadoFinal: plantillaPrevia.estadoFinal,
+              sintoma: plantillaPrevia.sintoma,
+              causaProbable: plantillaPrevia.causaProbable,
+              tiempoRealHrs: plantillaPrevia.tiempoRealHrs,
+            })}
+            style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 13px", border: "1.5px dashed #94a3b8", borderRadius: 8, background: "white", fontSize: 13, color: "#475569", fontWeight: 600, cursor: "pointer" }}>
+            <span style={{ fontSize: 15 }}>⧉</span>
+            Copiar datos del equipo anterior ({plantillaPrevia.tag})
+          </button>
+          <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 3 }}>
+            Copia tipo de OT, detalle, tareas, resolución y estado final. No copia TAG ni evidencias.
+          </p>
+        </div>
+      )}
 
       {/* Tipo OT */}
       <div style={{ marginBottom: 13 }}>
@@ -1301,6 +1331,10 @@ export default function RegistroOTPage() {
   const [editLinea, setEditLinea] = useState<LineaForm | null>(null);
   const [editIdx, setEditIdx] = useState<number | null>(null);
   const [isNewLinea, setIsNewLinea] = useState(false);
+  // Equipos detectados en los comentarios del JDE, pendientes de llenar. No son
+  // líneas todavía: cada uno se llena con el mismo editor (Detalle → Estado
+  // final) y recién ahí pasa a form.lineas. Ver ImportarTagsJde.
+  const [tagsPendientes, setTagsPendientes] = useState<EquipoBusqueda[]>([]);
 
   const [errs, setErrs] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -1959,9 +1993,42 @@ export default function RegistroOTPage() {
       next[editIdx] = l;
       patchForm({ lineas: next });
     }
+    // Si este TAG venía de la lista de pendientes del JDE, ya quedó cargado.
+    setTagsPendientes(prev => prev.filter(e => e.tag.toUpperCase() !== l.tag.toUpperCase()));
     setEditLinea(null);
     setEditIdx(null);
     setIsNewLinea(false);
+  }
+
+  // Abre el editor pre-cargado con un equipo pendiente (detectado en los
+  // comentarios del JDE). Hereda el tipo de OT de la línea del plan.
+  function llenarPendiente(eq: EquipoBusqueda) {
+    const catISO = derivarCategoriaISO(eq.categoriaISO, eq.tipoEquipo);
+    const tipoBase = (form.lineas[0]?.tipoOT ?? "") as TipoOT | "";
+    setEditLinea({
+      ...newLinea(),
+      tag: eq.tag,
+      descripcionEquipo: eq.descripcion,
+      tipoEquipo: eq.tipoEquipo ?? "",
+      categoriaISO: catISO,
+      criticidad: eq.criticidad ?? "",
+      nivel: eq.nivel ?? 0,
+      disciplina: detectarDisciplina(eq.tag, catISO, eq.tipoEquipo, eq.descripcionTipo),
+      areaProceso: detectarAreaProceso(eq.descripcionArea),
+      tipoOT: tipoBase,
+    });
+    setEditIdx(null);
+    setIsNewLinea(true);
+  }
+
+  function agregarPendientes(equipos: EquipoBusqueda[]) {
+    setTagsPendientes(prev => {
+      const vistos = new Set([
+        ...prev.map(e => e.tag.toUpperCase()),
+        ...form.lineas.map(l => l.tag.toUpperCase()),
+      ]);
+      return [...prev, ...equipos.filter(e => !vistos.has(e.tag.toUpperCase()))];
+    });
   }
 
   function cancelLinea() {
@@ -2822,6 +2889,7 @@ export default function RegistroOTPage() {
                     isNew={isNewLinea}
                     soloCorrectivos={!form.origenPlan}
                     fecha={form.fecha}
+                    plantillaPrevia={isNewLinea && form.lineas.length > 0 ? form.lineas[form.lineas.length - 1] : null}
                     onFechaChange={fecha => patchForm({ fecha })}
                     onConfirm={l => confirmLinea(l)}
                     onCancel={cancelLinea}
@@ -2829,11 +2897,73 @@ export default function RegistroOTPage() {
                 )}
 
                 {!editLinea && (
-                  <button type="button"
-                    onClick={() => { setEditLinea(newLinea()); setEditIdx(null); setIsNewLinea(true); }}
-                    style={{ width: "100%", padding: 13, marginBottom: 12, border: "2px dashed #cbd5e1", borderRadius: 10, background: "white", color: "#2563eb", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
-                    + Agregar{form.origenPlan ? " otro" : ""} equipo intervenido
-                  </button>
+                  <>
+                    {/* ── (A) Contador de equipos + aviso para OTs del plan que agrupan varios ── */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" as const }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#0f2847", background: "#e0edff", borderRadius: 999, padding: "3px 11px" }}>
+                        Equipos de esta OT: {form.lineas.length}
+                      </span>
+                      {tagsPendientes.filter(e => !form.lineas.some(l => l.tag.toUpperCase() === e.tag.toUpperCase())).length > 0 && (
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#9a3412", background: "#ffedd5", borderRadius: 999, padding: "3px 11px" }}>
+                          Pendientes de llenar: {tagsPendientes.filter(e => !form.lineas.some(l => l.tag.toUpperCase() === e.tag.toUpperCase())).length}
+                        </span>
+                      )}
+                    </div>
+
+                    {form.origenPlan && ["CMP", "PDM"].includes(form.lineas[0]?.tipoOT ?? "") && (
+                      <div style={{ display: "flex", gap: 8, padding: "10px 12px", marginBottom: 10, border: "1px solid #fcd34d", background: "#fffbeb", borderRadius: 9, fontSize: 12, color: "#92400e", lineHeight: 1.5 }}>
+                        <span style={{ fontSize: 15, flexShrink: 0 }}>💡</span>
+                        <span>
+                          Esta OT del JDE ({form.lineas[0]?.tipoOT}) suele agrupar <strong>varios instrumentos</strong>. Cargá cada uno como
+                          un equipo aparte con su propio detalle y estado final — usá <strong>&ldquo;Pegar comentarios del JDE&rdquo;</strong> para
+                          extraer los TAGs de la lista de la OT.
+                        </span>
+                      </div>
+                    )}
+
+                    {/* ── (B2) Extraer TAGs de los comentarios del JDE — solo OTs del plan ── */}
+                    {form.origenPlan && (
+                      <ImportarTagsJde
+                        tagsExistentes={[...form.lineas.map(l => l.tag), ...tagsPendientes.map(e => e.tag)]}
+                        onAgregar={agregarPendientes}
+                      />
+                    )}
+
+                    {/* Chips de equipos pendientes de llenar */}
+                    {tagsPendientes.filter(e => !form.lineas.some(l => l.tag.toUpperCase() === e.tag.toUpperCase())).length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#9a3412", marginBottom: 6 }}>
+                          Equipos detectados — llená cada uno con su propio detalle
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column" as const, gap: 5 }}>
+                          {tagsPendientes
+                            .filter(e => !form.lineas.some(l => l.tag.toUpperCase() === e.tag.toUpperCase()))
+                            .map(e => (
+                              <div key={e.tag} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 8, border: "1px solid #fed7aa", background: "#fff7ed" }}>
+                                <span style={{ flex: 1, minWidth: 0 }}>
+                                  <span style={{ fontWeight: 700, fontSize: 13, color: "#1e293b" }}>{e.tag}</span>
+                                  <span style={{ fontSize: 12, color: "#64748b" }}> · {e.descripcion}</span>
+                                </span>
+                                <button type="button" onClick={() => llenarPendiente(e)}
+                                  style={{ fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 6, border: "none", background: "#ea580c", color: "white", cursor: "pointer", flexShrink: 0 }}>
+                                  Llenar →
+                                </button>
+                                <button type="button" onClick={() => setTagsPendientes(prev => prev.filter(x => x.tag.toUpperCase() !== e.tag.toUpperCase()))}
+                                  style={{ fontSize: 12, padding: "5px 9px", borderRadius: 6, border: "1px solid #fecaca", background: "white", color: "#dc2626", cursor: "pointer", flexShrink: 0 }}>
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <button type="button"
+                      onClick={() => { setEditLinea(newLinea()); setEditIdx(null); setIsNewLinea(true); }}
+                      style={{ width: "100%", padding: 13, marginBottom: 12, border: "2px dashed #cbd5e1", borderRadius: 10, background: "white", color: "#2563eb", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                      {form.origenPlan ? "+ Agregar otro TAG / equipo de esta OT" : "+ Agregar equipo intervenido"}
+                    </button>
+                  </>
                 )}
 
                 {errs.lineas && <p style={{ ...S.err, marginBottom: 10 }}>{errs.lineas}</p>}
