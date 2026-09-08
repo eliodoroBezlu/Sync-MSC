@@ -62,12 +62,37 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         .map((m) => m.usuarioId)
         .filter((x): x is string => !!x);
       const nombresMiembros = d.miembros.map((m) => m.nombre);
-      const otWhere = {
-        paradaId: id,
-        grupoNumero: d.numero,
-        OR: [{ grupo: d.turno }, { grupo: "Ambos" }],
-        ...(d.disciplina !== "MIXTO" ? { disciplina: d.disciplina } : {}),
-      };
+      const discWhere = d.disciplina !== "MIXTO" ? { disciplina: d.disciplina } : {};
+
+      // Caso especial "Ambos": una misma cuadrilla (mismo número) trabaja la OT
+      // en día y en noche. Su personal debe ser la UNIÓN de los dos turnos; si
+      // no, cada guardado de un turno borraría a la gente del otro. Buscamos la
+      // cuadrilla hermana (mismo número y disciplina, turno opuesto) y unimos.
+      const turnoOpuesto = d.turno === "Dia" ? "Noche" : "Dia";
+      const hermana = await prisma.paradaGrupo.findUnique({
+        where: {
+          paradaId_turno_disciplina_numero: {
+            paradaId: id,
+            turno: turnoOpuesto,
+            disciplina: d.disciplina,
+            numero: d.numero,
+          },
+        },
+        include: { miembros: true },
+      });
+      const norm = (s: string) =>
+        s.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toUpperCase();
+      const nombresUnion: string[] = [];
+      const vistosUnion = new Set<string>();
+      const idsUnion = new Set<string>();
+      for (const m of [...d.miembros, ...(hermana?.miembros ?? [])]) {
+        const k = norm(m.nombre);
+        if (k && !vistosUnion.has(k)) {
+          vistosUnion.add(k);
+          nombresUnion.push(m.nombre);
+        }
+        if (m.usuarioId) idsUnion.add(m.usuarioId);
+      }
 
       await prisma.$transaction([
         prisma.paradaGrupoMiembro.deleteMany({ where: { paradaGrupoId: grupo.id } }),
@@ -79,9 +104,15 @@ export async function POST(req: NextRequest, { params }: Ctx) {
             esLider: m.esLider,
           })),
         }),
+        // OT propias de este turno: personal = roster de esta cuadrilla.
         prisma.paradaOt.updateMany({
-          where: otWhere,
+          where: { paradaId: id, grupoNumero: d.numero, grupo: d.turno, ...discWhere },
           data: { personalAsignado: nombresMiembros, personalAsignadoIds: idsMiembros },
+        }),
+        // OT compartidas día/noche: personal = unión de las dos cuadrillas.
+        prisma.paradaOt.updateMany({
+          where: { paradaId: id, grupoNumero: d.numero, grupo: "Ambos", ...discWhere },
+          data: { personalAsignado: nombresUnion, personalAsignadoIds: [...idsUnion] },
         }),
       ]);
     }
