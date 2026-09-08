@@ -9,7 +9,6 @@ import { getFechaTurno, localDateStr, autoTurno, estaEnVentanaCierreSemanal } fr
 import { getWeekNumber, getWeekDates, getSemanaAnioOffset } from "@/lib/semana";
 import { tipoOtDisplay, normalizarACodigoCompleto } from "@/lib/tiposOt";
 import { guardarBorrador, leerBorrador, borrarBorrador, asegurarStoragePersistente, type BorradorGuardado } from "@/lib/borradorOT";
-import PanelParadaOts from "./PanelParadaOts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -125,6 +124,8 @@ type OTPlan = {
   continuaMotivo?: string; continuaNota?: string; continuaPor?: string; continuaAt?: string;
   esGuardia?: boolean;
   bitacora?: BitacoraEntry[];
+  // OT de Parada de Planta traída de /api/paradas/activa (ver recargarPlan).
+  esParada?: boolean; paradaId?: string; paradaOtId?: string;
 };
 
 type PlanDoc = {
@@ -306,6 +307,59 @@ function lineaFromPlan(ot: OTPlan): LineaForm {
     descripcionTrabajo: ot.descripcion ?? "",
     tiempoEstimadoHrs: ot.hhTotal ? String(ot.hhTotal) : "",
     adjuntos: [],
+  };
+}
+
+// ─── Puente Parada de Planta → Registro de OT ─────────────────────────────────
+// Las OT de parada (Parada → ParadaOt) no viven en la programación semanal. Se
+// traen de /api/paradas/activa y se adaptan a la misma forma PlanRef/OTPlan que
+// usa el resto de la pantalla, con un planId sintético "parada:<id>" y un área
+// sintética PARADA-<disciplina>. El técnico las llena por el MISMO asistente.
+
+type ParadaOtActiva = {
+  _id: string; numeroOT: string; tag?: string; descripcion?: string;
+  descripcionEquipo?: string; disciplina?: string; grupo?: string;
+  fase?: string; estado?: string; avancePct?: number; hhEstimadas?: number;
+  ordenTrabajoId?: string | null;
+  personalAsignado?: string[]; personalAsignadoIds?: string[];
+};
+type ParadaActiva = { _id: string; ots?: ParadaOtActiva[] };
+
+const AREA_PARADA: Record<string, string> = {
+  ELEC: "PARADA-ELEC",
+  INST: "PARADA-INST",
+  TESA: "PARADA-TESA",
+};
+
+// El estado de ParadaOt se mapea al vocabulario del plan que entiende la UI:
+// "terminada" cierra la tarjeta ("en_revision"); el resto queda abierto.
+function estadoParadaAPlan(estado?: string): string {
+  return estado === "terminada" ? "en_revision" : "en_proceso";
+}
+
+function paradaOtARef(po: ParadaOtActiva, paradaId: string, dia: DiaSem): PlanRef {
+  return {
+    planId: `parada:${paradaId}`,
+    areaCodigo: AREA_PARADA[(po.disciplina ?? "").toUpperCase()] ?? "PARADA",
+    ot: {
+      numeroOT: po.numeroOT,
+      tipoOT: "PMP", // ParadaOt no tiene tipoOT; trabajo mayor programado por defecto
+      tipoTrabajo: "",
+      descripcion: po.descripcion ?? "",
+      tag: po.tag ?? "",
+      descripcionEquipo: po.descripcionEquipo ?? "",
+      hhTotal: po.hhEstimadas ?? 0,
+      grupo: po.grupo ?? "Dia",
+      dia,
+      estado: estadoParadaAPlan(po.estado),
+      personalAsignado: po.personalAsignado ?? [],
+      personalAsignadoIds: po.personalAsignadoIds ?? [],
+      ordenTrabajoId: po.ordenTrabajoId ?? undefined,
+      ordenTrabajoNum: undefined,
+      esParada: true,
+      paradaId,
+      paradaOtId: po._id,
+    },
   };
 }
 
@@ -1436,6 +1490,10 @@ export default function RegistroOTPage() {
           cambio: `Avance del día ${avanceRef.ot.dia} registrado`,
           usuarioId: user?.id,
           nombreUsuario: user?.nombre,
+          // OT de parada: el puente necesita el turno Dia/Noche para el avance diario.
+          ...(avanceRef.ot.esParada
+            ? { turnoParada: shiftTurno === "Nocturno" ? "Noche" : "Dia" }
+            : {}),
         }),
       });
       if (!res.ok) {
@@ -1482,11 +1540,15 @@ export default function RegistroOTPage() {
       // Persistir el nuevo estado en TODOS los días del plan que comparten este numeroOT
       // (una OT recurrente ocupa una fila por día): si no, al recargar el plan (cambiar de
       // semana, volver a entrar) el botón "Enviar a revisión" reaparece habilitado.
-      await fetch(`/api/programacion-semanal/${ref.planId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ numeroOT: ref.ot.numeroOT, todosLosDias: true, estado: "en_revision" }),
-      });
+      // Las OT de parada no viven en programacion-semanal (planId sintético "parada:<id>"),
+      // así que se omite esa persistencia: su estado se recalcula desde /api/paradas/activa.
+      if (!ref.ot.esParada) {
+        await fetch(`/api/programacion-semanal/${ref.planId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ numeroOT: ref.ot.numeroOT, todosLosDias: true, estado: "en_revision" }),
+        });
+      }
       // Actualizar estado local en todas las filas de esta OT (no solo la que tiene ordenTrabajoId)
       setPlanRefs(prev => prev.map(r =>
         r.planId === ref.planId && r.ot.numeroOT === ref.ot.numeroOT
@@ -1691,29 +1753,37 @@ export default function RegistroOTPage() {
     if (!user) return;
     setLoadingPlan(true);
     const p = new URLSearchParams({ semana: String(semanaMostrada), anio: String(anioMostrado), limit: "50" });
-    fetch(`/api/programacion-semanal?${p}`)
-      .then(r => r.json())
-      .then((planes: PlanDoc[]) => {
+    // Día de la semana del turno activo — la pestaña donde se listan las OT de parada.
+    const diaParada = DIA_MAP[new Date(`${shiftFecha}T12:00:00`).getDay()];
+    Promise.all([
+      fetch(`/api/programacion-semanal?${p}`).then(r => r.json()).catch(() => [] as PlanDoc[]),
+      fetch(`/api/paradas/activa?fecha=${encodeURIComponent(shiftFecha)}`)
+        .then(r => r.json())
+        .then((d: { ok?: boolean; parada?: ParadaActiva | null }) => d?.parada ?? null)
+        .catch(() => null),
+    ])
+      .then(([planes, parada]: [PlanDoc[], ParadaActiva | null]) => {
+        const lista = Array.isArray(planes) ? planes : [];
         // Contar ocurrencias de numeroOT sobre TODOS los días/personal del plan
         // (antes de filtrar por usuario) para que la recurrencia sea la misma
         // sin importar quién esté mirando.
         const counts: Record<string, number> = {};
-        for (const plan of planes) {
+        for (const plan of lista) {
           for (const ot of plan.otsProgramadas) {
             counts[ot.numeroOT] = (counts[ot.numeroOT] || 0) + 1;
           }
         }
-        setRecurrentesNums(new Set(Object.entries(counts).filter(([, c]) => c >= 2).map(([n]) => n)));
+        const recSet = new Set(Object.entries(counts).filter(([, c]) => c >= 2).map(([n]) => n));
 
         const refs: PlanRef[] = [];
-        for (const plan of planes) {
+        for (const plan of lista) {
           // Cargar TODAS las OTs de la semana (todos los días)
           for (const ot of plan.otsProgramadas) {
             if (user.rol === 4 || user.rol === 6) {
               // Match por identidad (usuarioId) — exacto, independiente del texto del nombre.
               const matchPorId = (ot.personalAsignadoIds ?? []).includes(user.id);
               // Fallback por nombre para OTs aún sin IDs (planes viejos / no re-editados).
-              const matchPorNombre = (ot.personalAsignado ?? []).some(p => nombreCoincide(p, user.nombre));
+              const matchPorNombre = (ot.personalAsignado ?? []).some(pn => nombreCoincide(pn, user.nombre));
               // Fallback de área para rol=6: si el plan es de su área y personalAsignado
               // no tiene nombres reales (solo "Contratista" genérico del Excel), mostrar igual.
               const paNames = (ot.personalAsignado ?? []).map(n => n.trim().toLowerCase());
@@ -1728,12 +1798,29 @@ export default function RegistroOTPage() {
             refs.push({ planId: String(plan._id), areaCodigo: plan.areaCodigo ?? "", ot });
           }
         }
+
+        // OT de la parada en ejecución que le tocan a este técnico (mismo criterio
+        // id/nombre que usaba PanelParadaOts, para todos los roles). Se enrutan por
+        // el mecanismo de recurrentes: el día 2+ usa "+ Avance del día" (PATCH) y
+        // nunca un segundo POST, así el guard de "reactiva abierta" no las bloquea.
+        if (parada) {
+          for (const po of parada.ots ?? []) {
+            if (po.fase !== "ejecucion") continue;
+            const matchPorId = (po.personalAsignadoIds ?? []).includes(user.id);
+            const matchPorNombre = (po.personalAsignado ?? []).some(pn => nombreCoincide(pn, user.nombre));
+            if (!matchPorId && !matchPorNombre) continue;
+            refs.push(paradaOtARef(po, String(parada._id), diaParada));
+            recSet.add(po.numeroOT);
+          }
+        }
+
+        setRecurrentesNums(recSet);
         setPlanRefs(refs);
       })
       .catch(() => {})
       .finally(() => setLoadingPlan(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, semanaMostrada, anioMostrado]);
+  }, [user, semanaMostrada, anioMostrado, shiftFecha]);
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -1775,6 +1862,30 @@ export default function RegistroOTPage() {
       } else {
         tecnicos.push({ usuarioId: user.id, nombreCompleto: user.nombre });
       }
+    }
+    if (ref.ot.esParada) {
+      // OT de parada: se registra como OT independiente (no origenPlan) de turno
+      // "Parada de Planta". El puente A1 la refleja luego en el tablero de parada.
+      // Siempre esRecurrente=true → el día 2+ acumula avances vía PATCH.
+      setForm({
+        fecha: shiftFecha,
+        turno: "Parada de Planta",
+        areaCodigo: ref.areaCodigo,
+        tecnicos,
+        lineas: [linea],
+        programacionSemanalId: "",
+        otJdeNumero: ref.ot.numeroOT,
+        otJdeDia: "",
+        origenPlan: false,
+        esRecurrente: true,
+      });
+      setEditLinea({ ...linea });
+      setEditIdx(0);
+      setIsNewLinea(false);
+      setStep(2);
+      setView("registro");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
     }
     setForm({
       fecha: shiftFecha,
@@ -1891,7 +2002,13 @@ export default function RegistroOTPage() {
           otJdeNumero: form.otJdeNumero,
           otJdeDia: form.esRecurrente ? null : form.otJdeDia,
           esRecurrente: form.esRecurrente,
-        } : { ...(form.otJdeNumero ? { otJdeNumero: form.otJdeNumero } : {}) }),
+        } : {
+          ...(form.otJdeNumero ? { otJdeNumero: form.otJdeNumero } : {}),
+          // OT de parada: el puente necesita saber el turno Dia/Noche.
+          ...(form.turno === "Parada de Planta"
+            ? { turnoParada: shiftTurno === "Nocturno" ? "Noche" : "Dia" }
+            : {}),
+        }),
         lineas: form.lineas.map(l => ({
           tag: l.tag, descripcionEquipo: l.descripcionEquipo, tipoOT: l.tipoOT,
           adjuntos: l.adjuntos.map(a => ({ tipo: a.tipo, nombre: a.nombre, dataUrl: a.dataUrl, comentario: a.comentario, comentariosExtra: a.comentariosExtra })),
@@ -2048,14 +2165,8 @@ export default function RegistroOTPage() {
         {/* ════════════════ VISTA INICIO ════════════════════════════════════ */}
         {view === "inicio" && (
           <>
-            {/* OTs de Parada de Planta (aditivo, no toca el plan semanal) */}
-            <PanelParadaOts
-              user={user ? { id: user.id, nombre: user.nombre, rol: user.rol } : null}
-              fecha={shiftFecha}
-              turno={shiftTurno === "Nocturno" ? "Nocturno" : "Diurno"}
-            />
-
-            {/* Plan Semanal — navegación por días */}
+            {/* Plan Semanal — navegación por días.
+                Las OT de Parada de Planta se intercalan aquí (ver recargarPlan). */}
             <div style={{ ...S.card, border: "1px solid #bfdbfe", background: "#f8fbff", padding: 0, overflow: "hidden" }}>
               {/* Header */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px 10px", gap: 8 }}>
@@ -2183,6 +2294,11 @@ export default function RegistroOTPage() {
                           <span style={S.badge(tipoColor)}>{ot.tipoOT}</span>
                           <span style={{ fontWeight: 800, fontSize: 13, color: "#1e293b" }}>{ot.numeroOT}</span>
                           <span style={{ fontSize: 12, color: "#64748b", fontFamily: "monospace" }}>{ot.tag}</span>
+                          {ot.esParada && (
+                            <span style={{ fontSize: 10, fontWeight: 800, color: "#c2410c", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 5, padding: "2px 6px" }}>
+                              🔧 PARADA
+                            </span>
+                          )}
                           {areasEnPlan.length > 1 && (
                             <span style={{ fontSize: 10, fontWeight: 700, color: "#0369a1", background: "#e0f2fe", borderRadius: 5, padding: "2px 6px" }}>
                               {ref.areaCodigo} · {areasEnPlan.find(a => a.codigo === ref.areaCodigo)?.nombre ?? ref.areaCodigo}

@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { mapEstadoAlPlan } from "@/lib/otEstado";
 import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 import { calcularOtsRecurrentes } from "@/lib/otRecurrente";
+import { espejarOrdenEnParada } from "@/lib/parada/puenteOt";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -385,6 +386,33 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
           });
         }
       }
+    }
+
+    // Puente A1: si la OT es de "Parada de Planta", reflejar su avance en el
+    // tablero de la parada en ejecución (espejo de sólo escritura).
+    if (ot && ot.turno === "Parada de Planta" && ot.otJdeNumero) {
+      const lineasOt = (ot.lineas ?? []) as { estadoFinal?: string | null; tiempoRealHrs?: number | null }[];
+      const hhParada = registroDiario
+        ? (Number(registroDiario.hhTrabajadas) || 0)
+        : lineasOt.reduce((s, l) => s + (Number(l.tiempoRealHrs) || 0), 0);
+      await espejarOrdenEnParada({
+        ordenTrabajoId: ot.id,
+        numeroOT: ot.otJdeNumero,
+        turno: ot.turno,
+        fechaRef: registroDiario?.fecha ?? ot.fecha,
+        estadoOT: ot.estado,
+        lineas: lineasOt,
+        ...(registroDiario
+          ? {
+              avanceDiario: {
+                fecha: registroDiario.fecha,
+                turnoParada: body.turnoParada === "Noche" ? "Noche" : "Dia",
+                hh: hhParada,
+                registradoPor: registroDiario.tecnico || nombreUsuario || "Técnico",
+              },
+            }
+          : {}),
+      });
     }
 
     const esRecurrentePatch = (await calcularOtsRecurrentes([id])).get(id) ?? false;

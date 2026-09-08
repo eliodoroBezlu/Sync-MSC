@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { checkOpeplant } from "@/lib/opeplant";
 import { calcularOtsRecurrentes } from "@/lib/otRecurrente";
+import { espejarOrdenEnParada } from "@/lib/parada/puenteOt";
 
 const include = {
   tecnicos: true,
@@ -727,6 +728,29 @@ export async function POST(req: NextRequest) {
           data: { estado: "completada" },
         });
       }
+    }
+
+    // Puente A1: si la OT es de "Parada de Planta", reflejar su avance en el
+    // tablero de la parada en ejecución (espejo de sólo escritura).
+    if (body.turno === "Parada de Planta" && otJdeNumero) {
+      const hhParada = (body.lineas ?? []).reduce(
+        (s: number, l: Record<string, unknown>) => s + (Number(l.tiempoRealHrs) || 0),
+        0
+      );
+      await espejarOrdenEnParada({
+        ordenTrabajoId: ot.id,
+        numeroOT: otJdeNumero,
+        turno: body.turno,
+        fechaRef: body.fecha,
+        estadoOT: ot.estado,
+        lineas: (body.lineas ?? []) as { estadoFinal?: string | null }[],
+        avanceDiario: {
+          fecha: body.fecha,
+          turnoParada: body.turnoParada === "Noche" ? "Noche" : "Dia",
+          hh: hhParada,
+          registradoPor: body.tecnicos?.[0]?.nombreCompleto || "Técnico",
+        },
+      });
     }
 
     return NextResponse.json(
