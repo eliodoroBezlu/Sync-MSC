@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import type { CellInput, RowInput } from "jspdf-autotable";
+import type { CellHookData, CellInput, RowInput, UserOptions } from "jspdf-autotable";
 
 const NAVY = [13, 47, 94] as [number, number, number];
 const AZUL = [37, 99, 235] as [number, number, number];
@@ -22,6 +22,7 @@ const DISCIPLINA_LABEL: Record<string, string> = {
 // Tamaños de fuente (pt) — compactos para impresión.
 const FS_BODY = 6.5;
 const FS_BAND = 7.5;
+const FS_TURNO = 8.5; // separador de turno
 const FS_OT = 8; // número de OT: se mantiene legible
 
 // Geometría de la tabla (mm).
@@ -33,7 +34,7 @@ const COL_PER = 48;
 const CONTENT_TOP = 37; // primera página: bajo el encabezado azul + meta
 const CONTENT_TOP_NEXT = 16; // páginas siguientes: sólo el encabezado de columnas
 const FOOTER_RESERVA = 16; // espacio reservado para la barra de pie
-const KEEP_FILAS = 2; // filas que deben acompañar sí o sí a la banda del grupo
+const KEEP_FILAS = 2; // filas que deben acompañar sí o sí a la banda
 
 export interface GrupoImpresion {
   disciplina: string;
@@ -42,16 +43,23 @@ export interface GrupoImpresion {
   ots: { numeroOT: string; descripcion: string; critica: boolean }[];
 }
 
+export interface SeccionTurno {
+  turno: "Dia" | "Noche";
+  grupos: GrupoImpresion[];
+}
+
 export interface DatosGruposOtsPdf {
   paradaCodigo: string;
   paradaNombre: string;
-  turno: "Dia" | "Noche";
   /** Etiqueta de área para el encabezado ("Eléctricos" / "Todas las áreas"). */
   areaTxt: string;
   /** true cuando el PDF muestra una sola disciplina (no repetir la etiqueta en cada banda). */
   disciplinaUnica: boolean;
-  grupos: GrupoImpresion[];
+  /** Un bloque por turno; se imprimen a continuación en un solo documento. */
+  secciones: SeccionTurno[];
 }
+
+const turnoLargo = (t: "Dia" | "Noche"): string => (t === "Dia" ? "Día" : "Noche");
 
 function piePagina(doc: jsPDF, titulo: string) {
   const totalPages = doc.getNumberOfPages();
@@ -69,7 +77,7 @@ function piePagina(doc: jsPDF, titulo: string) {
   }
 }
 
-/** Nº de personas distintas (sin acentos, mayúsculas) entre todos los grupos. */
+/** Nº de personas distintas (sin acentos, mayúsculas) entre los grupos dados. */
 function totalPersonal(grupos: GrupoImpresion[]): number {
   const vistos = new Set<string>();
   for (const g of grupos) {
@@ -81,32 +89,38 @@ function totalPersonal(grupos: GrupoImpresion[]): number {
   return vistos.size;
 }
 
-/** Bloque = banda del grupo + sus filas de OT, con las alturas estimadas (mm). */
-interface Bloque {
-  band: RowInput;
-  filas: CellInput[][];
-  alturas: number[];
-  bandH: number;
-  totalH: number;
-}
+/** Fila lógica del cuerpo: separador de turno, banda de grupo, OT o relleno invisible. */
+type Fila =
+  | { tipo: "turno"; row: RowInput }
+  | { tipo: "banda"; row: RowInput; nFilas: number }
+  | { tipo: "ot"; row: CellInput[] }
+  | { tipo: "relleno"; alto: number };
 
 /**
- * "Grupos y OTs por cuadrilla" — un cuadro por turno con la misma estética del
- * Excel que se publica en la parada: banda verde "GRUPO - n", columna PERSONAL
- * combinada por cuadrilla y filas salmón para las OT críticas / de parada.
- * Encabezado azul igual al del Informe de Cierre de OT.
+ * "Grupos y OTs por cuadrilla" — un solo documento continuo con AMBOS turnos
+ * (Día y Noche), con la estética del Excel que se publica en la parada: separador
+ * azul por turno, banda verde "GRUPO - n", columna PERSONAL combinada por
+ * cuadrilla y filas salmón para las OT críticas / de parada. Encabezado azul
+ * igual al del Informe de Cierre de OT.
  *
- * Los grupos se paginan a mano: si la banda del grupo y sus primeras filas no
- * entran en lo que queda de la hoja, el grupo completo pasa a la página
- * siguiente (nunca queda la banda verde sola al pie). Se abre en pestaña nueva
- * para revisar antes de imprimir.
+ * Paginación: un único `autoTable` continuo (autotable maneja TODOS los saltos de
+ * página). Para que un separador de turno o una banda "GRUPO - n" no quede sola
+ * al pie, se mide el layout en una pasada previa y se inserta un relleno
+ * invisible que empuja el bloque completo a la página siguiente. Sin páginas en
+ * blanco. Se abre en pestaña nueva para revisar antes de imprimir.
  */
 export function generarGruposOtsPdf(d: DatosGruposOtsPdf): void {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const PW = doc.internal.pageSize.getWidth();
   const PH = doc.internal.pageSize.getHeight();
-  const bottomLimit = PH - FOOTER_RESERVA;
-  const turnoTxt = d.turno === "Dia" ? "Día" : "Noche";
+  const pageBottom = PH - FOOTER_RESERVA;
+
+  const seccionesUtiles = d.secciones.filter((s) => s.grupos.length > 0);
+  const turnosTxt = seccionesUtiles.map((s) => turnoLargo(s.turno)).join(" y ");
+  const todosGrupos = seccionesUtiles.flatMap((s) => s.grupos);
+  const total = totalPersonal(todosGrupos);
+  const nGrupos = todosGrupos.length;
+  const nOts = todosGrupos.reduce((s, g) => s + g.ots.length, 0);
 
   // ── Encabezado azul (igual al Informe de Cierre de OT) ─────────────────────
   doc.setFillColor(...HDR_TOP);
@@ -124,7 +138,7 @@ export function generarGruposOtsPdf(d: DatosGruposOtsPdf): void {
   doc.setFontSize(7);
   doc.setTextColor(...HDR_TOP);
   doc.text("Sistema de Gestión de Mantenimiento", M, 18);
-  doc.text(`Grupos y OTs por cuadrilla · Turno ${turnoTxt} · ${d.areaTxt}`, M, 22.5);
+  doc.text(`Grupos y OTs por cuadrilla · Turnos ${turnosTxt || "—"} · ${d.areaTxt}`, M, 22.5);
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
@@ -135,130 +149,203 @@ export function generarGruposOtsPdf(d: DatosGruposOtsPdf): void {
   doc.setTextColor(...HDR_TOP);
   doc.text(doc.splitTextToSize(d.paradaNombre, 78), PW - M, 18, { align: "right" });
 
-  const total = totalPersonal(d.grupos);
-  const nOts = d.grupos.reduce((s, g) => s + g.ots.length, 0);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.5);
   doc.setTextColor(...NEGRO);
   doc.text(
-    `${d.grupos.length} grupos · ${nOts} OTs · ${total} personas · ${new Date().toLocaleDateString("es-BO")}`,
+    `${nGrupos} grupos · ${nOts} OTs · ${total} personas · ${new Date().toLocaleDateString("es-BO")}`,
     M,
     33,
   );
 
-  // ── Estimadores de altura (mm) para la paginación manual ──────────────────
-  const lineaMM = (fs: number) => fs * 0.3528 * 1.15;
-  const filaMM = (lineas: number, fs: number) => lineas * lineaMM(fs) + 2 * PAD + 0.8;
-
-  const lineasTexto = (txt: string, ancho: number, fs: number): number => {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(fs);
-    return Math.max(1, doc.splitTextToSize(txt || "—", ancho - 2 * PAD).length);
-  };
-  const alturaPersonal = (nombres: string[]): number => {
-    if (nombres.length === 0) return filaMM(1, FS_BODY);
-    let lineas = 0;
-    for (const n of nombres) lineas += lineasTexto(n, COL_PER, FS_BODY);
-    return filaMM(lineas, FS_BODY);
-  };
-
-  // ── Bloques (banda + filas) por grupo ────────────────────────────────────
-  const bandH = filaMM(1, FS_BAND);
-  const bloques: Bloque[] = d.grupos.map((g) => {
-    const etiqueta = d.disciplinaUnica
-      ? `GRUPO - ${g.numero}`
-      : `GRUPO - ${g.numero}  ·  ${DISCIPLINA_LABEL[g.disciplina] ?? g.disciplina}`;
-    const band: RowInput = [
-      {
-        content: etiqueta,
-        colSpan: 3,
-        styles: { fillColor: VERDE, textColor: NEGRO, fontStyle: "bold", halign: "center", fontSize: FS_BAND },
-      },
-    ];
-
-    const otsSrc =
-      g.ots.length > 0 ? g.ots : [{ numeroOT: "—", descripcion: "Sin OT vinculadas", critica: false }];
-    const personalTxt = g.personal.length > 0 ? g.personal.join("\n") : "—";
-    const personalH = alturaPersonal(g.personal);
-
-    const filas: CellInput[][] = [];
-    const alturas: number[] = [];
-    otsSrc.forEach((ot, i) => {
-      const critEstilo = ot.critica ? { fillColor: SALMON, fontStyle: "bold" as const } : {};
-      const fila: CellInput[] = [
-        { content: ot.numeroOT, styles: { fontStyle: "bold", fontSize: FS_OT, halign: "center", ...critEstilo } },
-        { content: ot.descripcion, styles: { ...critEstilo } },
-      ];
-      if (i === 0) {
-        fila.push({
-          content: personalTxt,
-          rowSpan: otsSrc.length,
-          styles: { valign: "middle", fontSize: FS_BODY, textColor: NAVY },
-        });
-      }
-      filas.push(fila);
-      alturas.push(filaMM(lineasTexto(ot.descripcion, COL_DESC, FS_BODY), FS_BODY));
+  // ── Filas lógicas del cuerpo (ambos turnos) ──────────────────────────────
+  const filasDoc: Fila[] = [];
+  for (const sec of seccionesUtiles) {
+    const nPer = totalPersonal(sec.grupos);
+    filasDoc.push({
+      tipo: "turno",
+      row: [
+        {
+          content: `TURNO ${turnoLargo(sec.turno).toUpperCase()}  ·  ${nPer} ${nPer === 1 ? "persona" : "personas"}`,
+          colSpan: 3,
+          styles: {
+            fillColor: NAVY,
+            textColor: BLANCO,
+            fontStyle: "bold",
+            halign: "center",
+            fontSize: FS_TURNO,
+            cellPadding: 1.8,
+          },
+        },
+      ],
     });
 
-    // La columna PERSONAL (rowSpan) puede ser más alta que la suma de las filas:
-    // el grupo ocupa como mínimo esa altura.
-    const sumaFilas = alturas.reduce((a, b) => a + b, 0);
-    if (personalH > sumaFilas && alturas.length > 0) alturas[0] += personalH - sumaFilas;
+    for (const g of sec.grupos) {
+      const etiqueta = d.disciplinaUnica
+        ? `GRUPO - ${g.numero}`
+        : `GRUPO - ${g.numero}  ·  ${DISCIPLINA_LABEL[g.disciplina] ?? g.disciplina}`;
+      const otsSrc =
+        g.ots.length > 0
+          ? g.ots
+          : [{ numeroOT: "—", descripcion: "Sin OT vinculadas", critica: false }];
 
-    const totalH = bandH + alturas.reduce((a, b) => a + b, 0);
-    return { band, filas, alturas, bandH, totalH };
-  });
+      filasDoc.push({
+        tipo: "banda",
+        nFilas: otsSrc.length,
+        row: [
+          {
+            content: etiqueta,
+            colSpan: 3,
+            styles: {
+              fillColor: VERDE,
+              textColor: NEGRO,
+              fontStyle: "bold",
+              halign: "center",
+              fontSize: FS_BAND,
+            },
+          },
+        ],
+      });
 
-  // ── Reparto de bloques en páginas (banda nunca huérfana) ─────────────────
-  const paginas: RowInput[][] = [[]];
-  let y = CONTENT_TOP;
-  for (const b of bloques) {
-    const minKeep = b.bandH + b.alturas.slice(0, KEEP_FILAS).reduce((a, c) => a + c, 0);
-    const restante = bottomLimit - y;
-    const primeroDePagina = paginas[paginas.length - 1].length === 0;
-    if (!primeroDePagina && restante < Math.min(b.totalH, minKeep)) {
-      paginas.push([]);
-      y = CONTENT_TOP_NEXT;
+      const personalTxt = g.personal.length > 0 ? g.personal.join("\n") : "—";
+      otsSrc.forEach((ot, i) => {
+        const critEstilo = ot.critica ? { fillColor: SALMON, fontStyle: "bold" as const } : {};
+        const fila: CellInput[] = [
+          {
+            content: ot.numeroOT,
+            styles: { fontStyle: "bold", fontSize: FS_OT, halign: "center", ...critEstilo },
+          },
+          { content: ot.descripcion, styles: { ...critEstilo } },
+        ];
+        if (i === 0) {
+          fila.push({
+            content: personalTxt,
+            rowSpan: otsSrc.length,
+            styles: { valign: "middle", fontSize: FS_BODY, textColor: NAVY },
+          });
+        }
+        filasDoc.push({ tipo: "ot", row: fila });
+      });
     }
-    paginas[paginas.length - 1].push(b.band, ...b.filas);
-    y += b.totalH;
   }
 
-  // ── Render: un autoTable por página, encabezado de columnas en cada una ──
-  paginas.forEach((body, idx) => {
-    if (idx > 0) doc.addPage();
-    autoTable(doc, {
-      startY: idx === 0 ? CONTENT_TOP : CONTENT_TOP_NEXT,
-      margin: { left: M, right: M, top: CONTENT_TOP_NEXT, bottom: FOOTER_RESERVA },
-      head: [["No. OT", "DESCRIPCIÓN DE ACTIVIDAD", `PERSONAL (${total})`]],
-      showHead: "everyPage",
-      body,
-      rowPageBreak: "avoid",
-      headStyles: {
-        fillColor: NAVY,
+  // ── Opciones comunes del autoTable ──────────────────────────────────────
+  const rellenoRow = (alto: number): RowInput => [
+    {
+      content: "",
+      colSpan: 3,
+      styles: {
+        minCellHeight: alto,
+        fillColor: BLANCO,
         textColor: BLANCO,
-        fontSize: 7,
-        fontStyle: "bold",
-        cellPadding: 1.6,
-        halign: "center",
+        lineWidth: 0,
+        cellPadding: 0,
+        fontSize: 1,
       },
-      bodyStyles: {
-        fontSize: FS_BODY,
-        cellPadding: PAD,
-        textColor: NEGRO,
-        lineColor: BORDE,
-        lineWidth: 0.2,
-        valign: "middle",
-      },
-      columnStyles: {
-        0: { cellWidth: COL_OT, halign: "center" },
-        1: { cellWidth: COL_DESC },
-        2: { cellWidth: COL_PER, halign: "left" },
-      },
-    });
+    },
+  ];
+  const aBody = (fs: Fila[]): RowInput[] =>
+    fs.map((f) => (f.tipo === "relleno" ? rellenoRow(f.alto) : f.row));
+
+  const opciones = (body: RowInput[]): UserOptions => ({
+    startY: CONTENT_TOP,
+    margin: { left: M, right: M, top: CONTENT_TOP_NEXT, bottom: FOOTER_RESERVA },
+    head: [["No. OT", "DESCRIPCIÓN DE ACTIVIDAD", `PERSONAL (${total})`]],
+    showHead: "everyPage",
+    body,
+    rowPageBreak: "avoid",
+    headStyles: {
+      fillColor: NAVY,
+      textColor: BLANCO,
+      fontSize: 7,
+      fontStyle: "bold",
+      cellPadding: 1.6,
+      halign: "center",
+    },
+    bodyStyles: {
+      fontSize: FS_BODY,
+      cellPadding: PAD,
+      textColor: NEGRO,
+      lineColor: BORDE,
+      lineWidth: 0.2,
+      valign: "middle",
+    },
+    columnStyles: {
+      0: { cellWidth: COL_OT, halign: "center" },
+      1: { cellWidth: COL_DESC },
+      2: { cellWidth: COL_PER, halign: "left" },
+    },
   });
 
-  piePagina(doc, `Grupos y OTs · ${d.paradaCodigo} · Turno ${turnoTxt}`);
+  // ── Pasada de medición: y / alto / página de cada fila del cuerpo ────────
+  const medir = (fs: Fila[]): ({ y: number; h: number; pag: number } | undefined)[] => {
+    const tmp = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const reg: ({ y: number; h: number; pag: number } | undefined)[] = [];
+    autoTable(tmp, {
+      ...opciones(aBody(fs)),
+      willDrawCell: (data: CellHookData) => {
+        if (data.section !== "body" || data.column.index !== 0 || !data.cursor) return;
+        reg[data.row.index] = {
+          y: data.cursor.y,
+          h: data.row.height,
+          pag: tmp.getNumberOfPages(),
+        };
+      },
+    });
+    return reg;
+  };
+
+  // ── Empujar a la página siguiente los bloques que quedarían huérfanos ───
+  const capacidadPagina = pageBottom - CONTENT_TOP_NEXT;
+  const filasFinal: Fila[] = [...filasDoc];
+  let guarda = filasDoc.filter((f) => f.tipo === "turno" || f.tipo === "banda").length + 3;
+
+  while (guarda-- > 0) {
+    const reg = medir(filasFinal);
+    const topPag = new Map<number, number>();
+    reg.forEach((r) => {
+      if (!r) return;
+      const t = topPag.get(r.pag);
+      if (t === undefined || r.y < t) topPag.set(r.pag, r.y);
+    });
+
+    let insertado = false;
+    for (let k = 0; k < filasFinal.length; k++) {
+      const f = filasFinal[k];
+      if (f.tipo !== "turno" && f.tipo !== "banda") continue;
+      const r = reg[k];
+      if (!r) continue;
+
+      const top = topPag.get(r.pag) ?? r.y;
+      if (r.y <= top + 1.5) continue; // ya arranca al inicio de una página
+
+      // Altura que debe permanecer junto a este bloque.
+      let necesita = r.h;
+      if (f.tipo === "banda") {
+        let completo = r.h;
+        for (let j = 1; j <= f.nFilas; j++) completo += reg[k + j]?.h ?? 0;
+        necesita =
+          completo <= capacidadPagina
+            ? completo
+            : r.h + [...Array(KEEP_FILAS)].reduce((a, _, j) => a + (reg[k + 1 + j]?.h ?? 0), 0);
+      } else {
+        // Separador de turno: que baje con su primera banda y su primera OT.
+        for (let j = 1; j <= KEEP_FILAS; j++) necesita += reg[k + j]?.h ?? 0;
+      }
+
+      if (r.y + necesita > pageBottom + 0.5) {
+        filasFinal.splice(k, 0, { tipo: "relleno", alto: Math.max(2, pageBottom - r.y - 0.5) });
+        insertado = true;
+        break;
+      }
+    }
+    if (!insertado) break;
+  }
+
+  // ── Render final: un único autoTable continuo ──────────────────────────
+  autoTable(doc, opciones(aBody(filasFinal)));
+
+  piePagina(doc, `Grupos y OTs · ${d.paradaCodigo} · Turnos ${turnosTxt || "—"}`);
   const blobUrl = doc.output("bloburl");
   window.open(blobUrl, "_blank");
 }

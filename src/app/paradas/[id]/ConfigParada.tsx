@@ -10,7 +10,11 @@ import type {
   TurnoParada,
 } from "./tipos";
 import { ymdInput, DISCIPLINA_LABEL, inp, btnPrim, btnSec } from "./ui";
-import { generarGruposOtsPdf, type GrupoImpresion } from "@/lib/parada/generarGruposOtsPdf";
+import {
+  generarGruposOtsPdf,
+  type GrupoImpresion,
+  type SeccionTurno,
+} from "@/lib/parada/generarGruposOtsPdf";
 
 interface Props {
   parada: ParadaDetalle;
@@ -251,26 +255,38 @@ function SeccionGrupos({
     }
   }
 
-  // Arma el PDF "Grupos y OTs" del turno visible (para publicar / imprimir).
+  // Arma el PDF "Grupos y OTs": AMBOS turnos (Día + Noche) en un solo documento.
+  // Ignora el turno visible en pantalla — siempre imprime los dos.
   function imprimir() {
-    const grupos: GrupoImpresion[] = [];
-    for (const disc of discsImprimir) {
-      for (const g of porTurnoDisc.get(`${turnoAct}|${disc}`) ?? []) {
-        const ots = otsPorGrupo.get(`${disc}|${g.numero}`) ?? [];
-        grupos.push({
-          disciplina: disc,
-          numero: g.numero,
-          personal: (g.miembros ?? []).map((m) => m.nombre),
-          ots: ots.map((o) => ({
-            numeroOT: o.numeroOT,
-            descripcion: o.descripcion,
-            critica: o.critica,
-          })),
-        });
+    const secciones: SeccionTurno[] = [];
+    for (const turno of ["Dia", "Noche"] as const) {
+      const grupos: GrupoImpresion[] = [];
+      for (const disc of discsImprimir) {
+        for (const g of porTurnoDisc.get(`${turno}|${disc}`) ?? []) {
+          const ots = parada.ots
+            .filter(
+              (o) =>
+                o.grupoNumero === g.numero &&
+                o.disciplina === disc &&
+                (o.grupo === turno || o.grupo === "Ambos"),
+            )
+            .sort((a, b) => a.numeroOT.localeCompare(b.numeroOT));
+          grupos.push({
+            disciplina: disc,
+            numero: g.numero,
+            personal: (g.miembros ?? []).map((m) => m.nombre),
+            ots: ots.map((o) => ({
+              numeroOT: o.numeroOT,
+              descripcion: o.descripcion,
+              critica: o.critica,
+            })),
+          });
+        }
       }
+      if (grupos.length > 0) secciones.push({ turno, grupos });
     }
-    if (grupos.length === 0) {
-      alert(`No hay grupos de ${turnoAct === "Dia" ? "día" : "noche"} para imprimir.`);
+    if (secciones.length === 0) {
+      alert("No hay grupos para imprimir.");
       return;
     }
     const areaTxt =
@@ -278,10 +294,9 @@ function SeccionGrupos({
     generarGruposOtsPdf({
       paradaCodigo: parada.codigo,
       paradaNombre: parada.nombre,
-      turno: turnoAct,
       areaTxt,
       disciplinaUnica: discsImprimir.length === 1,
-      grupos,
+      secciones,
     });
   }
 
