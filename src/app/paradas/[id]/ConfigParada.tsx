@@ -10,6 +10,7 @@ import type {
   TurnoParada,
 } from "./tipos";
 import { ymdInput, DISCIPLINA_LABEL, inp, btnPrim, btnSec } from "./ui";
+import { generarGruposOtsPdf, type GrupoImpresion } from "@/lib/parada/generarGruposOtsPdf";
 
 interface Props {
   parada: ParadaDetalle;
@@ -242,6 +243,37 @@ function SeccionGrupos({
     }
   }
 
+  // Arma el PDF "Grupos y OTs" del turno visible (para publicar / imprimir).
+  function imprimir() {
+    const grupos: GrupoImpresion[] = [];
+    for (const disc of discsVisibles) {
+      for (const g of porTurnoDisc.get(`${turnoAct}|${disc}`) ?? []) {
+        const ots = otsPorGrupo.get(`${disc}|${g.numero}`) ?? [];
+        grupos.push({
+          disciplina: disc,
+          numero: g.numero,
+          personal: (g.miembros ?? []).map((m) => m.nombre),
+          ots: ots.map((o) => ({
+            numeroOT: o.numeroOT,
+            descripcion: o.descripcion,
+            critica: o.critica,
+          })),
+        });
+      }
+    }
+    if (grupos.length === 0) {
+      alert(`No hay grupos de ${turnoAct === "Dia" ? "día" : "noche"} para imprimir.`);
+      return;
+    }
+    generarGruposOtsPdf({
+      paradaCodigo: parada.codigo,
+      paradaNombre: parada.nombre,
+      turno: turnoAct,
+      disciplinaUnica: discsVisibles.length === 1,
+      grupos,
+    });
+  }
+
   return (
     <div style={seccion}>
       <h3 style={h3}>Grupos</h3>
@@ -250,8 +282,8 @@ function SeccionGrupos({
         {discFiltro && ` Sólo ves los grupos de ${DISCIPLINA_LABEL[discFiltro]}.`}
       </p>
 
-      {/* Selector de turno */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
+      {/* Selector de turno + imprimir */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 16, alignItems: "center" }}>
         {TURNOS.map((t) => (
           <button
             key={t}
@@ -270,6 +302,13 @@ function SeccionGrupos({
             Turno {t === "Dia" ? "Día" : "Noche"}
           </button>
         ))}
+        <button
+          onClick={imprimir}
+          title="Abrir el PDF de grupos y OTs del turno para imprimir / publicar"
+          style={{ ...btnSec, marginLeft: "auto", padding: "6px 14px", fontSize: 12 }}
+        >
+          🖨 Imprimir grupos y OTs
+        </button>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
