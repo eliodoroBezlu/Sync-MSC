@@ -4,8 +4,9 @@ import { prisma } from "@/lib/prisma";
 // Puente A1 — espejo de escritura Registro de OT → tablero de Parada de Planta.
 //
 // Cuando una OrdenTrabajo de turno "Parada de Planta" corresponde por número a
-// una ParadaOt de la parada en ejecución, refleja su avance en la maquinaria de
-// parada SIN repuntar el dashboard: sólo escribe.
+// una ParadaOt de la parada abierta (preparativos o ejecución) cuyo rango cubre
+// la fecha, refleja su avance en la maquinaria de parada SIN repuntar el
+// dashboard: sólo escribe.
 //
 //   ParadaOt.ordenTrabajoId  ← id de la OrdenTrabajo (back-link)
 //   ParadaOt.estado/avancePct ← derivados del estado de la OT y sus líneas
@@ -85,7 +86,7 @@ export async function espejarOrdenEnParada(params: EspejoParadaParams): Promise<
 
     const parada = await prisma.parada.findFirst({
       where: {
-        estado: "ejecucion",
+        estado: { not: "cerrada" },
         fechaEjecucionInicio: { lte: finDia },
         fechaEjecucionFin: { gte: iniDia },
       },

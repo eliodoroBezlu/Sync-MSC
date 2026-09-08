@@ -4,8 +4,10 @@ import { serialize } from "@/lib/parada/validacion";
 
 // GET /api/paradas/activa?fecha=YYYY-MM-DD
 //
-// Devuelve la parada en fase "ejecucion" cuyo rango de ejecución cubre `fecha`
-// (por defecto hoy), junto con sus OTs y los avances diarios de esa fecha. La usa
+// Devuelve la parada NO cerrada cuyo rango de ejecución cubre `fecha` (por
+// defecto hoy), junto con sus OTs y los avances diarios de esa fecha. Se acepta
+// también estado "preparativos": el personal necesita ver sus OT de parada para
+// prepararse antes de que alguien marque la parada como "ejecucion". La usa
 // "Registro de OT" para mostrar, además del plan semanal, las OTs de la parada
 // que el técnico logueado debe abrir/cerrar. No toca el flujo semanal.
 export async function GET(req: NextRequest) {
@@ -22,7 +24,7 @@ export async function GET(req: NextRequest) {
 
   const parada = await prisma.parada.findFirst({
     where: {
-      estado: "ejecucion",
+      estado: { not: "cerrada" },
       fechaEjecucionInicio: { lte: finDia },
       fechaEjecucionFin: { gte: iniDia },
     },

@@ -320,6 +320,7 @@ type ParadaOtActiva = {
   _id: string; numeroOT: string; tag?: string; descripcion?: string;
   descripcionEquipo?: string; disciplina?: string; grupo?: string;
   fase?: string; estado?: string; avancePct?: number; hhEstimadas?: number;
+  fechaProg?: string | null; // día programado de la OT (define la pestaña donde cae)
   ordenTrabajoId?: string | null;
   personalAsignado?: string[]; personalAsignadoIds?: string[];
 };
@@ -1753,8 +1754,14 @@ export default function RegistroOTPage() {
     if (!user) return;
     setLoadingPlan(true);
     const p = new URLSearchParams({ semana: String(semanaMostrada), anio: String(anioMostrado), limit: "50" });
-    // Día de la semana del turno activo — la pestaña donde se listan las OT de parada.
-    const diaParada = DIA_MAP[new Date(`${shiftFecha}T12:00:00`).getDay()];
+    // Cada OT de parada cae en la pestaña de su fechaProg; las que quedan fuera de
+    // la semana mostrada se ignoran (aparecerán al navegar a esa semana).
+    const DIAS_SEM: DiaSem[] = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"];
+    const diaPorFecha = new Map<string, DiaSem>();
+    getWeekDates(semanaMostrada, anioMostrado).forEach((d, i) => {
+      const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      diaPorFecha.set(ymd, DIAS_SEM[i]);
+    });
     Promise.all([
       fetch(`/api/programacion-semanal?${p}`).then(r => r.json()).catch(() => [] as PlanDoc[]),
       fetch(`/api/paradas/activa?fecha=${encodeURIComponent(shiftFecha)}`)
@@ -1809,7 +1816,9 @@ export default function RegistroOTPage() {
             const matchPorId = (po.personalAsignadoIds ?? []).includes(user.id);
             const matchPorNombre = (po.personalAsignado ?? []).some(pn => nombreCoincide(pn, user.nombre));
             if (!matchPorId && !matchPorNombre) continue;
-            refs.push(paradaOtARef(po, String(parada._id), diaParada));
+            const dia = diaPorFecha.get((po.fechaProg ?? "").slice(0, 10));
+            if (!dia) continue; // OT programada fuera de la semana mostrada
+            refs.push(paradaOtARef(po, String(parada._id), dia));
             recSet.add(po.numeroOT);
           }
         }
