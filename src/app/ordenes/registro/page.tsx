@@ -9,6 +9,7 @@ import { getFechaTurno, localDateStr, autoTurno, estaEnVentanaCierreSemanal } fr
 import { getWeekNumber, getWeekDates, getSemanaAnioOffset } from "@/lib/semana";
 import { tipoOtDisplay, normalizarACodigoCompleto } from "@/lib/tiposOt";
 import { guardarBorrador, leerBorrador, borrarBorrador, asegurarStoragePersistente, type BorradorGuardado } from "@/lib/borradorOT";
+import { disciplinaToArea } from "@/lib/planificacion/areaToDisciplina";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -326,11 +327,12 @@ type ParadaOtActiva = {
 };
 type ParadaActiva = { _id: string; ots?: ParadaOtActiva[] };
 
-const AREA_PARADA: Record<string, string> = {
-  ELEC: "PARADA-ELEC",
-  INST: "PARADA-INST",
-  TESA: "PARADA-TESA",
-};
+// Las OT de parada caen en el mismo balde de área que la programación semanal
+// (INST→3320, ELEC→3319, TESA→3348) para que el filtro "Área" de arriba las
+// muestre junto al plan semanal. Sin disciplina reconocida → "PARADA".
+function areaDeParadaOt(disciplina?: string | null): string {
+  return disciplinaToArea(disciplina) || "PARADA";
+}
 
 // El estado de ParadaOt se mapea al vocabulario del plan que entiende la UI:
 // "terminada" cierra la tarjeta ("en_revision"); el resto queda abierto.
@@ -341,7 +343,7 @@ function estadoParadaAPlan(estado?: string): string {
 function paradaOtARef(po: ParadaOtActiva, paradaId: string, dia: DiaSem): PlanRef {
   return {
     planId: `parada:${paradaId}`,
-    areaCodigo: AREA_PARADA[(po.disciplina ?? "").toUpperCase()] ?? "PARADA",
+    areaCodigo: areaDeParadaOt(po.disciplina),
     ot: {
       numeroOT: po.numeroOT,
       tipoOT: "PMP", // ParadaOt no tiene tipoOT; trabajo mayor programado por defecto
@@ -1758,13 +1760,17 @@ export default function RegistroOTPage() {
     // la semana mostrada se ignoran (aparecerán al navegar a esa semana).
     const DIAS_SEM: DiaSem[] = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"];
     const diaPorFecha = new Map<string, DiaSem>();
-    getWeekDates(semanaMostrada, anioMostrado).forEach((d, i) => {
+    const ymdsSemana = getWeekDates(semanaMostrada, anioMostrado).map((d, i) => {
       const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       diaPorFecha.set(ymd, DIAS_SEM[i]);
+      return ymd;
     });
+    // La parada se pide por el rango de la semana MOSTRADA (no por hoy): sus OT
+    // se programan a días futuros y hoy puede caer fuera del rango de la parada.
+    const qParada = new URLSearchParams({ desde: ymdsSemana[0], hasta: ymdsSemana[6] });
     Promise.all([
       fetch(`/api/programacion-semanal?${p}`).then(r => r.json()).catch(() => [] as PlanDoc[]),
-      fetch(`/api/paradas/activa?fecha=${encodeURIComponent(shiftFecha)}`)
+      fetch(`/api/paradas/activa?${qParada}`)
         .then(r => r.json())
         .then((d: { ok?: boolean; parada?: ParadaActiva | null }) => d?.parada ?? null)
         .catch(() => null),
@@ -1806,16 +1812,26 @@ export default function RegistroOTPage() {
           }
         }
 
-        // OT de la parada en ejecución que le tocan a este técnico (mismo criterio
-        // id/nombre que usaba PanelParadaOts, para todos los roles). Se enrutan por
-        // el mecanismo de recurrentes: el día 2+ usa "+ Avance del día" (PATCH) y
-        // nunca un segundo POST, así el guard de "reactiva abierta" no las bloquea.
+        // OT de la parada, con el MISMO criterio de visibilidad que el plan
+        // semanal de arriba: técnico/contratista (rol 4/6) ven solo las suyas;
+        // supervisor/jefe con áreas (rol >= 3) ven las de su área; admin/
+        // planificador (rol < 3) ven todas. Se enrutan por el mecanismo de
+        // recurrentes: el día 2+ usa "+ Avance del día" (PATCH) y nunca un
+        // segundo POST, así el guard de "reactiva abierta" no las bloquea.
         if (parada) {
           for (const po of parada.ots ?? []) {
             if (po.fase !== "ejecucion") continue;
-            const matchPorId = (po.personalAsignadoIds ?? []).includes(user.id);
-            const matchPorNombre = (po.personalAsignado ?? []).some(pn => nombreCoincide(pn, user.nombre));
-            if (!matchPorId && !matchPorNombre) continue;
+            const areaPO = areaDeParadaOt(po.disciplina);
+            if (user.rol === 4 || user.rol === 6) {
+              const matchPorId = (po.personalAsignadoIds ?? []).includes(user.id);
+              const matchPorNombre = (po.personalAsignado ?? []).some(pn => nombreCoincide(pn, user.nombre));
+              const paNames = (po.personalAsignado ?? []).map(n => n.trim().toLowerCase());
+              const soloGenerico = paNames.length === 0 || paNames.every(n => n === "contratista" || n === "");
+              const matchPorArea = user.rol === 6 && soloGenerico && (user.areas ?? []).includes(areaPO);
+              if (!matchPorId && !matchPorNombre && !matchPorArea) continue;
+            } else if (user.rol >= 3 && user.areas?.length > 0) {
+              if (!user.areas.includes(areaPO)) continue;
+            }
             const dia = diaPorFecha.get((po.fechaProg ?? "").slice(0, 10));
             if (!dia) continue; // OT programada fuera de la semana mostrada
             refs.push(paradaOtARef(po, String(parada._id), dia));

@@ -12,3 +12,18 @@ const AREA_DISCIPLINA: Record<string, string> = {
 export function areaToDisciplina(areaCodigo: string): string {
   return AREA_DISCIPLINA[areaCodigo] ?? "MEC";
 }
+
+// Inverso: disciplina de parada ("INST"/"ELEC"/"TESA") → código de área real.
+// Las OT de Parada de Planta guardan `disciplina`, no `areaCodigo`; este mapeo
+// las hace caer en el mismo balde de área que la programación semanal para que
+// admin/planificador/supervisor las vean al filtrar por su área.
+const DISCIPLINA_AREA: Record<string, string> = {
+  INST: "3320",
+  ELEC: "3319",
+  TESA: "3348",
+  CON: "3351",
+};
+
+export function disciplinaToArea(disciplina: string | null | undefined): string {
+  return DISCIPLINA_AREA[(disciplina ?? "").toUpperCase()] ?? "";
+}
