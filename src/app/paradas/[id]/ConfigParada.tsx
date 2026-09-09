@@ -55,6 +55,7 @@ export default function ConfigParada({
     return (
       <div>
         <SeccionGrupos parada={parada} onChange={onChange} discFiltro={discFiltro} />
+        <SeccionOtManual paradaId={parada.id} onChange={onChange} discFiltro={discFiltro} />
       </div>
     );
   }
@@ -63,7 +64,7 @@ export default function ConfigParada({
       <SeccionDatos parada={parada} onChange={onChange} />
       <SeccionGrupos parada={parada} onChange={onChange} discFiltro={discFiltro} />
       <SeccionImportar paradaId={parada.id} onChange={onChange} />
-      <SeccionOtManual paradaId={parada.id} onChange={onChange} />
+      <SeccionOtManual paradaId={parada.id} onChange={onChange} discFiltro={discFiltro} />
       <SeccionPeligro paradaId={parada.id} codigo={parada.codigo} onDeleted={onDeleted} />
     </div>
   );
@@ -1000,11 +1001,19 @@ function SeccionImportar({ paradaId, onChange }: { paradaId: string; onChange: (
 }
 
 /* ── Alta manual de OT ──────────────────────────────────────────────────── */
-function SeccionOtManual({ paradaId, onChange }: { paradaId: string; onChange: () => Promise<void> }) {
+function SeccionOtManual({
+  paradaId,
+  onChange,
+  discFiltro = null,
+}: {
+  paradaId: string;
+  onChange: () => Promise<void>;
+  discFiltro?: DisciplinaParada | null;
+}) {
   const vacio = {
     numeroOT: "",
     descripcion: "",
-    disciplina: "ELEC" as DisciplinaParada,
+    disciplina: (discFiltro ?? "ELEC") as DisciplinaParada,
     fase: "ejecucion" as "preparativos" | "ejecucion",
     hhEstimadas: "",
     fechaProg: "",
@@ -1065,8 +1074,13 @@ function SeccionOtManual({ paradaId, onChange }: { paradaId: string; onChange: (
         </label>
         <label style={campo}>
           <span style={lbl}>Disciplina</span>
-          <select value={f.disciplina} onChange={(e) => set("disciplina", e.target.value as DisciplinaParada)} style={inp}>
-            {DISCIPLINAS.map((d) => (
+          <select
+            value={f.disciplina}
+            onChange={(e) => set("disciplina", e.target.value as DisciplinaParada)}
+            style={inp}
+            disabled={discFiltro != null}
+          >
+            {(discFiltro ? [discFiltro] : DISCIPLINAS).map((d) => (
               <option key={d} value={d}>{DISCIPLINA_LABEL[d]}</option>
             ))}
           </select>
