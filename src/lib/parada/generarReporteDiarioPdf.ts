@@ -8,6 +8,8 @@ const NEGRO = [17, 24, 39] as [number, number, number];
 const GRIS_L = [248, 250, 252] as [number, number, number];
 const BORDE = [226, 232, 240] as [number, number, number];
 
+const M = 12;
+
 function fmt(iso: string | null): string {
   if (!iso) return "—";
   const norm = /^\d{4}-\d{2}-\d{2}/.test(iso) ? iso.slice(0, 10) + "T12:00:00" : iso;
@@ -40,7 +42,6 @@ export interface DatosReportePdf {
   resumen: string;
   avanceGlobalPct: number;
   hhPropias: number;
-  hhApoyo: number;
   otsTerminadas: string[];
   otsConRetraso: { numeroOT: string; motivo: string; accion: string }[];
   pendientes: { tipo: string; detalle: string }[];
@@ -67,49 +68,53 @@ const ESTADO_TXT: Record<string, string> = {
   con_retraso: "Con retraso",
 };
 
-export function generarReporteDiarioPdf(d: DatosReportePdf): void {
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-  const PW = doc.internal.pageSize.getWidth();
-  const M = 12;
+type WithY = jsPDF & { lastAutoTable?: { finalY: number } };
 
-  // ── Encabezado ────────────────────────────────────────────────────────────
+/** Banda naranja de encabezado. Devuelve la Y donde puede empezar el contenido. */
+function dibujarEncabezado(doc: jsPDF, titulo: string, subtitulo: string): number {
+  const PW = doc.internal.pageSize.getWidth();
   doc.setFillColor(...NARANJA);
   doc.rect(0, 0, PW, 22, "F");
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
   doc.setTextColor(...BLANCO);
-  doc.text(`REPORTE DIARIO DEL SUPERVISOR`, PW / 2, 10, { align: "center" });
+  doc.text(titulo, PW / 2, 10, { align: "center" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
-  doc.text(
-    `${d.paradaCodigo} — ${d.paradaNombre}`,
-    PW / 2,
-    16.5,
-    { align: "center" },
-  );
-
+  doc.text(subtitulo, PW / 2, 16.5, { align: "center" });
   doc.setTextColor(...NEGRO);
+  return 30;
+}
+
+/**
+ * Dibuja el cuerpo de un reporte de área (indicadores, resumen, OTs, pendientes…)
+ * empezando en `yInicial`. Devuelve la Y final.
+ */
+export function dibujarCuerpoReporte(doc: jsPDF, d: DatosReportePdf, yInicial: number): number {
+  const PW = doc.internal.pageSize.getWidth();
+  let y = yInicial;
+
   doc.setFontSize(9);
+  doc.setTextColor(...NEGRO);
   const turnoTxt = d.turno === "Dia" ? "Día" : "Noche";
   const lineaMeta = `Fecha: ${fmt(d.fecha)}   ·   Turno: ${turnoTxt}   ·   Reunión: ${d.reunion}   ·   Supervisor: ${d.supervisorNombre || "—"}`;
-  doc.text(lineaMeta, M, 30);
+  doc.text(lineaMeta, M, y);
   if (d.diaEtiqueta) {
     doc.setTextColor(120, 120, 120);
-    doc.text(d.diaEtiqueta, PW - M, 30, { align: "right" });
+    doc.text(d.diaEtiqueta, PW - M, y, { align: "right" });
     doc.setTextColor(...NEGRO);
   }
+  y += 4;
 
   // ── Bloque de indicadores ─────────────────────────────────────────────────
   const kpis: [string, string][] = [
     ["Avance global", `${Math.round(d.avanceGlobalPct)}%`],
     ["Cumpl. programa", d.cumplimientoHoyPct != null ? `${Math.round(d.cumplimientoHoyPct)}%` : "—"],
     ["HH propias (turno)", d.hhPropias.toFixed(1)],
-    ["HH apoyo (turno)", d.hhApoyo.toFixed(1)],
-    ["HH total turno", (d.hhPropias + d.hhApoyo).toFixed(1)],
     ["HH estimadas plan", d.hhEst != null ? d.hhEst.toFixed(0) : "—"],
   ];
   autoTable(doc, {
-    startY: 34,
+    startY: y,
     margin: { left: M, right: M },
     body: [kpis.map(([k]) => k), kpis.map(([, v]) => v)],
     theme: "grid",
@@ -127,9 +132,7 @@ export function generarReporteDiarioPdf(d: DatosReportePdf): void {
       }
     },
   });
-
-  type WithY = jsPDF & { lastAutoTable?: { finalY: number } };
-  let y = ((doc as WithY).lastAutoTable?.finalY ?? 50) + 7;
+  y = ((doc as WithY).lastAutoTable?.finalY ?? y + 16) + 7;
 
   // ── Resumen del turno ─────────────────────────────────────────────────────
   doc.setFont("helvetica", "bold");
@@ -240,9 +243,73 @@ export function generarReporteDiarioPdf(d: DatosReportePdf): void {
     doc.setTextColor(...NEGRO);
     const obs = doc.splitTextToSize(d.observaciones.trim(), PW - 2 * M);
     doc.text(obs, M, y);
+    y += obs.length * 4.6;
   }
 
+  return y;
+}
+
+export function generarReporteDiarioPdf(d: DatosReportePdf): void {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const y = dibujarEncabezado(doc, "REPORTE DIARIO DEL SUPERVISOR", `${d.paradaCodigo} — ${d.paradaNombre}`);
+  dibujarCuerpoReporte(doc, d, y + 4);
+
+  const turnoTxt = d.turno === "Dia" ? "Día" : "Noche";
   piePagina(doc, `Reporte ${turnoTxt} ${fmt(d.fecha)} · ${d.reunion}`);
-  const blobUrl = doc.output("bloburl");
-  window.open(blobUrl, "_blank");
+  window.open(doc.output("bloburl"), "_blank");
+}
+
+// ── Reporte consolidado de la reunión (varias áreas en un documento) ────────
+
+export interface AreaReporteReunion {
+  disciplina: string;
+  label: string;
+  datos: DatosReportePdf | null; // null = área sin reporte emitido
+}
+
+export interface DatosReporteReunionPdf {
+  paradaCodigo: string;
+  paradaNombre: string;
+  fecha: string;
+  turno: "Dia" | "Noche";
+  reunion: "08:00" | "17:00";
+  areas: AreaReporteReunion[];
+}
+
+export function generarReporteReunionPdf(d: DatosReporteReunionPdf): void {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const PW = doc.internal.pageSize.getWidth();
+  const turnoTxt = d.turno === "Dia" ? "Día" : "Noche";
+
+  d.areas.forEach((area, i) => {
+    if (i > 0) doc.addPage();
+    let y = dibujarEncabezado(
+      doc,
+      `REPORTE DE REUNIÓN · ${d.reunion}`,
+      `${d.paradaCodigo} — ${d.paradaNombre}`,
+    );
+
+    // Banda con el nombre del área.
+    doc.setFillColor(...NAVY);
+    doc.rect(0, y - 2, PW, 8, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...BLANCO);
+    doc.text(`ÁREA: ${area.label.toUpperCase()}`, M, y + 3.5);
+    doc.setTextColor(...NEGRO);
+    y += 12;
+
+    if (!area.datos) {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(10);
+      doc.setTextColor(150, 60, 60);
+      doc.text("Sin reporte emitido para esta área en esta reunión.", M, y + 4);
+      doc.setTextColor(...NEGRO);
+      return;
+    }
+    dibujarCuerpoReporte(doc, area.datos, y);
+  });
+
+  piePagina(doc, `Reunión ${d.reunion} · ${turnoTxt} ${fmt(d.fecha)}`);
+  window.open(doc.output("bloburl"), "_blank");
 }

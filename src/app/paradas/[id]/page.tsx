@@ -24,7 +24,10 @@ const ROLES_CONFIG = [1, 2, 5];
 // El supervisor (rol 3) también entra a Configuración, pero sólo a las secciones
 // Grupos y Asignaciones (armar cuadrillas y asignar personal).
 const ROLES_CONFIG_GRUPOS = [1, 2, 3, 5];
+// Acceso a la pestaña Reportes (y a Preparativos/Ejecución): supervisor y planificador.
 const ROLES_REPORTE = [3, 5];
+// Admin y Superintendente consolidan el PDF de la reunión (08:00 / 17:00).
+const ROLES_CONSOLIDAR_REPORTE = [1, 2];
 
 type Tab = "resumen" | "preparativos" | "ejecucion" | "reportes" | "config";
 
@@ -104,6 +107,9 @@ export default function ParadaDetallePage({ params }: { params: Promise<{ id: st
   const cerrada = parada?.estado === "cerrada";
   // Disciplina a la que queda restringido el usuario (null = ve todo).
   const discFiltro = disciplinaParadaDeUsuario(user.rol, user.disciplina);
+  // Sólo el supervisor de área (rol 3 con disciplina) emite el reporte de su área.
+  const puedeEmitirReporte = user.rol === 3 && discFiltro != null;
+  const puedeConsolidarReporte = ROLES_CONSOLIDAR_REPORTE.includes(user.rol);
 
   if (!puedeVer) {
     return (
@@ -234,7 +240,15 @@ export default function ParadaDetallePage({ params }: { params: Promise<{ id: st
           ) : tab === "ejecucion" ? (
             <AvanceDiario parada={parada} puedeEditar={puedeReporte && !cerrada} discFiltro={discFiltro} onChange={recargar} />
           ) : tab === "reportes" ? (
-            <ReporteDiarioSupervisor parada={parada} tablero={tablero} puedeEmitir={puedeReporte && !cerrada} usuario={user} discFiltro={discFiltro} onChange={recargar} />
+            <ReporteDiarioSupervisor
+              parada={parada}
+              tablero={tablero}
+              puedeEmitir={puedeEmitirReporte && !cerrada}
+              puedeConsolidar={puedeConsolidarReporte}
+              usuario={user}
+              discFiltro={discFiltro}
+              onChange={recargar}
+            />
           ) : (
             <ConfigParada
               parada={parada}

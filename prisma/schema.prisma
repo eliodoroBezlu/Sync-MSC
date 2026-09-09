@@ -776,6 +776,7 @@ model ParadaReporteDiario {
   fecha               DateTime
   turno               String // Dia | Noche
   reunion             String // "08:00" | "17:00"
+  disciplina          String   @default("ELEC") // ELEC | INST | TESA — un reporte por área
   supervisorNombre    String
   supervisorUsuarioId String?
   resumen             String
@@ -793,6 +794,6 @@ model ParadaReporteDiario {
 
   parada Parada @relation(fields: [paradaId], references: [id], onDelete: Cascade)
 
-  @@unique([paradaId, fecha, turno, reunion])
+  @@unique([paradaId, fecha, turno, reunion, disciplina])
   @@index([paradaId, fecha])
 }

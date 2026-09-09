@@ -154,6 +154,7 @@ export const crearReporteSchema = z.object({
   fecha: fechaReq,
   turno: TURNO,
   reunion: REUNION,
+  disciplina: DISCIPLINA,
   supervisorNombre: z.string().trim().min(1, "supervisor requerido"),
   supervisorUsuarioId: z.string().trim().nullish(),
   resumen: z.string().trim().optional().default(""),

@@ -72,6 +72,7 @@ export interface ParadaReporteCli {
   fecha: string;
   turno: TurnoParada;
   reunion: ReunionParada;
+  disciplina: string; // ELEC | INST | TESA
   supervisorNombre: string;
   supervisorUsuarioId: string | null;
   resumen: string;

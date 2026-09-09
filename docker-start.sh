@@ -334,6 +334,13 @@ const migraciones = [
   "ALTER TABLE \"ParadaOt\" ADD COLUMN IF NOT EXISTS \"grupoCodigo\" TEXT NOT NULL DEFAULT ''",
   "ALTER TABLE \"ParadaOt\" ALTER COLUMN \"grupoCodigo\" SET DEFAULT ''",
   "ALTER TABLE \"ParadaOt\" ADD COLUMN IF NOT EXISTS \"grupoNumero\" INTEGER",
+
+  // ── Parada: reporte diario por área/disciplina (2026-09) ──────────────────
+  // Un ParadaReporteDiario por (parada, fecha, turno, reunión, disciplina):
+  // cada área (ELEC/INST/TESA) carga su reporte y el admin consolida el PDF.
+  "ALTER TABLE \"ParadaReporteDiario\" ADD COLUMN IF NOT EXISTS disciplina TEXT NOT NULL DEFAULT 'ELEC'",
+  "ALTER TABLE \"ParadaReporteDiario\" DROP CONSTRAINT IF EXISTS \"ParadaReporteDiario_paradaId_fecha_turno_reunion_key\"",
+  "ALTER TABLE \"ParadaReporteDiario\" ADD CONSTRAINT \"ParadaReporteDiario_paradaId_fecha_turno_reunion_disciplina_key\" UNIQUE (\"paradaId\", fecha, turno, reunion, disciplina)",
 ];
 
 (async () => {

@@ -47,9 +47,16 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     let otsTerminadas: string[] = [];
 
     if (d.prellenar) {
+      // Sólo las OTs de ejecución del área del reporte.
+      const otsArea = new Set(
+        parada.ots.filter((o) => o.disciplina === d.disciplina).map((o) => o.id),
+      );
       const otPorId = new Map(parada.ots.map((o) => [o.id, o]));
       const delTurno = parada.avances.filter(
-        (a) => ymd(a.fecha) === ymd(fechaUTC) && a.turno === d.turno,
+        (a) =>
+          ymd(a.fecha) === ymd(fechaUTC) &&
+          a.turno === d.turno &&
+          otsArea.has(a.paradaOtId),
       );
       hhPropias = delTurno.reduce((s, a) => s + a.hhPropias, 0);
       hhApoyo = delTurno.reduce((s, a) => s + a.hhApoyo, 0);
@@ -61,16 +68,23 @@ export async function POST(req: NextRequest, { params }: Ctx) {
             .filter((n): n is string => Boolean(n)),
         ),
       ];
-      avanceGlobalPct = calcularTablero(parada).avanceGlobalPct;
+      // Avance del área: promedio de avancePct de las OTs de ejecución del área.
+      const otsEjecArea = parada.ots.filter(
+        (o) => o.disciplina === d.disciplina && o.fase === "ejecucion",
+      );
+      avanceGlobalPct = otsEjecArea.length
+        ? Math.round(otsEjecArea.reduce((s, o) => s + o.avancePct, 0) / otsEjecArea.length)
+        : calcularTablero(parada).avanceGlobalPct;
     }
 
     const reporte = await prisma.paradaReporteDiario.upsert({
       where: {
-        paradaId_fecha_turno_reunion: {
+        paradaId_fecha_turno_reunion_disciplina: {
           paradaId: id,
           fecha: fechaUTC,
           turno: d.turno,
           reunion: d.reunion,
+          disciplina: d.disciplina,
         },
       },
       create: {
@@ -78,6 +92,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         fecha: fechaUTC,
         turno: d.turno,
         reunion: d.reunion,
+        disciplina: d.disciplina,
         supervisorNombre: d.supervisorNombre,
         supervisorUsuarioId: d.supervisorUsuarioId ?? null,
         resumen: d.resumen,
