@@ -17,7 +17,11 @@ import { fmtFecha, DISCIPLINA_LABEL, inp, btnPrim, btnSec } from "./ui";
 interface Props {
   parada: ParadaDetalle;
   tablero: TableroData | null;
-  /** El supervisor de área puede crear/emitir el reporte de SU área. */
+  /**
+   * El supervisor de área (rol 3) carga y envía el reporte de SU disciplina
+   * desde su sesión. Admin / Superintendente no lo tienen: sólo consolidan
+   * (ver `puedeConsolidar`).
+   */
   puedeEmitir: boolean;
   /** Admin/Superintendente: puede generar el PDF consolidado de la reunión. */
   puedeConsolidar: boolean;
@@ -221,7 +225,7 @@ export default function ReporteDiarioSupervisor({
       const done = await patchRico(base._id, emitir ? "emitido" : "borrador");
       if (!done) return;
       setRepActual(done);
-      setMsg(emitir ? "Reporte emitido." : "Borrador guardado.");
+      setMsg(emitir ? "Reporte enviado al coordinador." : "Borrador guardado.");
       await onChange();
     } finally {
       setBusy(false);
@@ -323,6 +327,23 @@ export default function ReporteDiarioSupervisor({
     });
   }
 
+  // Admin / Superintendente sin permiso de carga: sólo ven estado + PDF, sin
+  // formulario editable (los reportes los llenan los supervisores en su sesión).
+  const modoConsolidacion = puedeConsolidar && !puedeEmitir;
+
+  // PDF individual de un área ya enviada por su supervisor.
+  function generarPdfDeArea(disc: DisciplinaParada) {
+    const rep = parada.reportesDiarios.find(
+      (r) =>
+        r.fecha.slice(0, 10) === f.fecha &&
+        r.turno === f.turno &&
+        r.reunion === f.reunion &&
+        r.disciplina === disc,
+    );
+    if (!rep) return;
+    generarReporteDiarioPdf(mapReporteADatos(rep, disc));
+  }
+
   const toggleTerminada = (num: string) =>
     set(
       "otsTerminadas",
@@ -334,26 +355,28 @@ export default function ReporteDiarioSupervisor({
       {/* ── Formulario ─────────────────────────────────────────────── */}
       <div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-          <label style={campo}>
-            <span style={lbl}>Área</span>
-            {discFiltro ? (
-              <input
-                value={DISCIPLINA_LABEL[discFiltro] ?? discFiltro}
-                disabled
-                style={{ ...inp, background: "#f1f5f9" }}
-              />
-            ) : (
-              <select
-                value={areaActiva}
-                onChange={(e) => setAreaActiva(e.target.value as DisciplinaParada)}
-                style={inp}
-              >
-                {DISCIPLINAS_PARADA.map((d) => (
-                  <option key={d} value={d}>{DISCIPLINA_LABEL[d] ?? d}</option>
-                ))}
-              </select>
-            )}
-          </label>
+          {!modoConsolidacion && (
+            <label style={campo}>
+              <span style={lbl}>Área</span>
+              {discFiltro ? (
+                <input
+                  value={DISCIPLINA_LABEL[discFiltro] ?? discFiltro}
+                  disabled
+                  style={{ ...inp, background: "#f1f5f9" }}
+                />
+              ) : (
+                <select
+                  value={areaActiva}
+                  onChange={(e) => setAreaActiva(e.target.value as DisciplinaParada)}
+                  style={inp}
+                >
+                  {DISCIPLINAS_PARADA.map((d) => (
+                    <option key={d} value={d}>{DISCIPLINA_LABEL[d] ?? d}</option>
+                  ))}
+                </select>
+              )}
+            </label>
+          )}
           <label style={campo}>
             <span style={lbl}>Fecha</span>
             <select value={f.fecha} onChange={(e) => set("fecha", e.target.value)} style={inp}>
@@ -377,23 +400,33 @@ export default function ReporteDiarioSupervisor({
               <option value="17:00">17:00 PM</option>
             </select>
           </label>
-          <label style={{ ...campo, flex: 1, minWidth: 180 }}>
-            <span style={lbl}>Supervisor</span>
-            <input value={f.supervisorNombre} onChange={(e) => set("supervisorNombre", e.target.value)} style={inp} />
-          </label>
+          {!modoConsolidacion && (
+            <label style={{ ...campo, flex: 1, minWidth: 180 }}>
+              <span style={lbl}>Supervisor</span>
+              <input value={f.supervisorNombre} onChange={(e) => set("supervisorNombre", e.target.value)} style={inp} />
+            </label>
+          )}
         </div>
 
-        {repActual && (
-          <div style={{ fontSize: 11, marginBottom: 10, color: repActual.estado === "emitido" ? "#15803d" : "#d97706" }}>
-            {repActual.estado === "emitido" ? "● Reporte emitido" : "○ Borrador guardado"} — última actualización {fmtFecha(repActual.updatedAt)}
-          </div>
+        {modoConsolidacion && (
+          <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 12px" }}>
+            Cada supervisor de área envía su reporte desde su sesión. Aquí revisás
+            el estado de las tres áreas para esta reunión y generás el PDF
+            consolidado cuando estén completas.
+          </p>
         )}
 
         {puedeEmitir && (
-          <button onClick={prellenar} disabled={busy} style={{ ...btnSec, marginBottom: 12 }}>
-            ↻ Prellenar desde avances del turno
-          </button>
-        )}
+          <>
+            {repActual && (
+              <div style={{ fontSize: 11, marginBottom: 10, color: repActual.estado === "emitido" ? "#15803d" : "#d97706" }}>
+                {repActual.estado === "emitido" ? "● Reporte enviado" : "○ Borrador guardado"} — última actualización {fmtFecha(repActual.updatedAt)}
+              </div>
+            )}
+
+            <button onClick={prellenar} disabled={busy} style={{ ...btnSec, marginBottom: 12 }}>
+              ↻ Prellenar desde avances del turno
+            </button>
 
         <label style={{ display: "block", marginBottom: 12 }}>
           <span style={lbl}>Resumen del turno</span>
@@ -557,6 +590,8 @@ export default function ReporteDiarioSupervisor({
           <span style={lbl}>Observaciones</span>
           <textarea value={f.observaciones} onChange={(e) => set("observaciones", e.target.value)} rows={2} style={{ ...inp, resize: "vertical" }} />
         </label>
+          </>
+        )}
 
         {msg && (
           <div style={{ fontSize: 12, marginBottom: 10, color: msg.includes("Error") ? "#dc2626" : "#15803d" }}>{msg}</div>
@@ -581,11 +616,19 @@ export default function ReporteDiarioSupervisor({
                 const color = emitido ? "#15803d" : rep ? "#d97706" : "#94a3b8";
                 const icono = emitido ? "✓" : rep ? "○" : "—";
                 return (
-                  <span key={disc} style={{ fontSize: 12, fontWeight: 700, color, display: "inline-flex", gap: 4, alignItems: "center" }}>
+                  <span key={disc} style={{ fontSize: 12, fontWeight: 700, color, display: "inline-flex", gap: 6, alignItems: "center" }}>
                     {icono} {DISCIPLINA_LABEL[disc] ?? disc}
                     <span style={{ fontWeight: 500, color: "#94a3b8" }}>
-                      {emitido ? "emitido" : rep ? "borrador" : "sin reporte"}
+                      {emitido ? "enviado" : rep ? "borrador del supervisor" : "sin reporte"}
                     </span>
+                    {rep && (
+                      <button
+                        onClick={() => generarPdfDeArea(disc)}
+                        style={{ ...btnSec, padding: "1px 8px", fontSize: 11 }}
+                      >
+                        PDF
+                      </button>
+                    )}
                   </span>
                 );
               })}
@@ -600,7 +643,7 @@ export default function ReporteDiarioSupervisor({
                 Guardar borrador
               </button>
               <button onClick={() => guardar(true)} disabled={busy} style={btnPrim}>
-                Emitir reporte
+                Enviar reporte de {DISCIPLINA_LABEL[areaActiva] ?? areaActiva}
               </button>
               <button onClick={generarPdf} style={{ ...btnSec, borderColor: "#0f2847", color: "#0f2847" }}>
                 PDF de mi área
@@ -613,6 +656,12 @@ export default function ReporteDiarioSupervisor({
             </button>
           )}
         </div>
+        {puedeEmitir && (
+          <p style={{ fontSize: 11, color: "#64748b", marginTop: 8 }}>
+            Al enviar, tu reporte del área queda disponible para la reunión: el
+            coordinador lo verá marcado como “enviado” en Estado de reportes.
+          </p>
+        )}
       </div>
 
       {/* ── Historial ─────────────────────────────────────────────── */}

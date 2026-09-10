@@ -107,9 +107,12 @@ export default function ParadaDetallePage({ params }: { params: Promise<{ id: st
   const cerrada = parada?.estado === "cerrada";
   // Disciplina a la que queda restringido el usuario (null = ve todo).
   const discFiltro = disciplinaParadaDeUsuario(user.rol, user.disciplina);
-  // Sólo el supervisor de área (rol 3 con disciplina) emite el reporte de su área.
-  const puedeEmitirReporte = user.rol === 3 && discFiltro != null;
+  // El supervisor de área (rol 3) carga y ENVÍA el reporte de su disciplina
+  // desde su propia sesión. Admin / Superintendente NO cargan reportes: sólo
+  // revisan el estado de cada área y generan el PDF consolidado de la reunión
+  // de las 08:00 / 17:00.
   const puedeConsolidarReporte = ROLES_CONSOLIDAR_REPORTE.includes(user.rol);
+  const puedeEmitirReporte = user.rol === 3;
 
   if (!puedeVer) {
     return (
