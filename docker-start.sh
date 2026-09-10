@@ -335,6 +335,12 @@ const migraciones = [
   "ALTER TABLE \"ParadaOt\" ALTER COLUMN \"grupoCodigo\" SET DEFAULT ''",
   "ALTER TABLE \"ParadaOt\" ADD COLUMN IF NOT EXISTS \"grupoNumero\" INTEGER",
 
+  // ── Parada: una OT en turno día y noche a la vez (2026-09) ────────────────
+  // grupoNumero = cuadrilla del turno DÍA; grupoNumeroNoche = cuadrilla del
+  // turno NOCHE. Las OT nocturnas viejas siguen guardando su cuadrilla en
+  // grupoNumero (grupo = 'Noche'); grupoNumeroDeOtEnTurno() lo resuelve.
+  "ALTER TABLE \"ParadaOt\" ADD COLUMN IF NOT EXISTS \"grupoNumeroNoche\" INTEGER",
+
   // ── Parada: reporte diario por área/disciplina (2026-09) ──────────────────
   // Un ParadaReporteDiario por (parada, fecha, turno, reunión, disciplina):
   // cada área (ELEC/INST/TESA) carga su reporte y el admin consolida el PDF.
