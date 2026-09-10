@@ -49,3 +49,23 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     return NextResponse.json({ ok: false, error: message }, { status: 400 });
   }
 }
+
+// DELETE /api/paradas/[id]/reportes/[repId] — elimina el reporte de un área.
+// Lo usan el supervisor del área y el admin/superintendente para corregir un
+// reporte cargado por error.
+export async function DELETE(_req: NextRequest, { params }: Ctx) {
+  try {
+    const { id, repId } = await params;
+    const existe = await prisma.paradaReporteDiario.findFirst({
+      where: { id: repId, paradaId: id },
+      select: { id: true },
+    });
+    if (!existe) return NextResponse.json({ ok: false, error: "No encontrado" }, { status: 404 });
+
+    await prisma.paradaReporteDiario.delete({ where: { id: repId } });
+    return NextResponse.json({ ok: true });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Error interno";
+    return NextResponse.json({ ok: false, error: message }, { status: 400 });
+  }
+}

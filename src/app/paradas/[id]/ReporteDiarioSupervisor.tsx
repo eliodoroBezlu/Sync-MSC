@@ -97,6 +97,11 @@ export default function ReporteDiarioSupervisor({
   const [repActual, setRepActual] = useState<ParadaReporteCli | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  // Admin / Superintendente: al pulsar "Editar" en un reporte del historial se
+  // abre el formulario editable (por defecto sólo ven el estado + PDF).
+  const [edicionConsolidador, setEdicionConsolidador] = useState(false);
+  // Confirmación en dos pasos del botón "Eliminar" (guarda el _id del reporte).
+  const [confirmarBorrado, setConfirmarBorrado] = useState<string | null>(null);
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setF((p) => ({ ...p, [k]: v }));
 
@@ -327,9 +332,46 @@ export default function ReporteDiarioSupervisor({
     });
   }
 
-  // Admin / Superintendente sin permiso de carga: sólo ven estado + PDF, sin
-  // formulario editable (los reportes los llenan los supervisores en su sesión).
-  const modoConsolidacion = puedeConsolidar && !puedeEmitir;
+  // El formulario editable lo ven siempre los supervisores de área, y el
+  // admin/superintendente sólo cuando pulsan "Editar" en un reporte del
+  // historial. En modo consolidación se muestra sólo el estado + los PDF.
+  const mostrarFormulario = puedeEmitir || (puedeConsolidar && edicionConsolidador);
+  const modoConsolidacion = puedeConsolidar && !mostrarFormulario;
+
+  // ¿Puede este usuario editar/eliminar este reporte del historial?
+  // Supervisor: sólo los de su disciplina. Admin/Superintendente: todos.
+  const puedeGestionarReporte = (r: ParadaReporteCli) =>
+    puedeConsolidar || (puedeEmitir && (!discFiltro || r.disciplina === discFiltro));
+
+  // Carga un reporte del historial en el formulario para editarlo.
+  function editarReporte(r: ParadaReporteCli) {
+    if (!discFiltro) setAreaActiva(r.disciplina as DisciplinaParada);
+    set("fecha", r.fecha.slice(0, 10));
+    set("turno", r.turno);
+    set("reunion", r.reunion);
+    setEdicionConsolidador(true);
+    setConfirmarBorrado(null);
+    setMsg("");
+  }
+
+  async function eliminarReporte(r: ParadaReporteCli) {
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await fetch(`/api/paradas/${parada.id}/reportes/${r._id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) {
+        setMsg(data.error ?? "No se pudo eliminar el reporte");
+        return;
+      }
+      if (repActual?._id === r._id) setRepActual(null);
+      setConfirmarBorrado(null);
+      setMsg("Reporte eliminado.");
+      await onChange();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   // PDF individual de un área ya enviada por su supervisor.
   function generarPdfDeArea(disc: DisciplinaParada) {
@@ -416,8 +458,13 @@ export default function ReporteDiarioSupervisor({
           </p>
         )}
 
-        {puedeEmitir && (
+        {mostrarFormulario && (
           <>
+            {puedeConsolidar && edicionConsolidador && (
+              <div style={{ fontSize: 11, marginBottom: 10, color: "#0369a1", fontWeight: 600 }}>
+                Editando el reporte de {DISCIPLINA_LABEL[areaActiva] ?? areaActiva} como coordinador.
+              </div>
+            )}
             {repActual && (
               <div style={{ fontSize: 11, marginBottom: 10, color: repActual.estado === "emitido" ? "#15803d" : "#d97706" }}>
                 {repActual.estado === "emitido" ? "● Reporte enviado" : "○ Borrador guardado"} — última actualización {fmtFecha(repActual.updatedAt)}
@@ -637,7 +684,7 @@ export default function ReporteDiarioSupervisor({
         )}
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {puedeEmitir && (
+          {mostrarFormulario && (
             <>
               <button onClick={() => guardar(false)} disabled={busy} style={btnSec}>
                 Guardar borrador
@@ -646,9 +693,20 @@ export default function ReporteDiarioSupervisor({
                 Enviar reporte de {DISCIPLINA_LABEL[areaActiva] ?? areaActiva}
               </button>
               <button onClick={generarPdf} style={{ ...btnSec, borderColor: "#0f2847", color: "#0f2847" }}>
-                PDF de mi área
+                {puedeConsolidar && edicionConsolidador ? "PDF del área" : "PDF de mi área"}
               </button>
             </>
+          )}
+          {puedeConsolidar && edicionConsolidador && (
+            <button
+              onClick={() => {
+                setEdicionConsolidador(false);
+                setMsg("");
+              }}
+              style={btnSec}
+            >
+              Cerrar edición
+            </button>
           )}
           {puedeConsolidar && (
             <button onClick={generarPdfReunion} style={{ ...btnPrim, background: "#0f2847" }}>
@@ -673,34 +731,102 @@ export default function ReporteDiarioSupervisor({
           <p style={{ fontSize: 12, color: "#94a3b8" }}>Aún no hay reportes.</p>
         )}
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {parada.reportesDiarios.map((r) => (
-            <button
-              key={r._id}
-              onClick={() => {
-                if (!discFiltro) setAreaActiva(r.disciplina as DisciplinaParada);
-                set("fecha", r.fecha.slice(0, 10));
-                set("turno", r.turno);
-                set("reunion", r.reunion);
-              }}
-              style={{
-                textAlign: "left",
-                padding: "8px 10px",
-                borderRadius: 8,
-                border: "1.5px solid #e2e8f0",
-                background: repActual?._id === r._id ? "#fff7ed" : "white",
-                cursor: "pointer",
-              }}
-            >
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#0f2847" }}>
-                {fmtFecha(r.fecha)} · {r.turno === "Dia" ? "Día" : "Noche"} · {r.reunion}
+          {parada.reportesDiarios.map((r) => {
+            const activo = repActual?._id === r._id;
+            const emitido = r.estado === "emitido";
+            return (
+              <div
+                key={r._id}
+                style={{
+                  borderRadius: 8,
+                  border: "1.5px solid #e2e8f0",
+                  background: activo ? "#fff7ed" : "white",
+                  overflow: "hidden",
+                }}
+              >
+                <button
+                  onClick={() => {
+                    if (!discFiltro) setAreaActiva(r.disciplina as DisciplinaParada);
+                    set("fecha", r.fecha.slice(0, 10));
+                    set("turno", r.turno);
+                    set("reunion", r.reunion);
+                  }}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "8px 10px 4px",
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#0f2847" }}>
+                    {fmtFecha(r.fecha)} · {r.turno === "Dia" ? "Día" : "Noche"} · {r.reunion}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#64748b" }}>
+                    {DISCIPLINA_LABEL[r.disciplina] ?? r.disciplina} · Avance {r.avanceGlobalPct}% ·{" "}
+                    {r.hhPropias.toFixed(0)} HH
+                  </div>
+                </button>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    flexWrap: "wrap",
+                    padding: "0 10px 8px",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: emitido ? "#15803d" : "#d97706",
+                    }}
+                  >
+                    {emitido ? "emitido" : "borrador"}
+                  </span>
+                  {puedeGestionarReporte(r) && (
+                    confirmarBorrado === r._id ? (
+                      <>
+                        <button
+                          onClick={() => eliminarReporte(r)}
+                          disabled={busy}
+                          style={{ ...btnSec, padding: "1px 8px", fontSize: 10, color: "#dc2626", borderColor: "#fecaca" }}
+                        >
+                          Confirmar
+                        </button>
+                        <button
+                          onClick={() => setConfirmarBorrado(null)}
+                          style={{ ...btnSec, padding: "1px 8px", fontSize: 10 }}
+                        >
+                          Cancelar
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => editarReporte(r)}
+                          title="Editar reporte"
+                          style={{ ...btnSec, padding: "1px 8px", fontSize: 11 }}
+                        >
+                          ✏️ Editar
+                        </button>
+                        <button
+                          onClick={() => setConfirmarBorrado(r._id)}
+                          title="Eliminar reporte"
+                          style={{ ...btnSec, padding: "1px 8px", fontSize: 11, color: "#dc2626", borderColor: "#fecaca" }}
+                        >
+                          🗑️ Eliminar
+                        </button>
+                      </>
+                    )
+                  )}
+                </div>
               </div>
-              <div style={{ fontSize: 11, color: "#64748b" }}>
-                {DISCIPLINA_LABEL[r.disciplina] ?? r.disciplina} · Avance {r.avanceGlobalPct}% ·{" "}
-                {r.hhPropias.toFixed(0)} HH ·{" "}
-                <span style={{ color: r.estado === "emitido" ? "#15803d" : "#d97706" }}>{r.estado}</span>
-              </div>
-            </button>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
