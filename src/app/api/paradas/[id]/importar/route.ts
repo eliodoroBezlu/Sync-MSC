@@ -110,13 +110,23 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       );
     }
 
+    // Reparte el número de cuadrilla del Excel al slot del turno que corresponde:
+    // turno noche → grupoNumeroNoche; día / ambos → grupoNumero (el grupo de
+    // noche de una OT de ambos turnos se asigna a mano en Configuración).
+    const slotsGrupo = (f: { grupo: string; grupoNumero: number | null }) =>
+      f.grupo === "Noche"
+        ? { grupoNumero: null, grupoNumeroNoche: f.grupoNumero }
+        : { grupoNumero: f.grupoNumero, grupoNumeroNoche: null };
+
     const existentes = await prisma.paradaOt.findMany({
       where: { paradaId: id },
-      select: { numeroOT: true, grupoNumero: true },
+      select: { numeroOT: true, grupoNumero: true, grupoNumeroNoche: true },
     });
     const vistos = new Set(existentes.map((o) => o.numeroOT));
     const sinCuadrilla = new Set(
-      existentes.filter((o) => o.grupoNumero == null).map((o) => o.numeroOT),
+      existentes
+        .filter((o) => o.grupoNumero == null && o.grupoNumeroNoche == null)
+        .map((o) => o.numeroOT),
     );
     let orden = existentes.length;
     let duplicadas = 0;
@@ -135,7 +145,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       sinCuadrilla.delete(f.numeroOT);
       await prisma.paradaOt.updateMany({
         where: { paradaId: id, numeroOT: f.numeroOT },
-        data: { grupoCodigo: f.grupoCodigo, grupoNumero: f.grupoNumero },
+        data: { grupoCodigo: f.grupoCodigo, ...slotsGrupo(f) },
       });
       cuadrillasBackfill++;
     }
@@ -155,7 +165,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
           fechaProgFin: f.fechaProgFin,
           grupo: f.grupo,
           grupoCodigo: f.grupoCodigo,
-          grupoNumero: f.grupoNumero,
+          ...slotsGrupo(f),
           responsable: f.responsable,
           critica: f.critica,
           orden: ++orden,

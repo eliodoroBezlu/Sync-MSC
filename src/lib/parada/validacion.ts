@@ -94,6 +94,10 @@ export const editarOtSchema = z.object({
   // Vincular / desvincular la OT de una cuadrilla (grupoNumero null = sacarla).
   grupoCodigo: z.string().trim().optional(),
   grupoNumero: z.coerce.number().int().min(1).nullable().optional(),
+  grupoNumeroNoche: z.coerce.number().int().min(1).nullable().optional(),
+  // Cuando viene, `grupoNumero` aplica sólo a ese turno: el API escribe el slot
+  // correcto (día → grupoNumero, noche → grupoNumeroNoche) y recalcula `grupo`.
+  turnoSlot: z.enum(["Dia", "Noche"]).optional(),
   responsable: z.string().trim().nullish(),
   critica: z.boolean().optional(),
   estado: ESTADO_OT.optional(),

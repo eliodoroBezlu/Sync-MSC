@@ -37,6 +37,40 @@ export function disciplinaParadaDeUsuario(
   return null;
 }
 
+/**
+ * Datos mínimos de una OT para resolver a qué cuadrilla pertenece en cada turno.
+ * `grupoNumero` = cuadrilla del turno DÍA; `grupoNumeroNoche` = cuadrilla del
+ * turno NOCHE. Una OT puede tener ambas (se ejecuta día y noche con grupos
+ * distintos), una sola, o ninguna.
+ */
+export interface OtGrupoRef {
+  grupo: string; // "Dia" | "Noche" | "Ambos"
+  grupoNumero: number | null;
+  grupoNumeroNoche?: number | null;
+}
+
+/**
+ * Número de cuadrilla de la OT para un turno dado, o `null` si la OT no está
+ * asignada a ninguna cuadrilla en ese turno.
+ *
+ * Compat: las OTs cargadas antes de `grupoNumeroNoche` guardan su cuadrilla
+ * nocturna en `grupoNumero` (con `grupo === "Noche"`); acá se interpreta bien
+ * sin necesidad de migrar la tabla.
+ */
+export function grupoNumeroDeOtEnTurno(
+  ot: OtGrupoRef,
+  turno: TurnoParada,
+): number | null {
+  if (turno === "Noche") {
+    if (ot.grupoNumeroNoche != null) return ot.grupoNumeroNoche;
+    if (ot.grupo === "Noche") return ot.grupoNumero; // modelo viejo
+    return null;
+  }
+  // Día
+  if (ot.grupo === "Noche") return null; // su grupoNumero es la cuadrilla nocturna
+  return ot.grupoNumero;
+}
+
 /** Subconjunto de `ParadaOt` que necesita el cálculo del tablero. */
 export interface OtParadaCalc {
   id: string;

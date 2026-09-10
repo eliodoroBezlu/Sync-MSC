@@ -724,8 +724,13 @@ model ParadaOt {
   // código crudo del Excel ("ELE-01", "INS-03", "TURNO"); `grupoNumero` es el
   // número correlativo 1..N por disciplina (ELE-01→1, ELE-02→2, …) que empareja
   // con ParadaGrupo.numero. Null = OT sin cuadrilla en el listado origen.
+  // Una OT que se ejecuta en ambos turnos con cuadrillas distintas usa
+  // `grupoNumero` para el grupo de DÍA y `grupoNumeroNoche` para el de NOCHE.
+  // (OTs viejas de turno noche pueden tener su cuadrilla nocturna en
+  // `grupoNumero`; ver grupoNumeroDeOtEnTurno() para la resolución con compat.)
   grupoCodigo       String    @default("")
   grupoNumero       Int?
+  grupoNumeroNoche  Int?
   responsable       String?
   critica           Boolean   @default(false)
   estado            String    @default("no_iniciada") // no_iniciada | en_ejecucion | terminada | con_retraso

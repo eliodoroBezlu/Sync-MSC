@@ -43,7 +43,8 @@ export interface ParadaOtCli {
   fechaProgFin: string | null;
   grupo: "Dia" | "Noche" | "Ambos";
   grupoCodigo: string;
-  grupoNumero: number | null;
+  grupoNumero: number | null; // cuadrilla del turno DÍA
+  grupoNumeroNoche: number | null; // cuadrilla del turno NOCHE (OT en ambos turnos)
   responsable: string | null;
   critica: boolean;
   estado: string;

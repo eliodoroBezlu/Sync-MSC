@@ -23,9 +23,14 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     if (d.hhEstimadas !== undefined) data.hhEstimadas = d.hhEstimadas;
     if (d.fechaProg !== undefined) data.fechaProg = d.fechaProg ?? null;
     if (d.fechaProgFin !== undefined) data.fechaProgFin = d.fechaProgFin ?? null;
-    if (d.grupo !== undefined) data.grupo = d.grupo;
+    if (d.grupo !== undefined) {
+      data.grupo = d.grupo;
+      // Cambiar el turno a "Dia" descarta la cuadrilla nocturna que hubiera.
+      if (d.grupo === "Dia") data.grupoNumeroNoche = null;
+    }
     if (d.grupoCodigo !== undefined) data.grupoCodigo = d.grupoCodigo;
     if (d.grupoNumero !== undefined) data.grupoNumero = d.grupoNumero;
+    if (d.grupoNumeroNoche !== undefined) data.grupoNumeroNoche = d.grupoNumeroNoche;
     if (d.responsable !== undefined) data.responsable = d.responsable ?? null;
     if (d.critica !== undefined) data.critica = d.critica;
     if (d.estado !== undefined) data.estado = d.estado;
@@ -34,6 +39,42 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     if (d.orden !== undefined) data.orden = d.orden ?? null;
     if (d.personalAsignado !== undefined) data.personalAsignado = d.personalAsignado;
     if (d.personalAsignadoIds !== undefined) data.personalAsignadoIds = d.personalAsignadoIds;
+
+    // Vinculación por turno: `grupoNumero` aplica sólo al turno indicado. Se
+    // preserva el otro turno para que la misma OT pueda estar en Grupo N (día)
+    // y Grupo M (noche) a la vez. Recalcula `grupo` según los dos slots.
+    if (d.turnoSlot !== undefined) {
+      const actual = await prisma.paradaOt.findUnique({
+        where: { id: otId, paradaId: id },
+        select: { grupo: true, grupoNumero: true, grupoNumeroNoche: true },
+      });
+      if (!actual) {
+        return NextResponse.json({ ok: false, error: "OT no encontrada" }, { status: 404 });
+      }
+      // Estado actual de cada slot, con compat para OTs viejas cuya cuadrilla
+      // nocturna quedó guardada en `grupoNumero` (grupo === "Noche").
+      let dia = actual.grupo === "Noche" ? null : actual.grupoNumero;
+      let noche =
+        actual.grupoNumeroNoche ?? (actual.grupo === "Noche" ? actual.grupoNumero : null);
+
+      const nuevo = d.grupoNumero ?? null;
+      if (d.turnoSlot === "Dia") dia = nuevo;
+      else noche = nuevo;
+
+      data.grupoNumero = dia;
+      data.grupoNumeroNoche = noche;
+      data.grupo =
+        dia != null && noche != null
+          ? "Ambos"
+          : noche != null
+            ? "Noche"
+            : dia != null
+              ? "Dia"
+              : d.turnoSlot; // sin cuadrilla: queda en el turno de la acción
+      if (dia == null && noche == null && d.grupoCodigo === undefined) {
+        data.grupoCodigo = "";
+      }
+    }
 
     const ot = await prisma.paradaOt.update({
       where: { id: otId, paradaId: id },

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import type { DisciplinaParada } from "@/lib/parada/tipos";
+import { grupoNumeroDeOtEnTurno, type DisciplinaParada } from "@/lib/parada/tipos";
 import type {
   EstadoParada,
   ParadaDetalle,
@@ -199,12 +199,14 @@ function SeccionGrupos({
   }, [parada.grupos]);
 
   // OTs vinculadas a cada grupo del turno activo: `${disciplina}|${numero}` -> OTs.
+  // Una OT que se ejecuta día y noche con cuadrillas distintas aparece en el
+  // grupo de día bajo `turnoAct === "Dia"` y en el de noche bajo `"Noche"`.
   const otsPorGrupo = useMemo(() => {
     const m = new Map<string, ParadaOtCli[]>();
     for (const ot of parada.ots) {
-      if (ot.grupoNumero == null) continue;
-      if (ot.grupo !== turnoAct && ot.grupo !== "Ambos") continue;
-      const k = `${ot.disciplina}|${ot.grupoNumero}`;
+      const n = grupoNumeroDeOtEnTurno(ot, turnoAct);
+      if (n == null) continue;
+      const k = `${ot.disciplina}|${n}`;
       const arr = m.get(k) ?? [];
       arr.push(ot);
       m.set(k, arr);
@@ -213,18 +215,18 @@ function SeccionGrupos({
     return m;
   }, [parada.ots, turnoAct]);
 
-  // Todas las OTs del turno activo por disciplina (para el picker «＋ OT» del grupo).
+  // Todas las OTs por disciplina (para el picker «＋ OT» del grupo). No se filtra
+  // por turno: así una OT de día se puede sumar también a un grupo de noche.
   const otsPorDisc = useMemo(() => {
     const m = new Map<string, ParadaOtCli[]>();
     for (const ot of parada.ots) {
-      if (ot.grupo !== turnoAct && ot.grupo !== "Ambos") continue;
       const arr = m.get(ot.disciplina) ?? [];
       arr.push(ot);
       m.set(ot.disciplina, arr);
     }
     for (const arr of m.values()) arr.sort((a, b) => a.numeroOT.localeCompare(b.numeroOT));
     return m;
-  }, [parada.ots, turnoAct]);
+  }, [parada.ots]);
 
   // Grupos existentes agrupados por `${turno}|${disciplina}`, ordenados por número.
   const porTurnoDisc = useMemo(() => {
@@ -267,9 +269,8 @@ function SeccionGrupos({
           const ots = parada.ots
             .filter(
               (o) =>
-                o.grupoNumero === g.numero &&
                 o.disciplina === disc &&
-                (o.grupo === turno || o.grupo === "Ambos"),
+                grupoNumeroDeOtEnTurno(o, turno) === g.numero,
             )
             .sort((a, b) => a.numeroOT.localeCompare(b.numeroOT));
           grupos.push({
@@ -511,13 +512,15 @@ function TarjetaGrupoAccordion({
     marcar();
   }
 
-  // OTs del turno/disciplina que todavía no están en este grupo.
+  // OTs de la disciplina que todavía no están en este grupo para el turno activo.
   const otsFuera = useMemo(
-    () => otsDisc.filter((o) => o.grupoNumero !== grupo.numero),
-    [otsDisc, grupo.numero],
+    () => otsDisc.filter((o) => grupoNumeroDeOtEnTurno(o, turno) !== grupo.numero),
+    [otsDisc, grupo.numero, turno],
   );
 
-  // Vincular (numero) o sacar (null) una OT de este grupo — se guarda al toque.
+  // Vincular (numero) o sacar (null) la OT de este grupo, sólo para el turno de
+  // esta tarjeta: el otro turno se conserva (la misma OT puede quedar en un
+  // grupo de día y otro de noche). Se guarda al toque.
   async function vincularOt(otId: string, numero: number | null) {
     setOtBusy(true);
     setMsg("");
@@ -525,11 +528,7 @@ function TarjetaGrupoAccordion({
       const res = await fetch(`/api/paradas/${paradaId}/ots/${otId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          numero == null
-            ? { grupoNumero: null, grupoCodigo: "" }
-            : { grupoNumero: numero },
-        ),
+        body: JSON.stringify({ turnoSlot: turno, grupoNumero: numero }),
       });
       const data = await res.json();
       if (!res.ok || data.ok === false) {
@@ -733,7 +732,7 @@ function TarjetaGrupoAccordion({
               {verOtPicker && (
                 <div style={{ ...cajaLista, marginTop: 6, maxHeight: 170, overflowY: "auto" }}>
                   {otsFuera.length === 0 && (
-                    <div style={vacioTxt}>No hay más OT de {DISCIPLINA_LABEL[disciplina]} en este turno.</div>
+                    <div style={vacioTxt}>No hay más OT de {DISCIPLINA_LABEL[disciplina]}.</div>
                   )}
                   {otsFuera.map((o) => (
                     <div
@@ -754,9 +753,16 @@ function TarjetaGrupoAccordion({
                       >
                         <span style={{ fontWeight: 700, color: "#0f2847" }}>{o.numeroOT}</span>{" "}
                         <span style={{ color: "#475569" }}>{o.descripcion}</span>
-                        {o.grupoNumero != null && (
-                          <span style={{ color: "#94a3b8" }}> · en G{o.grupoNumero}</span>
-                        )}
+                        {(() => {
+                          const gd = grupoNumeroDeOtEnTurno(o, "Dia");
+                          const gn = grupoNumeroDeOtEnTurno(o, "Noche");
+                          const partes: string[] = [];
+                          if (gd != null) partes.push(`día G${gd}`);
+                          if (gn != null) partes.push(`noche G${gn}`);
+                          return partes.length ? (
+                            <span style={{ color: "#94a3b8" }}> · {partes.join(" · ")}</span>
+                          ) : null;
+                        })()}
                       </span>
                     </div>
                   ))}
