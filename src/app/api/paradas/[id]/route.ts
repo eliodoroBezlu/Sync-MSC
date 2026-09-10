@@ -20,7 +20,18 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
       },
     });
     if (!parada) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
-    return NextResponse.json(serialize(parada));
+    // serialize() sólo agrega `_id` al objeto raíz; las colecciones anidadas hay
+    // que mapearlas una por una o el cliente recibe `_id: undefined` (rompía el
+    // editar/eliminar de reportes, que direcciona por `_id`).
+    return NextResponse.json({
+      ...serialize(parada),
+      ots: parada.ots.map((o) => serialize(o)),
+      grupos: parada.grupos.map((g) => ({
+        ...serialize(g),
+        miembros: g.miembros.map((m) => serialize(m)),
+      })),
+      reportesDiarios: parada.reportesDiarios.map((r) => serialize(r)),
+    });
   } catch (err: unknown) {
     // Se deja el detalle en el log del servidor (visible en Railway) para poder
     // diagnosticar sin exponer internals al cliente.
