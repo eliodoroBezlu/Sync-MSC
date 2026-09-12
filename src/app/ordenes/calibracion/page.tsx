@@ -2050,7 +2050,7 @@ export default function CalibracionPage() {
                   ["Tipo de variable", detalle.tipoVariable],
                   ["Patrón", detalle.patronCodigo],
                   ["Técnico", detalle.tecnicoNombre],
-                  ["Supervisor", detalle.supervisorId || "—"],
+                  ["Supervisor", detalle.supervisorNombre || "—"],
                   ["Turno", detalle.turno],
                   ["OT asociada", detalle.otAsociada || "—"],
                 ].map(([k, v]) => (
