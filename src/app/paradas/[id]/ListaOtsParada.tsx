@@ -197,7 +197,6 @@ function FilaEdicion({
     tag: ot.tag,
     disciplina: ot.disciplina,
     fase: ot.fase,
-    grupo: ot.grupo,
     hhEstimadas: String(ot.hhEstimadas),
     fechaProg: ymdInput(ot.fechaProg),
     avancePct: String(ot.avancePct),
@@ -230,11 +229,11 @@ function FilaEdicion({
         </select>
       </td>
       <td style={td}>
-        <select value={f.grupo} onChange={(e) => set("grupo", e.target.value)} style={inp}>
-          <option value="Dia">Día</option>
-          <option value="Noche">Noche</option>
-          <option value="Ambos">Ambos</option>
-        </select>
+        {/* El turno/grupo (día, noche o ambos) NO se edita acá: se asigna en la
+            pestaña "Grupos", que guarda cada turno en su propio slot sin borrar
+            el otro. Editar este campo suelto borraba la cuadrilla del turno
+            contrario (ver PATCH /ots/[otId]: grupo="Dia" limpia grupoNumeroNoche). */}
+        <span style={{ fontSize: 12, color: "#64748b" }}>{ot.grupo}</span>
       </td>
       <td style={{ ...td, textAlign: "right" }}>
         <input type="number" min={0} value={f.hhEstimadas} onChange={(e) => set("hhEstimadas", e.target.value)} style={{ ...inp, width: 64, textAlign: "right" }} />
@@ -260,7 +259,6 @@ function FilaEdicion({
                 tag: f.tag,
                 disciplina: f.disciplina,
                 fase: f.fase,
-                grupo: f.grupo,
                 hhEstimadas: Number(f.hhEstimadas) || 0,
                 fechaProg: f.fechaProg || null,
                 avancePct: Number(f.avancePct) || 0,
