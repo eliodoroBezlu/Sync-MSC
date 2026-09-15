@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
 import { generarInformeOT } from "@/lib/generarInformeOT";
-import { estaEnVentanaCierreSemanal } from "@/lib/turno";
+import { estaEnVentanaCierreSemanal, getFechaTurno } from "@/lib/turno";
 import { getWeekNumber } from "@/lib/semana";
 import { tipoOtDisplay } from "@/lib/tiposOt";
 
@@ -80,6 +80,7 @@ type SupForm = {
 type RegistroDiario = {
   _id?: string;
   fecha: string;
+  turno?: string | null;
   tecnico: string;
   usuarioId?: string;
   hhTrabajadas: number;
@@ -592,6 +593,7 @@ export default function ReporteOTPage() {
         body: JSON.stringify({
           registroDiario: {
             fecha:            avanceForm.fecha,
+            turno:            getFechaTurno().turno,
             tecnico:          user?.nombre ?? "Técnico",
             usuarioId:        user?.id,
             hhTrabajadas:     avanceForm.hhTrabajadas,
@@ -629,6 +631,7 @@ export default function ReporteOTPage() {
           registroDiario: {
             id:               avance._id,
             fecha:            editAvanceForm.fecha || avance.fecha,
+            turno:            avance.turno ?? null,
             tecnico:          avance.tecnico,
             usuarioId:        avance.usuarioId,
             hhTrabajadas:     editAvanceForm.hhTrabajadas,

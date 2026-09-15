@@ -1517,6 +1517,7 @@ export default function RegistroOTPage() {
         body: JSON.stringify({
           registroDiario: {
             fecha: avanceForm.fecha,
+            turno: shiftTurno,
             tecnico: user?.nombre ?? "Técnico",
             usuarioId: user?.id,
             hhTrabajadas: parseFloat(avanceForm.hhTrabajadas) || 0,
@@ -1640,6 +1641,7 @@ export default function RegistroOTPage() {
         body: JSON.stringify({
           registroDiario: {
             fecha: avanceReactivaForm.fecha,
+            turno: shiftTurno,
             tecnico: user?.nombre ?? "Técnico",
             usuarioId: user?.id,
             hhTrabajadas: parseFloat(avanceReactivaForm.hhTrabajadas) || 0,

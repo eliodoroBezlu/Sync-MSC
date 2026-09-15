@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkOpeplant } from "@/lib/opeplant";
 import { calcularOtsRecurrentes } from "@/lib/otRecurrente";
 import { espejarOrdenEnParada } from "@/lib/parada/puenteOt";
+import { getFechaTurno } from "@/lib/turno";
 
 const include = {
   tecnicos: true,
@@ -705,7 +706,14 @@ export async function POST(req: NextRequest) {
       const tecnicoPrimerDia: string = body.tecnicos?.[0]?.nombreCompleto ?? "Técnico";
       const usuarioPrimerDia: string | null = body.tecnicos?.[0]?.usuarioId ?? null;
       const newRdId = crypto.randomUUID();
-      const turnoPrimerDia = normalizeString(body.turno);
+      // El turno de la OT puede ser "Parada de Planta" (u otro valor que no es
+      // Diurno/Nocturno) — en ese caso el avance necesita el turno real de quien
+      // lo registra, igual que en las llamadas de avance posteriores, porque la
+      // Bitácora Turnero filtra estrictamente por turno === "Diurno"/"Nocturno".
+      const turnoBody = normalizeString(body.turno);
+      const turnoPrimerDia = turnoBody === "Diurno" || turnoBody === "Nocturno"
+        ? turnoBody
+        : getFechaTurno().turno;
       // Guardar con SQL crudo para evitar error si columna adjuntos aún no existe en DB
       try {
         await prisma.$executeRaw`
