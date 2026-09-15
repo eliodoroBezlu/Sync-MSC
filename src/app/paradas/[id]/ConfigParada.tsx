@@ -31,6 +31,24 @@ const TURNOS: TurnoParada[] = ["Dia", "Noche"];
 
 const rid = () => Math.random().toString(36).slice(2);
 
+// Normaliza un nombre para comparar sin importar tildes/mayúsculas, así se
+// puede detectar si ya existe una cuenta con ese nombre antes de crear otra.
+const normNombre = (s: string) =>
+  s.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toUpperCase();
+
+// Busca, en todo el sistema (no sólo en esta parada), una cuenta activa cuyo
+// nombre completo coincida (ignorando tildes/mayúsculas) con el nombre dado.
+async function buscarUsuarioExistente(
+  nombre: string,
+): Promise<{ _id: string; nombre: string; nombreCompleto: string; email: string } | null> {
+  const res = await fetch("/api/usuarios?all=true");
+  if (!res.ok) return null;
+  const usuarios: { _id: string; nombre: string; nombreCompleto: string; email: string }[] =
+    await res.json();
+  const objetivo = normNombre(nombre);
+  return usuarios.find((u) => normNombre(u.nombreCompleto || u.nombre) === objetivo) ?? null;
+}
+
 const seccion: React.CSSProperties = {
   border: "1.5px solid #e2e8f0",
   borderRadius: 12,
@@ -549,6 +567,26 @@ function TarjetaGrupoAccordion({
     setBusy(true);
     setMsg("");
     try {
+      // Antes de crear una cuenta, buscar si ya existe alguien con ese nombre
+      // en todo el sistema (no sólo en el roster de esta parada). Sin este
+      // chequeo, tipear el nombre de alguien que ya tenía cuenta creaba un
+      // duplicado "fantasma" sin contraseña, y esa persona dejaba de ver sus
+      // OT's aunque su cuenta real siguiera intacta.
+      const existente = await buscarUsuarioExistente(nombre);
+      if (existente) {
+        const usar = window.confirm(
+          `Ya existe una cuenta con el nombre "${existente.nombreCompleto || existente.nombre}"` +
+            (existente.email ? ` (${existente.email})` : "") +
+            `.\n\n¿Usar esa cuenta en vez de crear una nueva?`,
+        );
+        if (usar) {
+          setExtra((p) => [...p, { usuarioId: existente._id, nombre: existente.nombreCompleto || existente.nombre }]);
+          setPropios((prev) => new Map(prev).set(existente._id, existente.nombreCompleto || existente.nombre));
+          setDirty(true);
+          return;
+        }
+      }
+
       const res = await fetch("/api/usuarios", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
