@@ -46,7 +46,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     if (d.turnoSlot !== undefined) {
       const actual = await prisma.paradaOt.findUnique({
         where: { id: otId, paradaId: id },
-        select: { grupo: true, grupoNumero: true, grupoNumeroNoche: true },
+        select: { grupo: true, grupoNumero: true, grupoNumeroNoche: true, disciplina: true },
       });
       if (!actual) {
         return NextResponse.json({ ok: false, error: "OT no encontrada" }, { status: 404 });
@@ -74,6 +74,40 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       if (dia == null && noche == null && d.grupoCodigo === undefined) {
         data.grupoCodigo = "";
       }
+
+      // Copia el personal de la(s) cuadrilla(s) a la OT en el momento de vincular.
+      // Antes esto sólo se recalculaba cuando alguien volvía a guardar el
+      // formulario del grupo (botón "Guardar grupo"): una OT recién vinculada
+      // por acá («＋ OT» del grupo) quedaba sin `personalAsignadoIds` y el
+      // técnico no la veía en "Registro de OT" hasta que alguien re-guardara
+      // el grupo, aunque su nombre ya estuviera en la cuadrilla.
+      const gruposLigados = await prisma.paradaGrupo.findMany({
+        where: {
+          paradaId: id,
+          disciplina: actual.disciplina,
+          OR: [
+            ...(dia != null ? [{ turno: "Dia", numero: dia }] : []),
+            ...(noche != null ? [{ turno: "Noche", numero: noche }] : []),
+          ],
+        },
+        include: { miembros: true },
+      });
+      const nombres: string[] = [];
+      const vistos = new Set<string>();
+      const ids = new Set<string>();
+      const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toUpperCase();
+      for (const g of gruposLigados) {
+        for (const m of g.miembros) {
+          const k = norm(m.nombre);
+          if (k && !vistos.has(k)) {
+            vistos.add(k);
+            nombres.push(m.nombre);
+          }
+          if (m.usuarioId) ids.add(m.usuarioId);
+        }
+      }
+      data.personalAsignado = nombres;
+      data.personalAsignadoIds = [...ids];
     }
 
     const ot = await prisma.paradaOt.update({
