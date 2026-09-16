@@ -152,6 +152,10 @@ type AvanceDiarioForm = {
   tareaInput: string;
   observaciones: string;
   adjuntos: AdjuntoItem[];
+  // Equipos/tags nuevos agregados durante este avance (no estaban en la OT
+  // todavía) — se persisten como líneas nuevas junto con el registro diario,
+  // igual que el botón "+ Agregar equipo intervenido" del flujo CMR.
+  equiposNuevos: LineaForm[];
 };
 
 // Snapshot local (IndexedDB) del formulario de Registro de OT, para no perder
@@ -579,6 +583,7 @@ function AdjuntoCard({ adj, onChange, onRemove }: {
 
 function AvanceDiarioMiniForm({
   titulo,
+  area,
   form,
   onChange,
   cargandoAdj,
@@ -589,6 +594,7 @@ function AvanceDiarioMiniForm({
   accentColor = "#1d4ed8",
 }: {
   titulo: string;
+  area: string;
   form: AvanceDiarioForm;
   onChange: (updater: (f: AvanceDiarioForm) => AvanceDiarioForm) => void;
   cargandoAdj: boolean;
@@ -598,6 +604,11 @@ function AvanceDiarioMiniForm({
   guardando: boolean;
   accentColor?: string;
 }) {
+  // Editor inline para agregar un equipo/tag nuevo que no estaba en la OT
+  // todavía (mismo componente que usa el flujo CMR con su botón "+ Agregar
+  // equipo intervenido") — ver sección "Equipos nuevos" más abajo.
+  const [agregandoEquipo, setAgregandoEquipo] = useState(false);
+
   return (
     <div style={{ marginTop: 10, borderTop: "1px solid #bfdbfe", paddingTop: 10, background: "#f0f7ff", borderRadius: "0 0 10px 10px", padding: "10px 12px" }}>
       <p style={{ fontSize: 12, fontWeight: 700, color: accentColor, marginBottom: 8 }}>{titulo}</p>
@@ -653,6 +664,42 @@ function AvanceDiarioMiniForm({
         <button type="button"
           onClick={() => { const t = form.tareaInput.trim(); if (t) onChange(f => ({ ...f, tareas: [...f.tareas, t], tareaInput: "" })); }}
           style={{ ...S.btnOutline, padding: "7px 10px", fontSize: 12 }}>+ Agregar</button>
+      </div>
+      {/* Equipos nuevos intervenidos hoy — mismo flujo que "+ Agregar equipo
+          intervenido" del CMR, para poder sumar un tag que no estaba en la OT. */}
+      <div style={{ marginBottom: 10 }}>
+        <label style={{ ...S.label, fontSize: 10, marginBottom: 6 }}>Equipos nuevos intervenidos hoy</label>
+        {form.equiposNuevos.map((l, i) => {
+          const tipoColor = l.tipoOT ? TIPO_COLOR[l.tipoOT as TipoOT] : "#94a3b8";
+          return (
+            <div key={l.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 5, background: "white", border: `1px solid ${tipoColor}55`, borderRadius: 7, padding: "6px 10px" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#1e293b" }}>{l.tag}</span>
+                  {l.tipoOT && <span style={S.badge(tipoColor)}>{l.tipoOT}</span>}
+                </div>
+                {l.descripcionTrabajo && <p style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{l.descripcionTrabajo}</p>}
+              </div>
+              <button type="button" onClick={() => onChange(f => ({ ...f, equiposNuevos: f.equiposNuevos.filter((_, j) => j !== i) }))}
+                style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 14 }}>✕</button>
+            </div>
+          );
+        })}
+        {agregandoEquipo ? (
+          <LineaEditor
+            linea={newLinea()}
+            area={area}
+            isNew
+            onConfirm={l => { onChange(f => ({ ...f, equiposNuevos: [...f.equiposNuevos, l] })); setAgregandoEquipo(false); }}
+            onCancel={() => setAgregandoEquipo(false)}
+          />
+        ) : (
+          <button type="button" onClick={() => setAgregandoEquipo(true)}
+            style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 13px", border: "1.5px dashed #94a3b8", borderRadius: 8, background: "white", fontSize: 13, color: "#475569", fontWeight: 600, cursor: "pointer" }}>
+            <span style={{ fontSize: 15 }}>+</span>
+            Agregar equipo intervenido
+          </button>
+        )}
       </div>
       {/* Evidencias del avance */}
       <div style={{ marginBottom: 10 }}>
@@ -1502,7 +1549,7 @@ export default function RegistroOTPage() {
 
   // ── Avance diario para OTs recurrentes ya iniciadas ──
   const [avanceRef, setAvanceRef] = useState<PlanRef | null>(null);
-  const [avanceForm, setAvanceForm] = useState<AvanceDiarioForm>({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] });
+  const [avanceForm, setAvanceForm] = useState<AvanceDiarioForm>({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [], equiposNuevos: [] });
   const [savingAvance, setSavingAvance] = useState(false);
   const [savingRevision, setSavingRevision] = useState(false);
   const [cargandoAdjAvance, setCargandoAdjAvance] = useState(false);
@@ -1511,10 +1558,19 @@ export default function RegistroOTPage() {
     if (!avanceRef?.ot.ordenTrabajoId) return;
     setSavingAvance(true);
     try {
-      const res = await fetch(`/api/ordenes/${avanceRef.ot.ordenTrabajoId}`, {
+      const otId = avanceRef.ot.ordenTrabajoId;
+      // Si se agregó algún equipo nuevo hoy (botón "+ Agregar equipo
+      // intervenido", igual que en el flujo CMR), se fusiona con las líneas ya
+      // existentes de la OT antes de persistir, con el mismo patrón de
+      // concurrencia optimista que guardarAvanceSobreOtExistente.
+      const fusion = avanceForm.equiposNuevos.length > 0
+        ? await fusionarLineasSobreOt(otId, mapLineasParaPayload(avanceForm.equiposNuevos))
+        : null;
+      const res = await fetch(`/api/ordenes/${otId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...(fusion ? { lineas: fusion.lineas, lineasBaseline: fusion.lineasBaseline } : {}),
           registroDiario: {
             fecha: avanceForm.fecha,
             turno: shiftTurno,
@@ -1525,7 +1581,7 @@ export default function RegistroOTPage() {
             observaciones: avanceForm.observaciones || null,
             adjuntos: avanceForm.adjuntos.map(a => ({ tipo: a.tipo, nombre: a.nombre, dataUrl: a.dataUrl, comentario: a.comentario, comentariosExtra: a.comentariosExtra })),
           },
-          cambio: `Avance del día ${avanceRef.ot.dia} registrado`,
+          cambio: `Avance del día ${avanceRef.ot.dia} registrado${avanceForm.equiposNuevos.length > 0 ? ` — ${avanceForm.equiposNuevos.length} equipo(s) nuevo(s)` : ""}`,
           usuarioId: user?.id,
           nombreUsuario: user?.nombre,
           // OT de parada: el puente necesita el turno Dia/Noche para el avance diario.
@@ -1539,7 +1595,7 @@ export default function RegistroOTPage() {
         throw new Error((err as { error?: string }).error ?? "Error al guardar avance");
       }
       setAvanceRef(null);
-      setAvanceForm({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] });
+      setAvanceForm({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [], equiposNuevos: [] });
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Error al guardar avance");
     } finally {
@@ -1626,7 +1682,7 @@ export default function RegistroOTPage() {
   }
 
   const [avanceReactivaRef, setAvanceReactivaRef] = useState<{ id: string; numeroOT: string } | null>(null);
-  const [avanceReactivaForm, setAvanceReactivaForm] = useState<AvanceDiarioForm>({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] });
+  const [avanceReactivaForm, setAvanceReactivaForm] = useState<AvanceDiarioForm>({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [], equiposNuevos: [] });
   const [savingAvanceReactiva, setSavingAvanceReactiva] = useState(false);
   const [cargandoAdjAvanceReactiva, setCargandoAdjAvanceReactiva] = useState(false);
   const [enviandoRevisionReactiva, setEnviandoRevisionReactiva] = useState(false);
@@ -1635,10 +1691,16 @@ export default function RegistroOTPage() {
     if (!avanceReactivaRef) return;
     setSavingAvanceReactiva(true);
     try {
-      const res = await fetch(`/api/ordenes/${avanceReactivaRef.id}`, {
+      const otId = avanceReactivaRef.id;
+      // Ver comentario equivalente en confirmarAvanceDiario.
+      const fusion = avanceReactivaForm.equiposNuevos.length > 0
+        ? await fusionarLineasSobreOt(otId, mapLineasParaPayload(avanceReactivaForm.equiposNuevos))
+        : null;
+      const res = await fetch(`/api/ordenes/${otId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...(fusion ? { lineas: fusion.lineas, lineasBaseline: fusion.lineasBaseline } : {}),
           registroDiario: {
             fecha: avanceReactivaForm.fecha,
             turno: shiftTurno,
@@ -1649,7 +1711,7 @@ export default function RegistroOTPage() {
             observaciones: avanceReactivaForm.observaciones || null,
             adjuntos: avanceReactivaForm.adjuntos.map(a => ({ tipo: a.tipo, nombre: a.nombre, dataUrl: a.dataUrl, comentario: a.comentario, comentariosExtra: a.comentariosExtra })),
           },
-          cambio: `Avance del día registrado sobre OT reactiva ${avanceReactivaRef.numeroOT}`,
+          cambio: `Avance del día registrado sobre OT reactiva ${avanceReactivaRef.numeroOT}${avanceReactivaForm.equiposNuevos.length > 0 ? ` — ${avanceReactivaForm.equiposNuevos.length} equipo(s) nuevo(s)` : ""}`,
           usuarioId: user?.id,
           nombreUsuario: user?.nombre,
         }),
@@ -2102,8 +2164,8 @@ export default function RegistroOTPage() {
 
   // Arma el payload de líneas para el POST de creación — se reutiliza también
   // en el fallback de OT ya abierta para no duplicar esta lógica.
-  function mapLineasParaPayload() {
-    return form.lineas.map(l => ({
+  function mapLineasParaPayload(lineas: LineaForm[] = form.lineas) {
+    return lineas.map(l => ({
       tag: l.tag, descripcionEquipo: l.descripcionEquipo, tipoOT: l.tipoOT,
       adjuntos: l.adjuntos.map(a => ({ tipo: a.tipo, nombre: a.nombre, dataUrl: a.dataUrl, comentario: a.comentario, comentariosExtra: a.comentariosExtra })),
       descripcionTrabajo: l.descripcionTrabajo || undefined,
@@ -2121,13 +2183,14 @@ export default function RegistroOTPage() {
     }));
   }
 
-  // OT recurrente/parada que ya estaba abierta (el intento de creación devolvió
-  // 409): en vez de dejar al técnico sin poder guardar, se agrega el avance de
-  // esta sesión como registro diario sobre esa OT. El PATCH reemplaza TODO el
-  // set de líneas si se le envían, así que primero se trae el estado actual de
-  // la OT y se fusiona por tag+tipoOT — evita pisar/perder el detalle (síntoma,
-  // resolución, estado final, etc.) de equipos ya trabajados en días anteriores.
-  async function guardarAvanceSobreOtExistente(otId: string, otNumero: string) {
+  // Trae el estado actual de la OT y fusiona lineasNuevas (ya mapeadas al
+  // shape del payload) con las líneas previas por clave tag+tipoOT — evita
+  // pisar/perder el detalle (síntoma, resolución, estado final, etc.) de
+  // equipos ya trabajados en días anteriores cuando el PATCH reemplaza TODO
+  // el set de líneas. Se reutiliza tanto para guardar avance sobre una OT que
+  // ya estaba abierta (guardarAvanceSobreOtExistente) como para agregar un
+  // equipo nuevo desde "+Avance del día" (AvanceDiarioMiniForm).
+  async function fusionarLineasSobreOt(otId: string, lineasNuevas: ({ tag: string; tipoOT: string } & Record<string, unknown>)[]) {
     const otActual = await fetch(`/api/ordenes/${otId}`).then(r => (r.ok ? r.json() : null)).catch(() => null);
     // Si no se pudo leer el estado previo de la OT, NO seguir con lineasPrevias
     // vacío: el PATCH reemplaza TODO el set de líneas, así que continuar acá
@@ -2136,25 +2199,32 @@ export default function RegistroOTPage() {
       throw new Error("No se pudo leer el estado actual de la OT antes de guardar el avance. Verifica tu conexión e intenta de nuevo.");
     }
     const claveLinea = (tag: string, tipoOT: string) => `${tag.toUpperCase()}::${tipoOT}`;
-    const lineasNuevas = mapLineasParaPayload();
     const clavesNuevas = new Set(lineasNuevas.map(l => claveLinea(l.tag, l.tipoOT)));
     const lineasPrevias: ({ tag: string; tipoOT: string } & Record<string, unknown>)[] =
       Array.isArray(otActual.lineas) ? otActual.lineas : [];
-    const lineasFusionadas = [
+    const lineas = [
       ...lineasPrevias.filter(l => !clavesNuevas.has(claveLinea(l.tag, l.tipoOT))),
       ...lineasNuevas,
     ];
+    // Baseline de concurrencia optimista: el backend rechaza el PATCH si la OT
+    // cambió entre este GET y el PATCH (otro técnico guardando sobre la misma
+    // OT abierta, o un supervisor cerrándola) — evita pisar en silencio el
+    // avance de otra persona con el reemplazo total de líneas.
+    return { lineas, lineasBaseline: otActual.updatedAt as string };
+  }
+
+  // OT recurrente/parada que ya estaba abierta (el intento de creación devolvió
+  // 409): en vez de dejar al técnico sin poder guardar, se agrega el avance de
+  // esta sesión como registro diario sobre esa OT.
+  async function guardarAvanceSobreOtExistente(otId: string, otNumero: string) {
+    const { lineas, lineasBaseline } = await fusionarLineasSobreOt(otId, mapLineasParaPayload());
 
     const res = await fetch(`/api/ordenes/${otId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        lineas: lineasFusionadas,
-        // Baseline de concurrencia optimista: el backend rechaza el PATCH si la
-        // OT cambió entre este GET y el PATCH (otro técnico guardando sobre la
-        // misma OT abierta, o un supervisor cerrándola) — evita pisar en
-        // silencio el avance de otra persona con el reemplazo total de líneas.
-        lineasBaseline: otActual.updatedAt,
+        lineas,
+        lineasBaseline,
         registroDiario: lineasARegistroDiario(),
         cambio: `Avance agregado sobre OT existente N° ${otNumero}`,
         usuarioId: user?.id,
@@ -2559,7 +2629,7 @@ export default function RegistroOTPage() {
                               </span>
                               {refEfectivo.ot.estado !== "completada" && refEfectivo.ot.estado !== "en_revision" && (
                                 <button
-                                  onClick={() => { setAvanceRef(refEfectivo); setAvanceForm({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] }); }}
+                                  onClick={() => { setAvanceRef(refEfectivo); setAvanceForm({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [], equiposNuevos: [] }); }}
                                   style={{ ...S.btnPrimary(), padding: "6px 12px", fontSize: 12 }}>
                                   + Avance del día
                                 </button>
@@ -2593,7 +2663,7 @@ export default function RegistroOTPage() {
                               </button>
                               {ot.estado !== "completada" && ot.estado !== "en_revision" && (
                                 <button
-                                  onClick={() => { setAvanceRef(ref); setAvanceForm({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] }); }}
+                                  onClick={() => { setAvanceRef(ref); setAvanceForm({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [], equiposNuevos: [] }); }}
                                   style={{ ...S.btnPrimary(), padding: "6px 12px", fontSize: 12 }}>
                                   + Avance del día
                                 </button>
@@ -2685,6 +2755,7 @@ export default function RegistroOTPage() {
                     {avanceRef?.planId === ref.planId && avanceRef?.ot.numeroOT === ot.numeroOT && (
                       <AvanceDiarioMiniForm
                         titulo={`+ Avance del día ${diaSeleccionado}`}
+                        area={ref.areaCodigo}
                         form={avanceForm}
                         onChange={setAvanceForm}
                         cargandoAdj={cargandoAdjAvance}
@@ -2887,7 +2958,7 @@ export default function RegistroOTPage() {
                       </p>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
                         <button type="button"
-                          onClick={() => { setAvanceReactivaRef({ id: otReactivaAbierta.id, numeroOT: otReactivaAbierta.numeroOT }); setAvanceReactivaForm({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [] }); }}
+                          onClick={() => { setAvanceReactivaRef({ id: otReactivaAbierta.id, numeroOT: otReactivaAbierta.numeroOT }); setAvanceReactivaForm({ fecha: shiftFecha, hhTrabajadas: "", tareas: [], tareaInput: "", observaciones: "", adjuntos: [], equiposNuevos: [] }); }}
                           style={{ fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 6, border: "none", background: "#2563eb", color: "white", cursor: "pointer" }}>
                           + Agregar avance del día →
                         </button>
@@ -2903,6 +2974,7 @@ export default function RegistroOTPage() {
                   {!form.origenPlan && !!avanceReactivaRef && !!otReactivaAbierta && avanceReactivaRef.id === otReactivaAbierta.id && (
                     <AvanceDiarioMiniForm
                       titulo="+ Avance del día — OT reactiva"
+                      area={form.areaCodigo}
                       form={avanceReactivaForm}
                       onChange={setAvanceReactivaForm}
                       cargandoAdj={cargandoAdjAvanceReactiva}
