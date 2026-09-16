@@ -2072,6 +2072,105 @@ export default function RegistroOTPage() {
 
   // ─── Submit ────────────────────────────────────────────────────────────────
 
+  // Deriva un registro diario (fecha/HH/tareas/observaciones) a partir de las
+  // líneas cargadas en el formulario — misma lógica que usa el backend para
+  // reconstruir avances diarios desde líneas (src/app/api/ordenes/[id]/route.ts).
+  function lineasARegistroDiario() {
+    const multiplesLineas = form.lineas.length > 1;
+    return {
+      fecha: form.fecha,
+      turno: shiftTurno,
+      tecnico: user?.nombre ?? "Técnico",
+      usuarioId: user?.id,
+      hhTrabajadas: form.lineas.reduce((s, l) => s + (Number(l.tiempoRealHrs) || 0), 0),
+      tareasEjecutadas: form.lineas.flatMap(l =>
+        (l.tareasEjecutadas ?? []).map(t => (multiplesLineas ? `[${l.tag}] ${t}` : t))
+      ),
+      observaciones: form.lineas
+        .map(l => {
+          const texto = [l.descripcionTrabajo, l.observaciones].filter(Boolean).join(" — ");
+          if (!texto) return null;
+          return multiplesLineas ? `[${l.tag}] ${texto}` : texto;
+        })
+        .filter(Boolean)
+        .join(" | ") || null,
+      adjuntos: form.lineas.flatMap(l =>
+        l.adjuntos.map(a => ({ tipo: a.tipo, nombre: a.nombre, dataUrl: a.dataUrl, comentario: a.comentario, comentariosExtra: a.comentariosExtra }))
+      ),
+    };
+  }
+
+  // Arma el payload de líneas para el POST de creación — se reutiliza también
+  // en el fallback de OT ya abierta para no duplicar esta lógica.
+  function mapLineasParaPayload() {
+    return form.lineas.map(l => ({
+      tag: l.tag, descripcionEquipo: l.descripcionEquipo, tipoOT: l.tipoOT,
+      adjuntos: l.adjuntos.map(a => ({ tipo: a.tipo, nombre: a.nombre, dataUrl: a.dataUrl, comentario: a.comentario, comentariosExtra: a.comentariosExtra })),
+      descripcionTrabajo: l.descripcionTrabajo || undefined,
+      resolucionAplicada: l.resolucionAplicada || undefined,
+      estadoFinal: l.estadoFinal || undefined,
+      tareasEjecutadas: l.tareasEjecutadas.length > 0 ? l.tareasEjecutadas : undefined,
+      ...(isCorrectivo(l.tipoOT) ? {
+        sintoma: l.sintoma || undefined, causaProbable: l.causaProbable || undefined,
+        tiempoEstimadoHrs: l.tiempoEstimadoHrs ? Number(l.tiempoEstimadoHrs) : undefined,
+        tiempoRealHrs: l.tiempoRealHrs ? Number(l.tiempoRealHrs) : undefined,
+      } : {
+        tiempoRealHrs: l.tiempoRealHrs ? Number(l.tiempoRealHrs) : undefined,
+      }),
+      observaciones: l.observaciones || undefined,
+    }));
+  }
+
+  // OT recurrente/parada que ya estaba abierta (el intento de creación devolvió
+  // 409): en vez de dejar al técnico sin poder guardar, se agrega el avance de
+  // esta sesión como registro diario sobre esa OT. El PATCH reemplaza TODO el
+  // set de líneas si se le envían, así que primero se trae el estado actual de
+  // la OT y se fusiona por tag+tipoOT — evita pisar/perder el detalle (síntoma,
+  // resolución, estado final, etc.) de equipos ya trabajados en días anteriores.
+  async function guardarAvanceSobreOtExistente(otId: string, otNumero: string) {
+    const otActual = await fetch(`/api/ordenes/${otId}`).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    // Si no se pudo leer el estado previo de la OT, NO seguir con lineasPrevias
+    // vacío: el PATCH reemplaza TODO el set de líneas, así que continuar acá
+    // borraría en silencio el detalle de equipos trabajados en días anteriores.
+    if (!otActual) {
+      throw new Error("No se pudo leer el estado actual de la OT antes de guardar el avance. Verifica tu conexión e intenta de nuevo.");
+    }
+    const claveLinea = (tag: string, tipoOT: string) => `${tag.toUpperCase()}::${tipoOT}`;
+    const lineasNuevas = mapLineasParaPayload();
+    const clavesNuevas = new Set(lineasNuevas.map(l => claveLinea(l.tag, l.tipoOT)));
+    const lineasPrevias: ({ tag: string; tipoOT: string } & Record<string, unknown>)[] =
+      Array.isArray(otActual.lineas) ? otActual.lineas : [];
+    const lineasFusionadas = [
+      ...lineasPrevias.filter(l => !clavesNuevas.has(claveLinea(l.tag, l.tipoOT))),
+      ...lineasNuevas,
+    ];
+
+    const res = await fetch(`/api/ordenes/${otId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lineas: lineasFusionadas,
+        // Baseline de concurrencia optimista: el backend rechaza el PATCH si la
+        // OT cambió entre este GET y el PATCH (otro técnico guardando sobre la
+        // misma OT abierta, o un supervisor cerrándola) — evita pisar en
+        // silencio el avance de otra persona con el reemplazo total de líneas.
+        lineasBaseline: otActual.updatedAt,
+        registroDiario: lineasARegistroDiario(),
+        cambio: `Avance agregado sobre OT existente N° ${otNumero}`,
+        usuarioId: user?.id,
+        nombreUsuario: user?.nombre,
+        ...(form.turno === "Parada de Planta" ? { turnoParada: shiftTurno === "Nocturno" ? "Noche" : "Dia" } : {}),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Error al guardar avance sobre la OT existente");
+    if (claveBorrador) borrarBorrador(claveBorrador);
+    borradorSnapRef.current = null;
+    idempotencyKeyRef.current = "";
+    setDone(true);
+    setDoneOT({ numeroOT: data.ot.numeroOT, estado: data.ot.estado, consolidado: false, parentOtNum: data.ot.parentOtNum ?? null });
+  }
+
   async function submit(estado: "borrador" | "pendiente_revision" | "en_proceso") {
     // Guard síncrono: bloquea el 2º disparo antes de que React aplique `submitting`.
     if (submittingRef.current) return;
@@ -2103,26 +2202,22 @@ export default function RegistroOTPage() {
             ? { turnoParada: shiftTurno === "Nocturno" ? "Noche" : "Dia" }
             : {}),
         }),
-        lineas: form.lineas.map(l => ({
-          tag: l.tag, descripcionEquipo: l.descripcionEquipo, tipoOT: l.tipoOT,
-          adjuntos: l.adjuntos.map(a => ({ tipo: a.tipo, nombre: a.nombre, dataUrl: a.dataUrl, comentario: a.comentario, comentariosExtra: a.comentariosExtra })),
-          descripcionTrabajo: l.descripcionTrabajo || undefined,
-          resolucionAplicada: l.resolucionAplicada || undefined,
-          estadoFinal: l.estadoFinal || undefined,
-          tareasEjecutadas: l.tareasEjecutadas.length > 0 ? l.tareasEjecutadas : undefined,
-          ...(isCorrectivo(l.tipoOT) ? {
-            sintoma: l.sintoma || undefined, causaProbable: l.causaProbable || undefined,
-            tiempoEstimadoHrs: l.tiempoEstimadoHrs ? Number(l.tiempoEstimadoHrs) : undefined,
-            tiempoRealHrs: l.tiempoRealHrs ? Number(l.tiempoRealHrs) : undefined,
-          } : {
-            tiempoRealHrs: l.tiempoRealHrs ? Number(l.tiempoRealHrs) : undefined,
-          }),
-          observaciones: l.observaciones || undefined,
-        })),
+        lineas: mapLineasParaPayload(),
       };
       const res = await fetch("/api/ordenes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Error al guardar");
+      if (!res.ok) {
+        // Fallback seguro para OTs recurrentes/parada ya abiertas: en vez de dejar
+        // al técnico en un callejón sin salida con el 409, el avance de esta sesión
+        // se agrega como registro diario sobre la OT existente (mismo mecanismo que
+        // "Agregar avance del día" en OTs reactivas) — sin tocar sus líneas, para no
+        // perder avances ya guardados en días anteriores.
+        if (res.status === 409 && data.otAbiertaId) {
+          await guardarAvanceSobreOtExistente(data.otAbiertaId, data.otAbiertaNumeroOT);
+          return;
+        }
+        throw new Error(data.error || "Error al guardar");
+      }
       if (claveBorrador) borrarBorrador(claveBorrador);
       borradorSnapRef.current = null;
       idempotencyKeyRef.current = ""; // OT creada: la próxima usa clave nueva

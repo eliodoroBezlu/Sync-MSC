@@ -28,6 +28,9 @@ function serializeOT(ot: Record<string, unknown> & {
     areaCodigo: ot.areaCodigo,
     estado: ot.estado,
     cerradaDefinitiva: ot.cerradaDefinitiva ?? false,
+    // Expuesto como baseline para concurrencia optimista (ver PATCH más abajo,
+    // y guardarAvanceSobreOtExistente en registro/page.tsx).
+    updatedAt: ot.updatedAt,
     esRecurrente,
     origenPlan: ot.origenPlan,
     programacionSemanalId: ot.programacionSemanalId,
@@ -159,11 +162,38 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   try {
     const { id } = await params;
     const body = await req.json();
-    const { estado, datosSupervision, cambio, cambios, lineas, tecnicos, turno, fecha, registroDiario, otJdeNumero, cerradaDefinitiva } = body;
+    const { estado, datosSupervision, cambio, cambios, lineas, tecnicos, turno, fecha, registroDiario, otJdeNumero, cerradaDefinitiva, lineasBaseline } = body;
     // usuarioId/nombreUsuario para historial y firma de supervisor vienen de la
     // sesión verificada, no del body — evita que un cliente falsifique la autoría.
     const usuarioId = session.id;
     const nombreUsuario = session.nombre;
+
+    // Concurrencia optimista, sólo para callers que mandan lineasBaseline (hoy,
+    // únicamente guardarAvanceSobreOtExistente en registro/page.tsx — el editor
+    // de líneas del supervisor en reporte/page.tsx no manda este campo y sigue
+    // con el reemplazo incondicional de siempre). Si la OT cambió desde que el
+    // cliente leyó su estado (otro técnico guardó avance sobre la misma OT
+    // abierta, o un supervisor la cerró) se rechaza ANTES de tocar OtLinea, en
+    // vez de dejar que el reemplazo total pise en silencio ese cambio.
+    if (lineas && lineasBaseline) {
+      const otPrevia = await prisma.ordenTrabajo.findUnique({ where: { id }, select: { estado: true, updatedAt: true } });
+      if (!otPrevia) {
+        return Response.json({ ok: false, error: "OT no encontrada" }, { status: 404 });
+      }
+      const estadosBloqueados = ["pendiente_revision", "revisado", "concluido"];
+      if (estadosBloqueados.includes(otPrevia.estado)) {
+        return Response.json(
+          { ok: false, error: `No se puede guardar — la OT está en estado "${otPrevia.estado}". Contacta al supervisor.` },
+          { status: 409 }
+        );
+      }
+      if (otPrevia.updatedAt.toISOString() !== lineasBaseline) {
+        return Response.json(
+          { ok: false, error: "La OT fue modificada por otro técnico mientras cargabas el avance. Recarga la página e intenta de nuevo para no perder su trabajo." },
+          { status: 409 }
+        );
+      }
+    }
 
     const updateData: Record<string, unknown> = {};
     if (estado) updateData.estado = estado;
