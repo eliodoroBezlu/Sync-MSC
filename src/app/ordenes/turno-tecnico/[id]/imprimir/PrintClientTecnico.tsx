@@ -122,7 +122,17 @@ export default function PrintClientTecnico({
           body { padding: 20px; background: #f0f0f0; }
           .pagina { background: white; width: 277mm; margin: 0 auto 20px; padding: 10mm; box-shadow: 0 2px 12px rgba(0,0,0,0.15); }
         }
-        @media print { .no-print { display: none !important; } .pagina { page-break-after: always; } .pagina:last-child { page-break-after: avoid; } }
+        @media print {
+          .no-print { display: none !important; }
+          /* El margen inferior de 20px y la sombra son sólo para la vista en
+             pantalla (separar "hojas" sobre el fondo gris). En impresión el
+             @page ya reserva 10mm de margen alrededor del papel, así que ese
+             margen extra sobra: sumado al padding de 10mm de .pagina, empuja
+             el contenido justo por encima del alto disponible y genera una
+             segunda hoja casi en blanco. */
+          .pagina { page-break-after: always; margin: 0; box-shadow: none; }
+          .pagina:last-child { page-break-after: avoid; }
+        }
         table { width: 100%; border-collapse: collapse; }
         th, td { border: 1px solid #000; padding: 3px 5px; vertical-align: middle; }
         th { background: #1f3864; color: white; font-weight: bold; text-align: center; font-size: 9pt; }

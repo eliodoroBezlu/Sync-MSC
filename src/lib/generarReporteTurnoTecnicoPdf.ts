@@ -87,12 +87,19 @@ function piePagina(doc: jsPDF, tecnico: string) {
 }
 
 // Texto de una línea/entrada de bitácora para la columna DESCRIPCIÓN,
-// incluyendo la resolución (con ✓) y la etiqueta de estado final si existe.
+// incluyendo la resolución y la etiqueta de estado final si existe.
+//
+// Nota: las fuentes estándar de jsPDF (helvetica) sólo soportan el charset
+// WinAnsi/cp1252. Símbolos fuera de ese charset (✓, ⚠, →, etc.) no tienen un
+// ancho de glifo válido, lo que rompe el cálculo de saltos de línea de
+// autoTable y deja el texto de la celda con las letras separadas/desalineadas.
+// Por eso acá (y en el resto del archivo) se usa sólo texto plano, igual que
+// en generarInformeOT.ts.
 function textoDescripcion(descripcion: string | undefined, resolucion: string | undefined, estadoFinal: string | undefined): string {
   const partes = [descripcion || "—"];
   if (resolucion) {
     const label = estadoFinal ? ESTADO_FINAL_LABEL[estadoFinal] : undefined;
-    partes.push(`✓ ${resolucion}${label ? ` [${label}]` : ""}`);
+    partes.push(`Resuelto: ${resolucion}${label ? ` [${label}]` : ""}`);
   }
   return partes.join("\n");
 }
@@ -249,7 +256,7 @@ export async function generarReporteTurnoTecnicoPdf(reporte: ReporteData, ots: O
     const textoTareasCol = linea0?.tareasEjecutadas && linea0.tareasEjecutadas.length > 0
       ? textoTareas(linea0.tareasEjecutadas, undefined)
       : (ot.nota || linea0?.descripcionTrabajo || "—");
-    const alertas = [ot.critica ? "⚠ CRÍTICA" : "", ot.pendiente ? "→ SGTE TURNO" : ""].filter(Boolean).join("  ");
+    const alertas = [ot.critica ? "CRÍTICA" : "", ot.pendiente ? "PASA A SGTE. TURNO" : ""].filter(Boolean).join("  ");
 
     push([
       { content: String(idx + 1), styles: { halign: "center" } },
@@ -290,7 +297,7 @@ export async function generarReporteTurnoTecnicoPdf(reporte: ReporteData, ots: O
     const estadoColor: [number, number, number] = concluida ? VERDE : AMBAR_OSC;
 
     if (lineas && lineas.length > 1) {
-      const alertas = [ot.critica ? "⚠ CRÍTICA" : "", ot.pendiente ? "→ SGTE TURNO" : ""].filter(Boolean).join("  ");
+      const alertas = [ot.critica ? "CRÍTICA" : "", ot.pendiente ? "PASA A SGTE. TURNO" : ""].filter(Boolean).join("  ");
       push([
         { content: String(baseIdx), styles: { halign: "center", fontStyle: "bold" } },
         { content: `OT ${otNum(ot)} · Total: ${ot.hhTotal}HH`, colSpan: 4, styles: { fontStyle: "bold", textColor: AZUL_OSC } },
@@ -312,7 +319,7 @@ export async function generarReporteTurnoTecnicoPdf(reporte: ReporteData, ots: O
     }
 
     const linea0 = lineas?.[0];
-    const alertas = [ot.critica ? "⚠ CRÍTICA" : "", ot.pendiente ? "→ SGTE TURNO" : ""].filter(Boolean).join("  ");
+    const alertas = [ot.critica ? "CRÍTICA" : "", ot.pendiente ? "PASA A SGTE. TURNO" : ""].filter(Boolean).join("  ");
     push([
       { content: String(baseIdx), styles: { halign: "center" } },
       tipoOtDisplay(ot.tipoOT).texto,
@@ -430,8 +437,8 @@ export async function generarReporteTurnoTecnicoPdf(reporte: ReporteData, ots: O
 
     y = checkPage(doc, y, 20);
     const inicio: PosPagina = { pagina: doc.getCurrentPageInfo().pageNumber, y };
-    const finCrit = criticas.length > 0 ? dibujarLista(`⚠ OTs CRÍTICAS (${criticas.length})`, criticas, MARGIN, ROJO, inicio) : inicio;
-    const finPend = pendientesSig.length > 0 ? dibujarLista(`→ PENDIENTES SIGUIENTE TURNO (${pendientesSig.length})`, pendientesSig, xCol2, AMBAR, inicio) : inicio;
+    const finCrit = criticas.length > 0 ? dibujarLista(`OTs CRÍTICAS (${criticas.length})`, criticas, MARGIN, ROJO, inicio) : inicio;
+    const finPend = pendientesSig.length > 0 ? dibujarLista(`PENDIENTES SIGUIENTE TURNO (${pendientesSig.length})`, pendientesSig, xCol2, AMBAR, inicio) : inicio;
     // El pie/footer se dibuja debajo de la columna que haya terminado más
     // abajo, en la página donde efectivamente terminó (puede diferir entre
     // columnas si una se extendió a páginas adicionales).
