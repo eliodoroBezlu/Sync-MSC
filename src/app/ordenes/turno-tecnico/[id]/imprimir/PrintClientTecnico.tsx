@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { tipoOtDisplay } from "@/lib/tiposOt";
 import { generarReporteTurnoTecnicoPdf } from "@/lib/generarReporteTurnoTecnicoPdf";
+import { generarReporteTurnoTecnicoExcel } from "@/lib/generarReporteTurnoTecnicoExcel";
 
 export type BitacoraEntry = { turno: string; supervisor: string; nota: string; resolucion?: string; estadoFinal?: string; hhAtendidas: number; fecha?: string };
 export type LineaDisplay  = { tag: string; tipoOT: string; descripcion: string; resolucion: string; estadoFinal?: string; hh: number; observaciones?: string; tareasEjecutadas?: string[]; descripcionTrabajo?: string };
@@ -111,6 +112,18 @@ export default function PrintClientTecnico({
     }
   }
 
+  // "Descargar Excel" arma una hoja plana (una fila por OT/línea) con
+  // XLSX.writeFile — se descarga en el momento, sin pasar por el servidor,
+  // igual que el PDF.
+  function handleDescargarExcel() {
+    try {
+      generarReporteTurnoTecnicoExcel(reporte, ots);
+    } catch (error) {
+      console.error("Error al generar el Excel del reporte de turno:", error);
+      alert("No se pudo generar el Excel. Intenta de nuevo.");
+    }
+  }
+
   return (
     <>
       <style>{`
@@ -160,6 +173,10 @@ export default function PrintClientTecnico({
         <button onClick={handleDescargarPdf} disabled={generandoPdf}
           style={{ padding: "9px 20px", background: generandoPdf ? "#93a5c7" : "#2563eb", color: "white", border: "none", borderRadius: 6, cursor: generandoPdf ? "default" : "pointer", fontWeight: 700, fontSize: 13 }}>
           {generandoPdf ? "Generando…" : "⬇ Descargar PDF"}
+        </button>
+        <button onClick={handleDescargarExcel}
+          style={{ padding: "9px 20px", background: "#16a34a", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
+          ⬇ Descargar Excel
         </button>
         <button onClick={() => window.close()}
           style={{ padding: "9px 14px", background: "#64748b", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13 }}>
