@@ -1,9 +1,10 @@
 "use client";
 import { useState } from "react";
 import { tipoOtDisplay } from "@/lib/tiposOt";
+import { generarReporteTurnoTecnicoPdf } from "@/lib/generarReporteTurnoTecnicoPdf";
 
-type BitacoraEntry = { turno: string; supervisor: string; nota: string; resolucion?: string; estadoFinal?: string; hhAtendidas: number; fecha?: string };
-type LineaDisplay  = { tag: string; tipoOT: string; descripcion: string; resolucion: string; estadoFinal?: string; hh: number; observaciones?: string; tareasEjecutadas?: string[]; descripcionTrabajo?: string };
+export type BitacoraEntry = { turno: string; supervisor: string; nota: string; resolucion?: string; estadoFinal?: string; hhAtendidas: number; fecha?: string };
+export type LineaDisplay  = { tag: string; tipoOT: string; descripcion: string; resolucion: string; estadoFinal?: string; hh: number; observaciones?: string; tareasEjecutadas?: string[]; descripcionTrabajo?: string };
 
 // El checklist de tareas (tareasEjecutadas) es opcional y casi nunca se usa;
 // el detalle de trabajo real casi siempre queda en descripcionTrabajo (campo
@@ -39,7 +40,7 @@ function EstadoFinalBadge({ estadoFinal }: { estadoFinal?: string }) {
   );
 }
 
-type OTDisplay = {
+export type OTDisplay = {
   id: string; numeroOT: string; otJdeNumero?: string | null; tag: string; tipoOT: string;
   descripcion: string; tecnicos: string[]; hhTotal: number;
   estado: string; critica: boolean; pendiente: boolean; nota: string;
@@ -49,9 +50,9 @@ type OTDisplay = {
 
 function otNum(ot: OTDisplay) { return ot.otJdeNumero ?? ot.numeroOT; }
 
-type Novedad = { prioridad: string; tag?: string; descripcion: string };
+export type Novedad = { prioridad: string; tag?: string; descripcion: string };
 
-type ReporteData = {
+export type ReporteData = {
   _id: string; turno: string; fecha: string; tecnicoNombre: string;
   resumenEjecutivo: {
     totalOTs: number; concluidas: number; pendientes: number;
@@ -74,6 +75,7 @@ export default function PrintClientTecnico({
   ots: OTDisplay[];
 }) {
   const [zoom, setZoom] = useState(100);
+  const [generandoPdf, setGenerandoPdf] = useState(false);
   const fecha = new Date(reporte.fecha);
   const fechaStr = fecha.toLocaleDateString("es-BO", { day: "2-digit", month: "long", year: "numeric", timeZone: "UTC" });
   const res = reporte.resumenEjecutivo;
@@ -92,6 +94,22 @@ export default function PrintClientTecnico({
   // criterio visual que el reporte original.
   const otsPlanBitacora = otsPlan.filter(o => o.esGuardia && o.bitacora && o.bitacora.length > 0);
   const otsPlanResto = otsPlan.filter(o => !(o.esGuardia && o.bitacora && o.bitacora.length > 0));
+
+  // "Descargar PDF" construye el documento con jsPDF (texto real, no una
+  // imagen del DOM como hacía antes html2pdf.js), así que el PDF resultante
+  // sí se puede seleccionar/copiar en Adobe Reader sin pasar por el diálogo
+  // de impresión del navegador.
+  async function handleDescargarPdf() {
+    setGenerandoPdf(true);
+    try {
+      await generarReporteTurnoTecnicoPdf(reporte, ots);
+    } catch (error) {
+      console.error("Error al generar el PDF del reporte de turno:", error);
+      alert("No se pudo generar el PDF. Intenta de nuevo o usa el botón Imprimir.");
+    } finally {
+      setGenerandoPdf(false);
+    }
+  }
 
   return (
     <>
@@ -120,15 +138,18 @@ export default function PrintClientTecnico({
 
       {/* Botones pantalla */}
       <div className="no-print" style={{ position: "fixed", top: 12, right: 12, display: "flex", gap: 8, zIndex: 100 }}>
-        {/* Antes esto generaba el PDF con html2pdf.js (html2canvas + jsPDF), que
-            renderiza la página como una imagen: el PDF resultante no tenía texto
-            real, así que no se podía seleccionar ni copiar en lectores como
-            Adobe Reader. window.print() usa el motor de impresión nativo del
-            navegador — con el CSS @media print/@page ya definido arriba — y ahí
-            "Guardar como PDF" genera un PDF con texto de verdad. */}
+        {/* Imprimir: motor de impresión nativo del navegador (respeta el CSS
+            @media print/@page ya definido arriba). Descargar PDF: genera el
+            archivo directamente con jsPDF (texto real dibujado en el PDF, no
+            una captura del DOM como hacía antes html2pdf.js) y lo descarga
+            con un solo clic, sin pasar por el diálogo de impresión. */}
         <button onClick={() => window.print()}
           style={{ padding: "9px 20px", background: "#1f3864", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
-          🖨 Imprimir / Descargar PDF
+          🖨 Imprimir
+        </button>
+        <button onClick={handleDescargarPdf} disabled={generandoPdf}
+          style={{ padding: "9px 20px", background: generandoPdf ? "#93a5c7" : "#2563eb", color: "white", border: "none", borderRadius: 6, cursor: generandoPdf ? "default" : "pointer", fontWeight: 700, fontSize: 13 }}>
+          {generandoPdf ? "Generando…" : "⬇ Descargar PDF"}
         </button>
         <button onClick={() => window.close()}
           style={{ padding: "9px 14px", background: "#64748b", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13 }}>
