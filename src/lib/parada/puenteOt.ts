@@ -97,7 +97,7 @@ export async function espejarOrdenEnParada(params: EspejoParadaParams): Promise<
 
     const paradaOt = await prisma.paradaOt.findFirst({
       where: { paradaId: parada.id, numeroOT: params.numeroOT, fase: "ejecucion" },
-      select: { id: true, avancePct: true },
+      select: { id: true, avancePct: true, disciplina: true },
     });
     if (!paradaOt) return;
 
@@ -122,20 +122,25 @@ export async function espejarOrdenEnParada(params: EspejoParadaParams): Promise<
     if (!av) return;
     const fechaAvance = aFecha(av.fecha);
     if (!fechaAvance) return;
+    // SC Tesa no tiene turno noche: forzar "Dia" aunque el técnico haya cargado
+    // su registro con turno Nocturno seleccionado en la página (ese selector es
+    // genérico para todas las disciplinas). Si no, el avance queda invisible en
+    // los reportes de Tesa, que sólo consultan turno "Dia".
+    const turnoParada = paradaOt.disciplina === "TESA" ? "Dia" : av.turnoParada;
 
     await prisma.paradaAvanceDiario.upsert({
       where: {
         paradaOtId_fecha_turno: {
           paradaOtId: paradaOt.id,
           fecha: medianocheUTC(fechaAvance),
-          turno: av.turnoParada,
+          turno: turnoParada,
         },
       },
       create: {
         paradaId: parada.id,
         paradaOtId: paradaOt.id,
         fecha: medianocheUTC(fechaAvance),
-        turno: av.turnoParada,
+        turno: turnoParada,
         avancePct,
         hhPropias: av.hh,
         hhApoyo: 0,

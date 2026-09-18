@@ -44,9 +44,10 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     const otIds = [...new Set(items.map((i) => i.paradaOtId))];
     const ots = await prisma.paradaOt.findMany({
       where: { id: { in: otIds }, paradaId: id },
-      select: { id: true, fase: true },
+      select: { id: true, fase: true, disciplina: true },
     });
     const faseDe = new Map(ots.map((o) => [o.id, o.fase]));
+    const disciplinaDe = new Map(ots.map((o) => [o.id, o.disciplina]));
 
     const guardados = [];
     const rechazados: { paradaOtId: string; motivo: string }[] = [];
@@ -62,20 +63,25 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         continue;
       }
       const fechaUTC = new Date(`${ymd(it.fecha)}T00:00:00.000Z`);
+      // SC Tesa no tiene turno noche: si llega marcado "Noche" (p.ej. porque el
+      // técnico tenía seleccionado turno Nocturno en Registro de OT), se guarda
+      // como "Dia" para que no quede invisible en los reportes de Tesa, que sólo
+      // consultan turno "Dia" para esta disciplina.
+      const turno = disciplinaDe.get(it.paradaOtId) === "TESA" ? "Dia" : it.turno;
 
       const avance = await prisma.paradaAvanceDiario.upsert({
         where: {
           paradaOtId_fecha_turno: {
             paradaOtId: it.paradaOtId,
             fecha: fechaUTC,
-            turno: it.turno,
+            turno,
           },
         },
         create: {
           paradaId: id,
           paradaOtId: it.paradaOtId,
           fecha: fechaUTC,
-          turno: it.turno,
+          turno,
           avancePct: it.avancePct,
           hhPropias: it.hhPropias,
           hhApoyo: it.hhApoyo,
