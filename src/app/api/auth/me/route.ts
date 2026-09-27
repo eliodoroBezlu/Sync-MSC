@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   const token = req.cookies.get(COOKIE_NAME)?.value;
   if (!token) return NextResponse.json({ ok: false, user: null }, { status: 401 });
 
-  const payload = verifyToken(token);
+  const payload = await verifyToken(token);
   if (!payload) return NextResponse.json({ ok: false, user: null }, { status: 401 });
 
   // Releer desde la BD en cada chequeo de sesión: el JWT es un snapshot firmado
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   };
 
   const res = NextResponse.json({ ok: true, user: fresh });
-  res.cookies.set(COOKIE_NAME, signToken(fresh), {
+  res.cookies.set(COOKIE_NAME, await signToken(fresh), {
     httpOnly: true,
     sameSite: "lax",
     maxAge: MAX_AGE,
