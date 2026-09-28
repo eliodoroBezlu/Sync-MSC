@@ -10,6 +10,9 @@ const ERRORS: Record<string, string> = {
   sin_acceso:
     "Tu cuenta no tiene acceso al sistema Sync-MSC. Contacta al administrador para que te conceda el acceso desde el portal de identidad.",
   auth_error: "No se pudo completar el inicio de sesión. Intenta nuevamente.",
+  // Destino del logout (OIDC_POST_LOGOUT_REDIRECT_URI): viene por ?error= para
+  // que la página NO dispare el login automático, pero no es un error.
+  logged_out: "Cerraste sesión correctamente.",
 };
 
 export default async function LoginPage({
@@ -26,6 +29,7 @@ export default async function LoginPage({
   }
 
   const message = ERRORS[error!] ?? ERRORS.auth_error;
+  const cerroSesion = error === "logged_out";
 
   return (
     <div
@@ -62,9 +66,16 @@ export default async function LoginPage({
         }}
       >
         <h2 style={{ color: "white", fontWeight: 700, fontSize: 18, marginBottom: 16 }}>
-          Acceso no disponible
+          {cerroSesion ? "Sesión cerrada" : "Acceso no disponible"}
         </h2>
-        <p style={{ color: "#fca5a5", fontSize: 14, lineHeight: 1.5, marginBottom: 24 }}>
+        <p
+          style={{
+            color: cerroSesion ? "rgba(255,255,255,0.75)" : "#fca5a5",
+            fontSize: 14,
+            lineHeight: 1.5,
+            marginBottom: 24,
+          }}
+        >
           {message}
         </p>
         <a
@@ -81,7 +92,7 @@ export default async function LoginPage({
             letterSpacing: "0.04em",
           }}
         >
-          Reintentar
+          {cerroSesion ? "Iniciar sesión" : "Reintentar"}
         </a>
       </div>
 

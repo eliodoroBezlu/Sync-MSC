@@ -21,6 +21,17 @@ const OIDC_CLIENT_SECRET = process.env.OIDC_CLIENT_SECRET || "";
 export const OIDC_REDIRECT_URI =
   process.env.OIDC_REDIRECT_URI || "http://localhost:3000/api/auth/callback";
 
+// Destino tras cerrar sesión en el IAM. Debe estar registrado EXACTAMENTE igual
+// (query incluida) en postLogoutRedirectUris del client sync-msc; si no, el IAM
+// cierra igual la sesión pero manda al usuario al login del portal.
+export const OIDC_POST_LOGOUT_REDIRECT_URI =
+  process.env.OIDC_POST_LOGOUT_REDIRECT_URI ||
+  "http://localhost:3000/login?error=logged_out";
+
+// Cookie donde el callback guarda el id_token: el logout lo envía al IAM como
+// id_token_hint (sin él, el IAM no respeta el post_logout_redirect_uri).
+export const ID_TOKEN_COOKIE = "oidc_id_token";
+
 let cachedClient: Client | null = null;
 
 export function getOidcClient(): Client {
@@ -39,6 +50,7 @@ export function getOidcClient(): Client {
     client_id: OIDC_CLIENT_ID,
     client_secret: OIDC_CLIENT_SECRET,
     redirect_uris: [OIDC_REDIRECT_URI],
+    post_logout_redirect_uris: [OIDC_POST_LOGOUT_REDIRECT_URI],
     response_types: ["code"],
     token_endpoint_auth_method: "client_secret_post",
   });
