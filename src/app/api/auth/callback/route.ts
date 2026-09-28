@@ -3,7 +3,7 @@
 // al servicio sync-msc, sincroniza el Usuario espejo local desde el IAM
 // (fuente de verdad) y emite la sesión `sync_session` de siempre.
 import { NextRequest, NextResponse } from "next/server";
-import { getOidcClient, OIDC_REDIRECT_URI } from "@/lib/oidc";
+import { getOidcClient, OIDC_REDIRECT_URI, ID_TOKEN_COOKIE } from "@/lib/oidc";
 import { getPublicOrigin } from "@/lib/public-url";
 import { prisma } from "@/lib/prisma";
 import { signToken, COOKIE_NAME, MAX_AGE, SessionPayload } from "@/lib/auth";
@@ -154,6 +154,16 @@ export async function GET(request: NextRequest) {
     maxAge: MAX_AGE,
     path: "/",
   });
+  // El logout lo necesita como id_token_hint para volver a Sync tras cerrar el SSO.
+  if (tokenSet.id_token) {
+    res.cookies.set(ID_TOKEN_COOKIE, tokenSet.id_token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: MAX_AGE,
+      path: "/",
+    });
+  }
   res.cookies.delete(TX_COOKIE);
   return res;
 }
