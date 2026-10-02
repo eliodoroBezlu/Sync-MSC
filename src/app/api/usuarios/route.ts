@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
-import crypto from "crypto";
+import { traeContrasena, MSG_CONTRASENA } from "@/lib/usuario-iam";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -46,6 +46,8 @@ export async function GET(req: NextRequest) {
       activo: u.activo,
       esContratista: u.esContratista,
       fechaExpiracion: u.fechaExpiracion ?? null,
+      // Inicia sesión con su cuenta del IAM: su identidad se gestiona allí.
+      vinculadoIam: u.iamUserId !== null,
     }))
   );
 }
@@ -53,22 +55,20 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { nombre, apellido, email, password, rol, areas, areaTrabajo,
+    // Aquí solo se registran personas operativas (asignables a trabajo). Las
+    // cuentas con acceso, y sus contraseñas, se crean en el IAM Portal.
+    if (traeContrasena(body)) {
+      return Response.json({ ok: false, error: MSG_CONTRASENA }, { status: 400 });
+    }
+    const { nombre, apellido, email, rol, areas, areaTrabajo,
             celular, jde, puesto, superintendencia, disciplina,
             esContratista, fechaExpiracion } = body;
-
-    let passwordHash: string | undefined;
-    if (password?.trim()) {
-      passwordHash = crypto.createHash("sha256")
-        .update(password + "syncmsc-salt-v1").digest("hex");
-    }
 
     const user = await prisma.usuario.create({
       data: {
         nombre: nombre?.trim(),
         apellido: apellido?.trim() || null,
         email: email?.trim()?.toLowerCase() || null,
-        passwordHash: passwordHash ?? null,
         rol: Number(rol),
         disciplina: disciplina ?? "GENERAL",
         areaTrabajo: areaTrabajo?.trim() || null,

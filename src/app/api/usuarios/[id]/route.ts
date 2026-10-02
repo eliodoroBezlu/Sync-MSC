@@ -1,46 +1,53 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
-import crypto from "crypto";
+import {
+  traeContrasena,
+  camposIamModificados,
+  mensajeCamposIam,
+  datosEditables,
+  MSG_CONTRASENA,
+  MSG_ELIMINAR_VINCULADO,
+} from "@/lib/usuario-iam";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function PUT(req: NextRequest, { params }: Ctx) {
   const { id } = await params;
   try {
-    const body = await req.json();
-    
-    // Hash password if provided
-    let passwordHash: string | undefined;
-    if (body.password && typeof body.password === "string" && body.password.trim() !== "") {
-      passwordHash = crypto.createHash("sha256")
-        .update(body.password + "syncmsc-salt-v1").digest("hex");
+    const body = (await req.json()) as Record<string, unknown>;
+
+    if (traeContrasena(body)) {
+      return Response.json({ ok: false, error: MSG_CONTRASENA }, { status: 400 });
     }
 
-    // Clean up raw password fields
-    delete body.password;
-    delete body.passwordHash;
-
-    const { areas, ...rest } = body;
-    const rol = body.rol !== undefined ? Number(body.rol) : undefined;
-    delete rest.rol;
-
-    // Parse fechaExpiracion if present
-    if (rest.fechaExpiracion !== undefined) {
-      rest.fechaExpiracion = rest.fechaExpiracion ? new Date(rest.fechaExpiracion) : null;
+    const actual = await prisma.usuario.findUnique({ where: { id }, include: { areas: true } });
+    if (!actual) {
+      return Response.json({ ok: false, error: "Usuario no encontrado" }, { status: 404 });
     }
+
+    // Vinculado al IAM: su identidad la define el IAM y se re-sincroniza en cada
+    // login. Rechazar el cambio es más honesto que guardarlo y que se pierda.
+    const vinculado = actual.iamUserId !== null;
+    if (vinculado) {
+      const cambios = camposIamModificados(actual, body);
+      if (cambios.length > 0) {
+        return Response.json(
+          { ok: false, gestionadoPorIam: true, error: mensajeCamposIam(cambios) },
+          { status: 409 },
+        );
+      }
+    }
+
+    const areas =
+      !vinculado && Array.isArray(body.areas) ? [...new Set(body.areas.map(String))] : undefined;
 
     await prisma.usuario.update({
       where: { id },
       data: {
-        ...rest,
-        ...(rol !== undefined ? { rol } : {}),
-        ...(passwordHash ? { passwordHash } : {}),
-        ...(areas !== undefined ? {
-          areas: {
-            deleteMany: {},
-            create: areas.map((codigo: string) => ({ areaCodigo: codigo })),
-          },
-        } : {}),
+        ...datosEditables(body, vinculado),
+        ...(areas !== undefined
+          ? { areas: { deleteMany: {}, create: areas.map((areaCodigo) => ({ areaCodigo })) } }
+          : {}),
       },
     });
 
@@ -54,6 +61,13 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
   const { id } = await params;
   try {
+    const actual = await prisma.usuario.findUnique({ where: { id }, select: { iamUserId: true } });
+    if (actual?.iamUserId) {
+      return Response.json(
+        { ok: false, gestionadoPorIam: true, error: MSG_ELIMINAR_VINCULADO },
+        { status: 409 },
+      );
+    }
     await prisma.usuario.delete({ where: { id } });
     return Response.json({ ok: true });
   } catch (err: unknown) {

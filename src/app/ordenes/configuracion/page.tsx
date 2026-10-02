@@ -50,9 +50,11 @@ type UsuarioItem = {
   jde: string; celular: string; puesto: string; superintendencia: string; areaTrabajo: string;
   rol: number; areas: string[]; disciplina?: string; activo: boolean;
   esContratista: boolean; fechaExpiracion: string | null;
+  /** Inicia sesión con su cuenta del IAM: identidad, rol, áreas y acceso se gestionan allí. */
+  vinculadoIam: boolean;
 };
 type UsuarioForm = {
-  nombre: string; email: string; password?: string; rol: string;
+  nombre: string; email: string; rol: string;
   jde: string; celular: string; puesto: string; superintendencia: string; areaTrabajo: string;
   areas: string[]; disciplina: string;
   esContratista: boolean; fechaExpiracion: string;
@@ -1068,18 +1070,25 @@ function ArbolTab() {
 }
 
 // ─── Tab: Usuarios ─────────────────────────────────────────────────────────────
+function formUsuarioVacio(): UsuarioForm {
+  return {
+    nombre: "", email: "", rol: "4",
+    jde: "", celular: "", puesto: "", superintendencia: "", areaTrabajo: "",
+    areas: [], disciplina: "GENERAL",
+    esContratista: false, fechaExpiracion: "",
+  };
+}
+
+// Campos de identidad bloqueados cuando la persona inicia sesión con el IAM.
+const estiloBloqueado: React.CSSProperties = { background: "#f1f5f9", color: "#64748b", cursor: "not-allowed" };
+
 function UsuariosTab() {
   const [items, setItems] = useState<UsuarioItem[]>([]);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editItem, setEditItem] = useState<UsuarioItem | null>(null);
-  const [form, setForm] = useState<UsuarioForm>({
-    nombre: "", email: "", password: "", rol: "4",
-    jde: "", celular: "", puesto: "", superintendencia: "", areaTrabajo: "",
-    areas: [], disciplina: "GENERAL",
-    esContratista: false, fechaExpiracion: "",
-  });
+  const [form, setForm] = useState<UsuarioForm>(formUsuarioVacio);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [areas, setAreas] = useState<AreaOption[]>([]);
@@ -1098,12 +1107,7 @@ function UsuariosTab() {
 
   function openAdd() {
     setEditItem(null);
-    setForm({
-      nombre: "", email: "", password: "", rol: "4",
-      jde: "", celular: "", puesto: "", superintendencia: "", areaTrabajo: "",
-      areas: [], disciplina: "GENERAL",
-      esContratista: false, fechaExpiracion: "",
-    });
+    setForm(formUsuarioVacio());
     setErr("");
     setShowForm(true);
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
@@ -1114,7 +1118,6 @@ function UsuariosTab() {
     setForm({
       nombre: item.nombre,
       email: item.email ?? "",
-      password: "",
       rol: String(item.rol),
       jde: item.jde ?? "",
       celular: item.celular ?? "",
@@ -1138,27 +1141,23 @@ function UsuariosTab() {
     const url = editItem ? `/api/usuarios/${editItem._id}` : "/api/usuarios";
     const method = editItem ? "PUT" : "POST";
 
-    // Si editamos y la contraseña está vacía, no la enviamos para no sobreescribirla en el backend
-    const body = { ...form };
-    if (editItem && (!body.password || !body.password.trim())) {
-      delete body.password;
-    }
-
     const res = await fetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(form),
     });
     const data = await res.json();
     setSaving(false);
     if (!data.ok) { setErr(data.error ?? "Error al guardar"); return; }
     setShowForm(false);
-    setForm({ nombre: "", email: "", password: "", rol: "4", jde: "", celular: "", puesto: "", superintendencia: "", areaTrabajo: "", areas: [], disciplina: "GENERAL", esContratista: false, fechaExpiracion: "" });
+    setForm(formUsuarioVacio());
     load();
   }
 
   async function toggleActivo(item: UsuarioItem) {
-    await fetch(`/api/usuarios/${item._id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ activo: !item.activo }) });
+    const res = await fetch(`/api/usuarios/${item._id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ activo: !item.activo }) });
+    const data = await res.json();
+    if (!data.ok) { alert(data.error ?? "No se pudo cambiar el estado"); return; }
     load();
   }
 
@@ -1205,6 +1204,11 @@ function UsuariosTab() {
   }
 
   const upd = (k: keyof Omit<UsuarioForm, "areas">, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  // Persona con cuenta en el IAM: su identidad se re-sincroniza en cada login,
+  // así que aquí solo se editan los datos propios de Sync.
+  const bloqueado = editItem?.vinculadoIam === true;
+  const inputStyle = bloqueado ? { ...C.input, ...estiloBloqueado } : C.input;
+  const selectStyle = bloqueado ? { ...C.select, ...estiloBloqueado } : C.select;
 
   const USU_FIELDS: BulkField[] = [
     { key: "nomina", required: true },
@@ -1245,6 +1249,11 @@ function UsuariosTab() {
           <p style={{ fontSize: 12, color: "#64748b", margin: "2px 0 0" }}>
             Personal con base en ListaGM · Columnas CSV: <code style={{ background: "#f1f5f9", padding: "0 4px", borderRadius: 3, fontFamily: "monospace" }}>nomina, rol, area, jde, celular, puesto, superintendencia</code>
           </p>
+          <p style={{ fontSize: 12, color: "#64748b", margin: "4px 0 0" }}>
+            Las personas con <Badge bg="#e0e7ff" color="#3730a3">IAM</Badge> inician sesión con su cuenta central: su rol, áreas, acceso y contraseña se gestionan en el{" "}
+            <a href="/api/iam-portal?to=admin" target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb" }}>IAM Portal ↗</a>.
+            Las demás solo se registran aquí para asignarles trabajo.
+          </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button style={C.btnBlue} onClick={openAdd}>+ Agregar</button>
@@ -1264,14 +1273,27 @@ function UsuariosTab() {
           <h3 style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 700, color: "#0f2847" }}>
             {editItem ? "Editar Usuario" : "Nuevo Usuario"}
           </h3>
+          {bloqueado ? (
+            <div style={{ background: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#3730a3", lineHeight: 1.5 }}>
+              <strong>Cuenta del IAM.</strong> Esta persona inicia sesión con su cuenta central: nómina, email, rol, disciplina, áreas,
+              estado y contraseña se toman del IAM en cada inicio de sesión. Cámbialos en el{" "}
+              <a href="/api/iam-portal?to=admin" target="_blank" rel="noopener noreferrer" style={{ color: "#3730a3", fontWeight: 700 }}>IAM Portal ↗</a>.
+              Aquí solo se editan celular y los datos de contratista.
+            </div>
+          ) : (
+            <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 16px", lineHeight: 1.5 }}>
+              Registrar a alguien aquí <strong>no le da acceso al sistema</strong>: solo permite asignarle trabajo. Las cuentas de acceso se crean en el{" "}
+              <a href="/api/iam-portal?to=admin" target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb" }}>IAM Portal ↗</a>.
+            </p>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px" }}>
             <div style={{ gridColumn: "span 2" }}>
               <label style={C.label}>Nómina (nombre completo) *</label>
-              <input style={C.input} value={form.nombre} onChange={(e) => upd("nombre", e.target.value)} placeholder="Apellido1 Apellido2 Nombre" />
+              <input style={inputStyle} disabled={bloqueado} value={form.nombre} onChange={(e) => upd("nombre", e.target.value)} placeholder="Apellido1 Apellido2 Nombre" />
             </div>
             <div>
               <label style={C.label}>Rol *</label>
-              <select style={C.select} value={form.rol} onChange={(e) => {
+              <select style={selectStyle} disabled={bloqueado} value={form.rol} onChange={(e) => {
                 const v = e.target.value;
                 setForm(f => ({ ...f, rol: v, esContratista: v === "6" ? true : f.esContratista }));
               }}>
@@ -1299,7 +1321,8 @@ function UsuariosTab() {
                   onChange={(e) => setForm(f => ({
                     ...f,
                     esContratista: e.target.checked,
-                    rol: e.target.checked && f.rol !== "6" ? "6" : f.rol,
+                    // El rol de una cuenta del IAM no se toca desde aquí
+                    rol: !bloqueado && e.target.checked && f.rol !== "6" ? "6" : f.rol,
                   }))}
                   style={{ width: 16, height: 16, cursor: "pointer" }}
                 />
@@ -1321,7 +1344,7 @@ function UsuariosTab() {
             </div>
             <div>
               <label style={C.label}>Disciplina *</label>
-              <select style={C.select} value={form.disciplina} onChange={(e) => upd("disciplina", e.target.value)}>
+              <select style={selectStyle} disabled={bloqueado} value={form.disciplina} onChange={(e) => upd("disciplina", e.target.value)}>
                 <option value="GENERAL">GENERAL — Mecánico</option>
                 <option value="ELEC">ELEC — Eléctrico</option>
                 <option value="INST">INST — Instrumentación</option>
@@ -1331,7 +1354,7 @@ function UsuariosTab() {
             </div>
             <div>
               <label style={C.label}>Área de trabajo</label>
-              <select style={C.select} value={form.areaTrabajo}
+              <select style={selectStyle} disabled={bloqueado} value={form.areaTrabajo}
                 onChange={(e) => {
                   const nombre = e.target.value;
                   const area = areas.find(a => a.nombre === nombre);
@@ -1353,7 +1376,7 @@ function UsuariosTab() {
             </div>
             <div>
               <label style={C.label}>JDE</label>
-              <input style={C.input} value={form.jde} onChange={(e) => upd("jde", e.target.value)} placeholder="63222" />
+              <input style={inputStyle} disabled={bloqueado} value={form.jde} onChange={(e) => upd("jde", e.target.value)} placeholder="63222" />
             </div>
             <div>
               <label style={C.label}>Celular</label>
@@ -1361,26 +1384,22 @@ function UsuariosTab() {
             </div>
             <div style={{ gridColumn: "span 3" }}>
               <label style={C.label}>Puesto</label>
-              <input style={C.input} value={form.puesto} onChange={(e) => upd("puesto", e.target.value)} placeholder="Supervisor de Mantenimiento" />
+              <input style={inputStyle} disabled={bloqueado} value={form.puesto} onChange={(e) => upd("puesto", e.target.value)} placeholder="Supervisor de Mantenimiento" />
             </div>
             <div style={{ gridColumn: "span 3" }}>
               <label style={C.label}>Superintendencia</label>
-              <input style={C.input} value={form.superintendencia} onChange={(e) => upd("superintendencia", e.target.value)} placeholder="Superintendencia de Mantenimiento — …" />
+              <input style={inputStyle} disabled={bloqueado} value={form.superintendencia} onChange={(e) => upd("superintendencia", e.target.value)} placeholder="Superintendencia de Mantenimiento — …" />
             </div>
-            <div style={{ gridColumn: "span 2" }}>
+            <div style={{ gridColumn: "span 3" }}>
               <label style={C.label}>Email (opcional)</label>
-              <input type="email" style={C.input} value={form.email} onChange={(e) => upd("email", e.target.value.toLowerCase())} placeholder="usuario@msc.com" />
-            </div>
-            <div>
-              <label style={C.label}>{editItem ? "Contraseña (dejar en blanco para no cambiar)" : "Contraseña (opcional)"}</label>
-              <input type="password" style={C.input} value={form.password} onChange={(e) => upd("password", e.target.value)} />
+              <input type="email" style={inputStyle} disabled={bloqueado} value={form.email} onChange={(e) => upd("email", e.target.value.toLowerCase())} placeholder="usuario@msc.com" />
             </div>
             <div style={{ gridColumn: "span 3" }}>
               <label style={C.label}>Áreas de planta asignadas</label>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 20px", marginTop: 6 }}>
                 {areas.map((a) => (
-                  <label key={a.codigo} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
-                    <input type="checkbox" checked={form.areas.includes(a.codigo)} onChange={() => toggleArea(a.codigo)} />
+                  <label key={a.codigo} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: bloqueado ? "not-allowed" : "pointer", opacity: bloqueado ? 0.6 : 1 }}>
+                    <input type="checkbox" disabled={bloqueado} checked={form.areas.includes(a.codigo)} onChange={() => toggleArea(a.codigo)} />
                     <span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 12 }}>{a.codigo}</span>
                     <span style={{ color: "#64748b" }}>{a.nombre}</span>
                   </label>
@@ -1429,6 +1448,11 @@ function UsuariosTab() {
                   <tr key={item._id} style={{ opacity: item.activo ? 1 : 0.45 }}>
                     <td style={{ ...C.td, fontWeight: 600 }}>
                       {item.nombre}
+                      {item.vinculadoIam && (
+                        <span title="Inicia sesión con su cuenta del IAM" style={{ marginLeft: 6 }}>
+                          <Badge bg="#e0e7ff" color="#3730a3">IAM</Badge>
+                        </span>
+                      )}
                       {item.email && <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400 }}>{item.email}</div>}
                     </td>
                     <td style={{ ...C.td, fontSize: 12 }}>
@@ -1487,8 +1511,23 @@ function UsuariosTab() {
                     <td style={C.td}><Badge bg={item.activo ? "#dcfce7" : "#f1f5f9"} color={item.activo ? "#16a34a" : "#94a3b8"}>{item.activo ? "Activo" : "Inactivo"}</Badge></td>
                     <td style={{ ...C.td, whiteSpace: "nowrap" as const }}>
                       <button style={{ ...C.btnSmall, marginRight: 4 }} onClick={() => openEdit(item)}>Editar</button>
-                      <button style={{ ...(item.activo ? C.btnRed : C.btnGreen), marginRight: 4 }} onClick={() => toggleActivo(item)}>{item.activo ? "Desactivar" : "Activar"}</button>
-                      <button style={C.btnRed} onClick={() => eliminar(item)}>Eliminar</button>
+                      {item.vinculadoIam ? (
+                        // Acceso, estado y baja de una cuenta del IAM se gestionan allí
+                        <a
+                          href="/api/iam-portal?to=admin"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Su acceso, estado y contraseña se gestionan en el IAM Portal"
+                          style={{ ...C.btnSmall, textDecoration: "none", display: "inline-block" }}
+                        >
+                          Gestionar en IAM ↗
+                        </a>
+                      ) : (
+                        <>
+                          <button style={{ ...(item.activo ? C.btnRed : C.btnGreen), marginRight: 4 }} onClick={() => toggleActivo(item)}>{item.activo ? "Desactivar" : "Activar"}</button>
+                          <button style={C.btnRed} onClick={() => eliminar(item)}>Eliminar</button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 );
