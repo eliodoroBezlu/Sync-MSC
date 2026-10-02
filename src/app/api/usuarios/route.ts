@@ -1,6 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
 import { traeContrasena, MSG_CONTRASENA } from "@/lib/usuario-iam";
+import {
+  actorDeSesion,
+  datosTrabajadorDesde,
+  identidadDesdeTrabajador,
+  respuestaDeError,
+} from "@/lib/padron";
+import { crearTrabajador } from "@/lib/iam-padron";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -46,8 +53,12 @@ export async function GET(req: NextRequest) {
       activo: u.activo,
       esContratista: u.esContratista,
       fechaExpiracion: u.fechaExpiracion ?? null,
-      // Inicia sesión con su cuenta del IAM: su identidad se gestiona allí.
+      // Entra a Sync con su cuenta del IAM: el login le fija rol, áreas y estado.
       vinculadoIam: u.iamUserId !== null,
+      // Tiene cuenta en el IAM: su identidad solo se edita en el portal.
+      cuentaIam: u.tieneCuentaIam || u.iamUserId !== null,
+      // Enlazada al padrón del IAM.
+      enPadron: u.trabajadorId !== null,
     }))
   );
 }
@@ -55,39 +66,67 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    // Aquí solo se registran personas operativas (asignables a trabajo). Las
+    // Aquí se registran personas operativas (asignables a trabajo). Las
     // cuentas con acceso, y sus contraseñas, se crean en el IAM Portal.
     if (traeContrasena(body)) {
       return Response.json({ ok: false, error: MSG_CONTRASENA }, { status: 400 });
     }
-    const { nombre, apellido, email, rol, areas, areaTrabajo,
-            celular, jde, puesto, superintendencia, disciplina,
-            esContratista, fechaExpiracion } = body;
+    if (!body.nombre?.trim()) {
+      return Response.json({ ok: false, error: "La nómina es obligatoria" }, { status: 400 });
+    }
 
+    // La persona nace en el padrón del IAM (alta idempotente por CI/JDE). Si el
+    // IAM no responde, no se crea nada: un solo padrón.
+    const { trabajador } = await crearTrabajador(
+      await datosTrabajadorDesde(body, { paraAlta: true }),
+      await actorDeSesion(req),
+    );
+
+    // ¿Sync ya la tenía? (el IAM devolvió a alguien existente)
+    const yaEnSync = await prisma.usuario.findFirst({
+      where: {
+        OR: [
+          { trabajadorId: trabajador.id },
+          ...(trabajador.userId ? [{ iamUserId: trabajador.userId }] : []),
+        ],
+      },
+    });
+    if (yaEnSync) {
+      if (!yaEnSync.trabajadorId) {
+        await prisma.usuario.update({
+          where: { id: yaEnSync.id },
+          data: identidadDesdeTrabajador(trabajador, yaEnSync),
+        });
+      }
+      return Response.json({ ok: true, _id: yaEnSync.id, existente: true });
+    }
+
+    const { apellido, email, rol, areas, fechaExpiracion } = body;
     const user = await prisma.usuario.create({
       data: {
-        nombre: nombre?.trim(),
+        // Identidad: la del IAM; lo que el IAM no tenga, lo del formulario
+        ...identidadDesdeTrabajador(trabajador, {
+          nombre: body.nombre.trim(),
+          jde: body.jde ? String(body.jde).replace(/\.0+$/, "").trim() : null,
+          puesto: body.puesto?.trim() || null,
+          superintendencia: body.superintendencia?.trim() || null,
+          areaTrabajo: body.areaTrabajo?.trim() || null,
+          disciplina: body.disciplina ?? "GENERAL",
+          celular: body.celular ? String(body.celular).trim() : null,
+        }),
+        // Propios de Sync
         apellido: apellido?.trim() || null,
         email: email?.trim()?.toLowerCase() || null,
-        rol: Number(rol),
-        disciplina: disciplina ?? "GENERAL",
-        areaTrabajo: areaTrabajo?.trim() || null,
-        celular: celular ? String(celular).trim() : null,
-        jde: jde ? String(jde).replace(/\.0+$/, "").trim() : null,
-        puesto: puesto?.trim() || null,
-        superintendencia: superintendencia?.trim() || null,
-        activo: body.activo !== undefined ? body.activo : true,
-        esContratista: esContratista === true,
+        rol: Number(rol) || 4,
         fechaExpiracion: fechaExpiracion ? new Date(fechaExpiracion) : null,
         areas: {
-          create: (areas ?? []).map((codigo: string) => ({ areaCodigo: codigo })),
+          create: [...new Set<string>(areas ?? [])].map((codigo) => ({ areaCodigo: codigo })),
         },
       },
     });
 
     return Response.json({ ok: true, _id: user.id }, { status: 201 });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Error interno";
-    return Response.json({ ok: false, error: message }, { status: 400 });
+    return respuestaDeError(err);
   }
 }

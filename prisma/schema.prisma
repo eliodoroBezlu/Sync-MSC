@@ -15,6 +15,13 @@ model Usuario {
   // Fuente de verdad de rol/disciplina/áreas: el IAM. Esta fila es un
   // espejo que se re-sincroniza en cada login OIDC.
   iamUserId        String?  @unique
+  // Vínculo con la persona en el padrón del IAM (Trabajador.id). El IAM es la
+  // fuente de su identidad (nómina, JDE, puesto, área, disciplina, contratista,
+  // celular, activo) tenga o no cuenta; esta fila es la copia que usa Sync.
+  trabajadorId     String?  @unique
+  // La persona tiene cuenta en el IAM (aunque no entre a Sync): su identidad
+  // solo se edita en el IAM Portal. Lo fija la sincronización del padrón.
+  tieneCuentaIam   Boolean  @default(false)
   nombre           String
   apellido         String?
   email            String?  @unique

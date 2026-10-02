@@ -24,6 +24,10 @@ const migraciones = [
   // ── Vínculo con la identidad centralizada del IAM (login OIDC) ──────────────
   "ALTER TABLE \"Usuario\" ADD COLUMN IF NOT EXISTS \"iamUserId\" TEXT",
   "CREATE UNIQUE INDEX IF NOT EXISTS \"Usuario_iamUserId_key\" ON \"Usuario\" (\"iamUserId\")",
+  // ── Padrón de personas centralizado en el IAM (Trabajador) ──────────────────
+  "ALTER TABLE \"Usuario\" ADD COLUMN IF NOT EXISTS \"trabajadorId\" TEXT",
+  "CREATE UNIQUE INDEX IF NOT EXISTS \"Usuario_trabajadorId_key\" ON \"Usuario\" (\"trabajadorId\")",
+  "ALTER TABLE \"Usuario\" ADD COLUMN IF NOT EXISTS \"tieneCuentaIam\" BOOLEAN NOT NULL DEFAULT false",
   "ALTER TABLE \"OtProgramada\" ADD COLUMN IF NOT EXISTS \"personalAsignadoIds\" TEXT[] NOT NULL DEFAULT '{}'",
   // La línea de arriba no aplica el DEFAULT si la columna ya existía (el
   // ADD COLUMN IF NOT EXISTS es un no-op en ese caso) -- causó un

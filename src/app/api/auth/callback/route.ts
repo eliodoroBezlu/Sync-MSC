@@ -92,8 +92,13 @@ export async function GET(request: NextRequest) {
   const superintendencia = info.trabajador?.superintendencia ?? null;
   const areaTrabajo = info.trabajador?.area ?? null;
 
-  // ── Sincronizar el Usuario espejo (vincular por iamUserId, fallback email/jde) ──
+  // ── Sincronizar el Usuario espejo (vincular por iamUserId, luego por su
+  //    trabajador del padrón del IAM, y como último recurso por email/jde) ──
+  const trabajadorId = info.trabajador?.id ?? null;
   let usuario = await prisma.usuario.findUnique({ where: { iamUserId: info.sub } });
+  if (!usuario && trabajadorId) {
+    usuario = await prisma.usuario.findUnique({ where: { trabajadorId } });
+  }
   if (!usuario) {
     const or: Array<Record<string, string>> = [];
     if (email) or.push({ email });
@@ -101,7 +106,20 @@ export async function GET(request: NextRequest) {
     if (or.length) usuario = await prisma.usuario.findFirst({ where: { OR: or } });
   }
 
+  // El trabajador solo puede quedar enlazado a una fila. Si otra ya lo tiene
+  // (duplicado), no se mueve el vínculo: un login no debe fallar por esto.
+  let enlazarTrabajador = false;
+  if (trabajadorId) {
+    const otro = await prisma.usuario.findUnique({ where: { trabajadorId }, select: { id: true } });
+    enlazarTrabajador = !otro || otro.id === usuario?.id;
+    if (!enlazarTrabajador) {
+      console.warn(`⚠️ [OIDC callback] trabajador ${trabajadorId} ya está enlazado a otra persona de Sync (${otro!.id})`);
+    }
+  }
+
   const data = {
+    ...(enlazarTrabajador ? { trabajadorId } : {}),
+    tieneCuentaIam: true,
     iamUserId: info.sub,
     nombre,
     email,
