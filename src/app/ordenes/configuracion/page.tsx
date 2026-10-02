@@ -4,6 +4,7 @@ import AppHeader from "@/components/AppHeader";
 import { useUser } from "@/context/AuthContext";
 import { camposDelIam, type CampoPersona, type GestionPersona } from "@/lib/padron-campos";
 import { useRouter } from "next/navigation";
+import { FusionarPersonasDialog } from "@/components/FusionarPersonasDialog";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type Tab = "equipos" | "arbol" | "usuarios" | "areas" | "checklist";
@@ -1117,6 +1118,7 @@ function UsuariosTab() {
   const [err, setErr] = useState("");
   const [areas, setAreas] = useState<AreaOption[]>([]);
   const formRef = useRef<HTMLDivElement>(null);
+  const [fusionOrigen, setFusionOrigen] = useState<UsuarioItem | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1677,6 +1679,15 @@ function UsuariosTab() {
                           <button style={C.btnRed} onClick={() => eliminar(item)}>Eliminar</button>
                         </>
                       )}
+                      {esAdmin && (
+                        <button
+                          style={{ ...C.btnSmall, marginLeft: 4 }}
+                          title="Esta persona está cargada dos veces: unir los registros"
+                          onClick={() => setFusionOrigen(item)}
+                        >
+                          Fusionar…
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -1684,6 +1695,19 @@ function UsuariosTab() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {fusionOrigen && (
+        <FusionarPersonasDialog
+          origen={fusionOrigen}
+          personas={items}
+          onClose={() => setFusionOrigen(null)}
+          onFusionado={(msg) => {
+            setFusionOrigen(null);
+            setPadronRes({ ok: true, msg, detalle: [] });
+            load();
+          }}
+        />
       )}
     </div>
   );
