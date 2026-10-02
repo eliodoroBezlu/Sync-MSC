@@ -23,6 +23,7 @@ interface Plan {
   competenciasCombinadas: number;
   desempenioCombinado: number;
   datosQuePasan: string[];
+  fichaIamDesactivada: string | null;
   avisos: string[];
 }
 
@@ -208,6 +209,9 @@ export function FusionarPersonasDialog({ origen, personas, onClose, onFusionado 
                     {plan.competenciasCombinadas > 0 && <li>Competencias combinadas: {plan.competenciasCombinadas}</li>}
                     {plan.desempenioCombinado > 0 && <li>Desempeño combinado: {plan.desempenioCombinado}</li>}
                     {plan.datosQuePasan.length > 0 && <li>Datos que completa: {plan.datosQuePasan.join(", ")}</li>}
+                    {plan.fichaIamDesactivada && (
+                      <li>Su ficha duplicada en el IAM (sin cuenta) se desactiva allí</li>
+                    )}
                   </ul>
                   {plan.avisos.map((a) => (
                     <div key={a} style={{ marginTop: 6, color: "#b45309" }}>⚠ {a}</div>

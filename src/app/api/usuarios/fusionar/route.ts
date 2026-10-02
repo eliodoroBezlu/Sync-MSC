@@ -4,6 +4,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 import { planificarFusion, fusionarPersonas, FusionInvalida } from "@/lib/fusion-personas";
+import { actorDeSesion, respuestaDeError } from "@/lib/padron";
+import { IamNoDisponible, IamRechazo } from "@/lib/iam-padron";
 
 export const runtime = "nodejs";
 
@@ -34,12 +36,13 @@ export async function POST(req: NextRequest) {
   try {
     const plan = body.dry === true
       ? await planificarFusion(body.conservarId, body.eliminarId)
-      : await fusionarPersonas(body.conservarId, body.eliminarId);
+      : await fusionarPersonas(body.conservarId, body.eliminarId, await actorDeSesion(req));
     return NextResponse.json({ ok: true, dry: body.dry === true, ...plan });
   } catch (err) {
     if (err instanceof FusionInvalida) {
       return NextResponse.json({ ok: false, error: err.message }, { status: 409 });
     }
+    if (err instanceof IamNoDisponible || err instanceof IamRechazo) return respuestaDeError(err);
     console.error("💥 [fusión]", err);
     return NextResponse.json({ ok: false, error: "No se pudo fusionar: no se cambió nada." }, { status: 500 });
   }

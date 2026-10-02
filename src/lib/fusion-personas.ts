@@ -13,11 +13,14 @@
  *  - Los nombres guardados como texto (historial, firmas) quedan como estaban:
  *    son lo que se registró en su momento.
  *
- * La identidad sigue las reglas del padrón: no se fusionan dos cuentas del IAM
- * ni dos fichas distintas del IAM (eso se resuelve primero en el IAM Portal).
+ * La identidad sigue las reglas del padrón: no se fusionan dos cuentas del IAM.
+ * Si cada registro tiene su propia ficha en el IAM, la del registro que se
+ * borra se DESACTIVA en el IAM (solo si no tiene cuenta: una ficha con cuenta
+ * se resuelve en el IAM Portal). Si el IAM no responde, no se fusiona nada.
  */
 import { Prisma, type Usuario } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { actualizarTrabajador, type ActorIam } from "@/lib/iam-padron";
 
 /** Columnas que guardan un Usuario.id. */
 const COLUMNAS = [
@@ -56,6 +59,8 @@ export interface PlanFusion {
   desempenioCombinado: number;
   /** Datos de la persona eliminada que pasan a la conservada (estaban vacíos). */
   datosQuePasan: string[];
+  /** Ficha del IAM (sin cuenta) del registro que se borra: se desactiva allí. */
+  fichaIamDesactivada: string | null;
   avisos: string[];
 }
 
@@ -75,12 +80,16 @@ async function cargar(tx: Tx, conservarId: string, eliminarId: string) {
       "Las dos tienen cuenta propia en el IAM. Si son la misma persona, desactiva una de las cuentas en el IAM Portal y vuelve a intentarlo.",
     );
   }
-  if (c.trabajadorId && e.trabajadorId && c.trabajadorId !== e.trabajadorId) {
+  const fichaQueSobra = c.trabajadorId && e.trabajadorId && c.trabajadorId !== e.trabajadorId
+    ? e.trabajadorId
+    : null;
+  if (fichaQueSobra && (e.tieneCuentaIam || e.iamUserId)) {
     throw new FusionInvalida(
-      "Las dos están enlazadas a fichas distintas del IAM. Si son la misma persona, resuélvelo primero en el IAM Portal (deja una sola ficha).",
+      `"${e.nombre}" tiene cuenta en el IAM con su propia ficha. Conserva ese registro y fusiona el otro en él, ` +
+        "o resuelve primero el duplicado en el IAM Portal.",
     );
   }
-  return { c, e };
+  return { c, e, fichaQueSobra };
 }
 
 /** Campos de identidad que pasan si la persona conservada los tiene vacíos. */
@@ -141,7 +150,7 @@ async function choques(tx: Tx, conservarId: string, eliminarId: string) {
 /** Qué haría la fusión, sin escribir nada. */
 export async function planificarFusion(conservarId: string, eliminarId: string): Promise<PlanFusion> {
   return prisma.$transaction(async (tx) => {
-    const { c, e } = await cargar(tx, conservarId, eliminarId);
+    const { c, e, fichaQueSobra } = await cargar(tx, conservarId, eliminarId);
     const { referencias, avisos } = await contar(tx, conservarId, eliminarId);
     const { comp, des } = await choques(tx, conservarId, eliminarId);
     return {
@@ -151,15 +160,28 @@ export async function planificarFusion(conservarId: string, eliminarId: string):
       competenciasCombinadas: comp.length,
       desempenioCombinado: des.length,
       datosQuePasan: Object.keys(heredados(c, e)),
+      fichaIamDesactivada: fichaQueSobra,
       avisos,
     };
   });
 }
 
-/** Reasigna todo a `conservarId` y borra `eliminarId`, en una sola transacción. */
-export async function fusionarPersonas(conservarId: string, eliminarId: string): Promise<PlanFusion> {
+/**
+ * Reasigna todo a `conservarId` y borra `eliminarId`, en una sola transacción.
+ * Si sobra una ficha del IAM, primero se desactiva allí: si el IAM no responde,
+ * no se toca nada en Sync.
+ */
+export async function fusionarPersonas(
+  conservarId: string,
+  eliminarId: string,
+  actor?: ActorIam,
+): Promise<PlanFusion> {
+  const previo = await planificarFusion(conservarId, eliminarId);
+  if (previo.fichaIamDesactivada) {
+    await actualizarTrabajador(previo.fichaIamDesactivada, { activo: false }, actor);
+  }
   return prisma.$transaction(async (tx) => {
-    const { c, e } = await cargar(tx, conservarId, eliminarId);
+    const { c, e, fichaQueSobra } = await cargar(tx, conservarId, eliminarId);
     const { referencias, avisos } = await contar(tx, conservarId, eliminarId);
     const { comp, des } = await choques(tx, conservarId, eliminarId);
 
@@ -218,9 +240,10 @@ export async function fusionarPersonas(conservarId: string, eliminarId: string):
       });
     }
 
-    // 4) Identidad: lo que la conservada tiene vacío. Los campos únicos se
-    //    liberan antes en la que se borra.
+    // 4) Identidad: lo que la conservada tiene vacío (la ficha que sobra no
+    //    pasa: la conservada tiene la suya). Los únicos se liberan antes.
     const datos = heredados(c, e);
+    if (fichaQueSobra) delete datos.trabajadorId;
     await tx.usuario.update({
       where: { id: eliminarId },
       data: { iamUserId: null, trabajadorId: null, email: null },
@@ -239,6 +262,7 @@ export async function fusionarPersonas(conservarId: string, eliminarId: string):
       competenciasCombinadas: comp.length,
       desempenioCombinado: des.length,
       datosQuePasan: Object.keys(datos),
+      fichaIamDesactivada: fichaQueSobra,
       avisos,
     };
   }, { timeout: 30_000 });
