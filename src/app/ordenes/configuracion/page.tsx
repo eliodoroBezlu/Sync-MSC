@@ -1093,9 +1093,10 @@ function gestionDe(u: UsuarioItem): GestionPersona {
 
 type ResultadoPadronApi = {
   ok: boolean; error?: string;
-  refrescados?: number; enlazados?: number; creadosEnIam?: number;
+  refrescados?: number; enlazados?: number; creadosEnIam?: number; completadosEnIam?: number;
   porEnlazar?: number; yaEnlazados?: number;
   porCrearEnIam?: { nombre: string; jde: string | null }[];
+  porCompletarEnIam?: { nombre: string; campos: string[] }[];
   sinPar?: { nombre: string; jde: string | null }[];
   conflictos?: { nombre: string; motivo: string }[];
   errores?: { nombre: string; error: string }[];
@@ -1233,10 +1234,14 @@ function UsuariosTab() {
       return;
     }
     const altas = plan.porCrearEnIam ?? [];
+    const completar = plan.porCompletarEnIam ?? [];
     const resumen = [
       `${plan.yaEnlazados ?? 0} ya enlazadas`,
       `${plan.porEnlazar ?? 0} se enlazarán por cuenta o JDE`,
       `${altas.length} se darán de alta en el IAM (sin acceso al sistema)`,
+      ...(completar.length
+        ? [`${completar.length} fichas del IAM se completarán con datos de Sync (solo campos vacíos)`]
+        : []),
       ...(plan.conflictos?.length ? [`${plan.conflictos.length} conflictos que NO se tocarán`] : []),
     ].join("\n· ");
     const lista = altas.length
@@ -1252,7 +1257,8 @@ function UsuariosTab() {
     if (!r.ok) { setPadronRes({ ok: false, msg: r.error ?? "No se pudo enlazar el padrón", detalle: [] }); return; }
     setPadronRes({
       ok: true,
-      msg: `Padrón enlazado con el IAM: ${r.enlazados} enlazadas, ${r.creadosEnIam} dadas de alta en el IAM, ${r.refrescados} actualizadas.`,
+      msg: `Padrón enlazado con el IAM: ${r.enlazados} enlazadas, ${r.creadosEnIam} dadas de alta en el IAM, ` +
+        `${r.completadosEnIam ?? 0} fichas completadas en el IAM, ${r.refrescados} actualizadas.`,
       detalle: detallePadron(r),
     });
     load();

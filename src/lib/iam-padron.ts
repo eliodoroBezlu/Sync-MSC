@@ -41,6 +41,14 @@ export interface DatosTrabajador {
   activo?: boolean;
 }
 
+/** Lo que Sync puede aportar a una ficha del IAM que lo tiene vacío. */
+export interface DatosCompletar {
+  jde?: string;
+  disciplina?: string;
+  celular?: string;
+  areaCodigo?: string;
+}
+
 /** Usuario de Sync que origina el cambio (queda en la auditoría del IAM). */
 export interface ActorIam {
   id?: string | null;
@@ -129,4 +137,20 @@ export async function actualizarTrabajador(
     actor,
   );
   return r.trabajador;
+}
+
+/**
+ * Rellena solo los campos VACÍOS de la ficha (con o sin cuenta); nunca pisa un
+ * dato del IAM. `omitidos` explica lo que no se copió (p. ej. JDE ya en uso).
+ */
+export async function completarTrabajador(
+  id: string,
+  datos: DatosCompletar,
+  actor?: ActorIam,
+): Promise<{ trabajador: TrabajadorIam; completados: string[]; omitidos: string[] }> {
+  return llamar(
+    `/rbac/trabajadores/${encodeURIComponent(id)}/completar`,
+    { method: "POST", body: JSON.stringify(datos) },
+    actor,
+  );
 }

@@ -7,7 +7,8 @@
  *   tiene y las enlaza por cuenta o JDE. No agrega personas nuevas a Sync
  *   (el IAM tiene personal de otras áreas que Sync no usa).
  * - La reconciliación (una vez, la lanza un admin) además da de alta en el IAM
- *   a quienes Sync tenga y el IAM no.
+ *   a quienes Sync tenga y el IAM no, y completa en el IAM los datos que allí
+ *   están vacíos y Sync sí tiene (JDE, disciplina, celular, área).
  *
  * Regla de copia: "el IAM completa, no borra" — un texto vacío en el IAM no
  * pisa el dato que Sync ya tiene (al migrar, el IAM tenía disciplinas vacías).
@@ -19,9 +20,11 @@ import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 import {
   listarTrabajadores,
   crearTrabajador,
+  completarTrabajador,
   IamNoDisponible,
   IamRechazo,
   type ActorIam,
+  type DatosCompletar,
   type DatosTrabajador,
   type TrabajadorIam,
 } from "@/lib/iam-padron";
@@ -114,6 +117,32 @@ export async function datosTrabajadorDesde(
   }
   // Solo las claves con valor, para que el objeto refleje exactamente lo que se envía
   return Object.fromEntries(Object.entries(d).filter(([, v]) => v !== undefined)) as DatosTrabajador;
+}
+
+/**
+ * Lo que Sync sabe de la persona y su ficha del IAM tiene vacío. Es el camino
+ * inverso de "el IAM completa, no borra": aquí Sync completa al IAM, sin pisar.
+ */
+export async function faltantesEnIam(
+  u: Pick<Usuario, "jde" | "disciplina" | "celular" | "areaTrabajo">,
+  t: TrabajadorIam,
+): Promise<DatosCompletar> {
+  const d: DatosCompletar = {};
+  const jde = texto(u.jde)?.replace(/\.0+$/, "");
+  if (jde && !texto(t.jde)) d.jde = jde;
+  const disciplina = texto(u.disciplina);
+  if (disciplina && !texto(t.disciplina)) d.disciplina = disciplina;
+  const celular = texto(u.celular);
+  if (celular && !texto(t.celular)) d.celular = celular;
+  const areaNombre = texto(u.areaTrabajo);
+  if (areaNombre && !texto(t.areaCodigo)) {
+    const area = await prisma.area.findFirst({
+      where: { nombre: { equals: areaNombre, mode: "insensitive" } },
+      select: { codigo: true },
+    });
+    if (area) d.areaCodigo = area.codigo;
+  }
+  return d;
 }
 
 /** Usuario de Sync que hace la petición, para la auditoría del IAM. */
@@ -324,14 +353,39 @@ export async function reconciliarPadron(opciones: { dry: boolean; actor?: ActorI
   const sinPar = acciones.filter((a): a is Extract<AccionPadron, { tipo: "sinPar" }> => a.tipo === "sinPar");
   const conflictos = avisosDe(acciones);
 
+  // Fichas del IAM a las que les falta algo que Sync sabe
+  const porCompletar: { usuario: Usuario; trabajador: TrabajadorIam; datos: DatosCompletar }[] = [];
+  for (const a of acciones) {
+    if (a.tipo !== "refrescar" && a.tipo !== "enlazar") continue;
+    const usuario = porId.get(a.usuarioId)!;
+    const datos = await faltantesEnIam(usuario, a.trabajador);
+    if (Object.keys(datos).length) porCompletar.push({ usuario, trabajador: a.trabajador, datos });
+  }
+
   if (opciones.dry) {
     return {
       dry: true,
       porEnlazar: acciones.filter((a) => a.tipo === "enlazar").length,
       yaEnlazados: acciones.filter((a) => a.tipo === "refrescar").length,
       porCrearEnIam: sinPar.map((a) => ({ nombre: a.nombre, jde: a.jde })),
+      porCompletarEnIam: porCompletar.map((c) => ({ nombre: c.usuario.nombre, campos: Object.keys(c.datos) })),
       conflictos,
     };
+  }
+
+  // Primero completar el IAM; así el enlace siguiente copia de vuelta los mismos valores
+  let completadosEnIam = 0;
+  const errores: { nombre: string; error: string }[] = [];
+  const conflictosAlta: { nombre: string; motivo: string }[] = [];
+  for (const c of porCompletar) {
+    try {
+      const r = await completarTrabajador(c.trabajador.id, c.datos, opciones.actor);
+      if (r.completados.length) completadosEnIam++;
+      for (const o of r.omitidos) conflictosAlta.push({ nombre: c.usuario.nombre, motivo: `No se completó en el IAM — ${o}` });
+    } catch (e) {
+      if (e instanceof IamNoDisponible) throw e;
+      errores.push({ nombre: c.usuario.nombre, error: (e as Error).message });
+    }
   }
 
   const enlaces = await aplicarEnlaces(acciones, porId);
@@ -339,8 +393,6 @@ export async function reconciliarPadron(opciones: { dry: boolean; actor?: ActorI
   let enlazados = enlaces.enlazados;
 
   let creadosEnIam = 0;
-  const errores: { nombre: string; error: string }[] = [];
-  const conflictosAlta: { nombre: string; motivo: string }[] = [];
   for (const a of sinPar) {
     const u = porId.get(a.usuarioId)!;
     try {
@@ -367,7 +419,7 @@ export async function reconciliarPadron(opciones: { dry: boolean; actor?: ActorI
 
   return {
     dry: false,
-    refrescados, enlazados, creadosEnIam,
+    refrescados, enlazados, creadosEnIam, completadosEnIam,
     conflictos: [...conflictos, ...conflictosAlta],
     errores,
   };
