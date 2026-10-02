@@ -354,9 +354,44 @@ const migraciones = [
   "ALTER TABLE \"ParadaReporteDiario\" ADD COLUMN IF NOT EXISTS disciplina TEXT NOT NULL DEFAULT 'ELEC'",
   "ALTER TABLE \"ParadaReporteDiario\" DROP CONSTRAINT IF EXISTS \"ParadaReporteDiario_paradaId_fecha_turno_reunion_key\"",
   "ALTER TABLE \"ParadaReporteDiario\" ADD CONSTRAINT \"ParadaReporteDiario_paradaId_fecha_turno_reunion_disciplina_key\" UNIQUE (\"paradaId\", fecha, turno, reunion, disciplina)",
+
+  // ── Usuario = copia pura del padrón del IAM (2026-10) ─────────────────────
+  // Toda persona está enlazada a su ficha (el chequeo de abajo lo garantiza
+  // antes de llegar aquí) y las contraseñas viven solo en el IAM: se borran
+  // los hashes viejos que aún guardaba Sync.
+  "ALTER TABLE \"Usuario\" ALTER COLUMN \"trabajadorId\" SET NOT NULL",
+  "ALTER TABLE \"Usuario\" DROP COLUMN IF EXISTS \"passwordHash\"",
 ];
 
 (async () => {
+  // Esta versión exige que toda persona tenga ficha en el IAM. Si queda alguna
+  // sin enlazar, no se arranca: Prisma fallaría al leerla. Con exit != 0 el
+  // despliegue falla y sigue corriendo la versión anterior. Se resuelve
+  // reconciliando desde la versión anterior (Configuración → Usuarios →
+  // "Enlazar con el IAM…") y volviendo a desplegar.
+  // Va ANTES de las migraciones: si aborta, la base queda como estaba y la
+  // versión anterior sigue funcionando (borrar passwordHash la rompería).
+  const abortar = async (detalle) => {
+    console.error(`[start] ✖ ${detalle}`);
+    console.error('[start] ✖ Reconcilia el padrón con la versión anterior antes de desplegar esta. No se arranca.');
+    await pool.end();
+    process.exit(3);
+  };
+  const { rows: [tabla] } = await pool.query(`SELECT to_regclass('"Usuario"') IS NOT NULL AS existe`);
+  if (tabla.existe) {
+    const { rowCount: tieneColumna } = await pool.query(
+      `SELECT 1 FROM information_schema.columns WHERE table_name = 'Usuario' AND column_name = 'trabajadorId'`
+    );
+    const { rows: [sinFicha] } = await pool.query(
+      tieneColumna
+        ? `SELECT count(*)::int AS n, string_agg(nombre, ', ' ORDER BY nombre) AS nombres FROM "Usuario" WHERE "trabajadorId" IS NULL`
+        : `SELECT count(*)::int AS n, 'ninguna está enlazada (falta la versión del padrón)' AS nombres FROM "Usuario"`
+    );
+    if (sinFicha.n > 0) {
+      await abortar(`${sinFicha.n} persona(s) sin ficha en el padrón del IAM: ${sinFicha.nombres}`);
+    }
+  }
+
   for (const sql of migraciones) {
     try {
       await pool.query(sql);
@@ -425,6 +460,11 @@ const migraciones = [
   console.log('[start] Migraciones completadas.');
 })();
 MIGRATE
+estado=$?
+if [ "$estado" -ne 0 ]; then
+  echo "[start] Migraciones abortadas (código $estado): no se inicia el servidor."
+  exit "$estado"
+fi
 
 echo "[start] Iniciando servidor Next.js..."
 exec node server.js

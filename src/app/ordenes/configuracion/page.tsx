@@ -1094,13 +1094,8 @@ function gestionDe(u: UsuarioItem): GestionPersona {
 
 type ResultadoPadronApi = {
   ok: boolean; error?: string;
-  refrescados?: number; enlazados?: number; creadosEnIam?: number; completadosEnIam?: number;
-  porEnlazar?: number; yaEnlazados?: number;
-  porCrearEnIam?: { nombre: string; jde: string | null }[];
+  refrescados?: number; completadosEnIam?: number;
   porCompletarEnIam?: { nombre: string; campos: string[] }[];
-  porCrearFichaDeCuenta?: { nombre: string }[];
-  fichasDeCuenta?: number;
-  sinPar?: { nombre: string; jde: string | null }[];
   conflictos?: { nombre: string; motivo: string }[];
   errores?: { nombre: string; error: string }[];
 };
@@ -1218,55 +1213,41 @@ function UsuariosTab() {
     const r = await llamarPadron("/api/padron/sync");
     setPadronBusy(false);
     if (!r.ok) { setPadronRes({ ok: false, msg: r.error ?? "No se pudo sincronizar con el IAM", detalle: [] }); return; }
-    const sinPar = r.sinPar?.length ?? 0;
     setPadronRes({
       ok: true,
-      msg: `Sincronizado con el IAM: ${r.refrescados} actualizadas, ${r.enlazados} enlazadas` +
-        (sinPar ? `, ${sinPar} aún sin par en el IAM (un administrador puede enlazarlas)` : "") + ".",
+      msg: `Sincronizado con el IAM: ${r.refrescados} actualizadas.`,
       detalle: detallePadron(r),
     });
     load();
   }
 
-  /** Puesta en marcha del padrón único: enlaza y da de alta en el IAM a quien falte. */
-  async function reconciliarPadron() {
+  /** Pasa al IAM lo que Sync sabe y allí falta (solo campos vacíos; no pisa nada). */
+  async function completarPadron() {
     setPadronBusy(true); setPadronRes(null);
-    const plan = await llamarPadron("/api/padron/reconciliar?dry=1");
+    const plan = await llamarPadron("/api/padron/completar?dry=1");
     if (!plan.ok) {
       setPadronBusy(false);
       setPadronRes({ ok: false, msg: plan.error ?? "No se pudo consultar el IAM", detalle: [] });
       return;
     }
-    const altas = plan.porCrearEnIam ?? [];
     const completar = plan.porCompletarEnIam ?? [];
-    const resumen = [
-      `${plan.yaEnlazados ?? 0} ya enlazadas`,
-      `${plan.porEnlazar ?? 0} se enlazarán por cuenta o JDE`,
-      `${altas.length} se darán de alta en el IAM (sin acceso al sistema)`,
-      ...(plan.porCrearFichaDeCuenta?.length
-        ? [`${plan.porCrearFichaDeCuenta.length} cuentas del IAM sin ficha recibirán una, vinculada a su cuenta`]
-        : []),
-      ...(completar.length
-        ? [`${completar.length} fichas del IAM se completarán con datos de Sync (solo campos vacíos)`]
-        : []),
-      ...(plan.conflictos?.length ? [`${plan.conflictos.length} conflictos que NO se tocarán`] : []),
-    ].join("\n· ");
-    const lista = altas.length
-      ? "\n\nAltas en el IAM:\n" + altas.slice(0, 15).map((p) => `· ${p.nombre}`).join("\n") +
-        (altas.length > 15 ? `\n… y ${altas.length - 15} más` : "")
-      : "";
-    if (!confirm(`Enlazar el padrón de Sync con el IAM:\n· ${resumen}${lista}\n\n¿Continuar?`)) {
+    if (completar.length === 0) {
+      setPadronBusy(false);
+      setPadronRes({ ok: true, msg: "Al IAM no le falta ningún dato que Sync tenga.", detalle: [] });
+      return;
+    }
+    const lista = completar.slice(0, 15).map((p) => `· ${p.nombre}: ${p.campos.join(", ")}`).join("\n") +
+      (completar.length > 15 ? `\n… y ${completar.length - 15} más` : "");
+    if (!confirm(`Completar ${completar.length} fichas del IAM con datos de Sync (solo campos vacíos):\n${lista}\n\n¿Continuar?`)) {
       setPadronBusy(false);
       return;
     }
-    const r = await llamarPadron("/api/padron/reconciliar");
+    const r = await llamarPadron("/api/padron/completar");
     setPadronBusy(false);
-    if (!r.ok) { setPadronRes({ ok: false, msg: r.error ?? "No se pudo enlazar el padrón", detalle: [] }); return; }
+    if (!r.ok) { setPadronRes({ ok: false, msg: r.error ?? "No se pudo completar el padrón", detalle: [] }); return; }
     setPadronRes({
       ok: true,
-      msg: `Padrón enlazado con el IAM: ${r.enlazados} enlazadas, ${r.creadosEnIam} dadas de alta en el IAM, ` +
-        `${r.fichasDeCuenta ?? 0} fichas creadas para cuentas, ${r.completadosEnIam ?? 0} fichas completadas en el IAM, ` +
-        `${r.refrescados} actualizadas.`,
+      msg: `${r.completadosEnIam ?? 0} fichas completadas en el IAM, ${r.refrescados ?? 0} personas actualizadas.`,
       detalle: detallePadron(r),
     });
     load();
@@ -1376,11 +1357,11 @@ function UsuariosTab() {
             <button
               type="button"
               style={C.btnOutline}
-              onClick={reconciliarPadron}
+              onClick={completarPadron}
               disabled={padronBusy}
-              title="Enlaza el padrón de Sync con el IAM y da de alta allí a quien falte (pide confirmación)"
+              title="Pasa al IAM los datos que allí faltan y Sync tiene: JDE, disciplina, celular, área (pide confirmación)"
             >
-              Enlazar con el IAM…
+              Completar el IAM…
             </button>
           )}
           <button style={C.btnBlue} onClick={openAdd}>+ Agregar</button>

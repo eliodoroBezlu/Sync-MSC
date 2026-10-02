@@ -78,7 +78,8 @@ export async function GET(request: NextRequest) {
   }
 
   // ── Toda persona que entra tiene ficha en el padrón del IAM: si su cuenta no
-  //    la tiene, el IAM se la crea ya vinculada (nunca suelta). ──
+  //    la tiene, el IAM se la crea ya vinculada (nunca suelta). Sin ficha no se
+  //    entra: en Sync cada persona es la copia de una ficha. ──
   if (!info.trabajador?.id) {
     try {
       const t = await asegurarFichaDeCuenta(
@@ -97,54 +98,52 @@ export async function GET(request: NextRequest) {
       };
       console.log(`[OIDC callback] ficha del padrón creada para la cuenta ${info.sub}`);
     } catch (err) {
-      // No se bloquea el login: la reconciliación lo vuelve a intentar.
-      console.warn(`⚠️ [OIDC callback] no se pudo crear la ficha de ${info.sub}:`, (err as Error).message);
+      return fail(request, `no se pudo crear la ficha de ${info.sub}: ${(err as Error).message}`, "sin_ficha");
     }
   }
+  const trabajadorId = info.trabajador.id!;
 
   // ── Derivar perfil desde la fuente de verdad (IAM) ──
   const rol: Rol = mapSyncRole(access.roles);
-  // disciplina: del Trabajador (centralizado) o del metadata del acceso (fallback
-  // para usuarios sin ficha Trabajador, ej. los migrados sin jde).
   const disciplina = normalizeDisciplina(
-    info.trabajador?.disciplina ?? access.metadata?.disciplina,
+    info.trabajador.disciplina ?? access.metadata?.disciplina,
   );
   const areas = access.metadata?.areas ?? [];
   const nombre =
-    info.trabajador?.nomina ?? info.name ?? info.preferred_username ?? "Usuario";
-  const email = info.email ?? null;
-  const jde = info.trabajador?.jde ?? null;
-  const puesto = info.trabajador?.puesto ?? null;
-  const superintendencia = info.trabajador?.superintendencia ?? null;
-  const areaTrabajo = info.trabajador?.area ?? null;
+    info.trabajador.nomina ?? info.name ?? info.preferred_username ?? "Usuario";
+  const jde = info.trabajador.jde ?? null;
+  const puesto = info.trabajador.puesto ?? null;
+  const superintendencia = info.trabajador.superintendencia ?? null;
+  const areaTrabajo = info.trabajador.area ?? null;
 
-  // ── Sincronizar el Usuario espejo (vincular por iamUserId, luego por su
-  //    trabajador del padrón del IAM, y como último recurso por email/jde) ──
-  const trabajadorId = info.trabajador?.id ?? null;
-  let usuario = await prisma.usuario.findUnique({ where: { iamUserId: info.sub } });
-  if (!usuario && trabajadorId) {
-    usuario = await prisma.usuario.findUnique({ where: { trabajadorId } });
-  }
-  if (!usuario) {
-    const or: Array<Record<string, string>> = [];
-    if (email) or.push({ email });
-    if (jde) or.push({ jde });
-    if (or.length) usuario = await prisma.usuario.findFirst({ where: { OR: or } });
-  }
+  // ── La copia local: por su cuenta y, si es su primer ingreso, por su ficha
+  //    (la persona pudo existir en Sync antes de tener cuenta) ──
+  let usuario =
+    (await prisma.usuario.findUnique({ where: { iamUserId: info.sub } })) ??
+    (await prisma.usuario.findUnique({ where: { trabajadorId } }));
 
-  // El trabajador solo puede quedar enlazado a una fila. Si otra ya lo tiene
-  // (duplicado), no se mueve el vínculo: un login no debe fallar por esto.
-  let enlazarTrabajador = false;
-  if (trabajadorId) {
+  // Si su cuenta cambió de ficha en el IAM, se sigue a la nueva, salvo que otra
+  // persona de Sync ya la tenga (duplicado: se resuelve con "Fusionar").
+  let enlace: { trabajadorId: string } | Record<string, never> = { trabajadorId };
+  if (usuario && usuario.trabajadorId !== trabajadorId) {
     const otro = await prisma.usuario.findUnique({ where: { trabajadorId }, select: { id: true } });
-    enlazarTrabajador = !otro || otro.id === usuario?.id;
-    if (!enlazarTrabajador) {
-      console.warn(`⚠️ [OIDC callback] trabajador ${trabajadorId} ya está enlazado a otra persona de Sync (${otro!.id})`);
+    if (otro) {
+      console.warn(`⚠️ [OIDC callback] la ficha ${trabajadorId} ya está enlazada a otra persona de Sync (${otro.id})`);
+      enlace = {};
+    }
+  }
+
+  // El email es único: si otra persona de Sync ya lo usa, no se le quita.
+  let email = info.email ?? null;
+  if (email) {
+    const otro = await prisma.usuario.findUnique({ where: { email }, select: { id: true } });
+    if (otro && otro.id !== usuario?.id) {
+      console.warn(`⚠️ [OIDC callback] el email ${email} ya es de otra persona de Sync (${otro.id})`);
+      email = null;
     }
   }
 
   const data = {
-    ...(enlazarTrabajador ? { trabajadorId } : {}),
     tieneCuentaIam: true,
     iamUserId: info.sub,
     nombre,
@@ -155,13 +154,12 @@ export async function GET(request: NextRequest) {
     puesto,
     superintendencia,
     areaTrabajo,
-    passwordHash: null,
     activo: true,
   };
 
   usuario = usuario
-    ? await prisma.usuario.update({ where: { id: usuario.id }, data })
-    : await prisma.usuario.create({ data });
+    ? await prisma.usuario.update({ where: { id: usuario.id }, data: { ...data, ...enlace } })
+    : await prisma.usuario.create({ data: { ...data, trabajadorId } });
 
   // Sincronizar áreas asignadas (solo las que existen en el catálogo local)
   await prisma.usuarioArea.deleteMany({ where: { usuarioId: usuario.id } });

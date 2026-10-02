@@ -10,6 +10,8 @@ const ERRORS: Record<string, string> = {
   sin_acceso:
     "Tu cuenta no tiene acceso al sistema Sync-MSC. Contacta al administrador para que te conceda el acceso desde el portal de identidad.",
   auth_error: "No se pudo completar el inicio de sesión. Intenta nuevamente.",
+  sin_ficha:
+    "No se pudo preparar tu ficha de persona en el portal de identidad, así que no puedes entrar todavía. Intenta en unos minutos; si sigue, avisa al administrador.",
   // Destino del logout (OIDC_POST_LOGOUT_REDIRECT_URI): viene por ?error= para
   // que la página NO dispare el login automático, pero no es un error.
   logged_out: "Cerraste sesión correctamente.",

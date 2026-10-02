@@ -3,12 +3,13 @@
  *
  * - Altas y cambios de identidad de personas SIN cuenta van primero al IAM
  *   (POST/PATCH /rbac/trabajadores) y luego se copian aquí.
+ * - Toda persona de Sync está enlazada a su ficha (trabajadorId obligatorio).
+ *   Quien entra con una cuenta sin ficha recibe una vinculada a su cuenta.
  * - La sincronización trae del IAM la identidad de las personas que Sync ya
- *   tiene y las enlaza por cuenta o JDE. No agrega personas nuevas a Sync
- *   (el IAM tiene personal de otras áreas que Sync no usa).
- * - La reconciliación (una vez, la lanza un admin) además da de alta en el IAM
- *   a quienes Sync tenga y el IAM no, y completa en el IAM los datos que allí
- *   están vacíos y Sync sí tiene (JDE, disciplina, celular, área).
+ *   tiene. No agrega personas nuevas a Sync (el IAM tiene personal de otras
+ *   áreas que Sync no usa).
+ * - Un admin puede completar en el IAM los datos que allí están vacíos y Sync
+ *   sí tiene (JDE, disciplina, celular, área).
  *
  * Regla de copia: "el IAM completa, no borra" — un texto vacío en el IAM no
  * pisa el dato que Sync ya tiene (al migrar, el IAM tenía disciplinas vacías).
@@ -174,325 +175,84 @@ export async function actorDeSesion(req: NextRequest): Promise<ActorIam | undefi
   return { id: u?.iamUserId ?? null, nombre: sesion.nombre };
 }
 
-// ─── Enlace persona ↔ trabajador ──────────────────────────────────────────────
-
-export type AccionPadron =
-  | { tipo: "refrescar"; usuarioId: string; trabajador: TrabajadorIam }
-  | { tipo: "enlazar"; usuarioId: string; trabajador: TrabajadorIam; via: "cuenta" | "jde" }
-  | { tipo: "sinPar"; usuarioId: string; nombre: string; jde: string | null }
-  // Tiene cuenta en el IAM pero esa cuenta no tiene ficha de trabajador. La
-  // reconciliación (o su próximo login) le crea una ya vinculada a la cuenta.
-  | { tipo: "cuentaSinFicha"; usuarioId: string; nombre: string }
-  | { tipo: "conflicto"; usuarioId: string; nombre: string; motivo: string };
-
-type UsuarioParaPlan = Pick<Usuario, "id" | "nombre" | "jde" | "iamUserId" | "trabajadorId">;
-type CuentaSinFicha = Extract<AccionPadron, { tipo: "cuentaSinFicha" }>;
-
-/**
- * Decide, sin escribir nada, qué pasa con cada persona de Sync frente al
- * padrón del IAM. Un trabajador solo puede quedar enlazado a una persona.
- */
-export function planificarPadron(
-  usuarios: UsuarioParaPlan[],
-  trabajadores: TrabajadorIam[],
-): AccionPadron[] {
-  const porId = new Map(trabajadores.map((t) => [t.id, t]));
-  const porCuenta = new Map(trabajadores.filter((t) => t.userId).map((t) => [t.userId!, t]));
-  const porJde = new Map<string, TrabajadorIam[]>();
-  for (const t of trabajadores) {
-    const j = texto(t.jde);
-    if (j) porJde.set(j, [...(porJde.get(j) ?? []), t]);
-  }
-
-  const acciones: AccionPadron[] = [];
-  const tomados = new Set<string>();
-
-  // 1) Los ya enlazados reclaman primero su trabajador
-  for (const u of usuarios.filter((x) => x.trabajadorId)) {
-    const t = porId.get(u.trabajadorId!);
-    if (t) {
-      acciones.push({ tipo: "refrescar", usuarioId: u.id, trabajador: t });
-      tomados.add(t.id);
-    } else {
-      acciones.push({
-        tipo: "conflicto", usuarioId: u.id, nombre: u.nombre,
-        motivo: "Su trabajador ya no existe en el IAM",
-      });
-    }
-  }
-
-  // 2) Los demás: por cuenta del IAM y, si no, por JDE (solo si es inequívoco)
-  for (const u of usuarios.filter((x) => !x.trabajadorId)) {
-    const porSuCuenta = u.iamUserId ? porCuenta.get(u.iamUserId) : undefined;
-    const jde = texto(u.jde);
-    const candidatosJde = jde ? porJde.get(jde) ?? [] : [];
-    const t = porSuCuenta ?? (candidatosJde.length === 1 ? candidatosJde[0] : undefined);
-
-    if (!t && candidatosJde.length > 1) {
-      acciones.push({
-        tipo: "conflicto", usuarioId: u.id, nombre: u.nombre,
-        motivo: `Hay ${candidatosJde.length} trabajadores con el JDE ${jde} en el IAM`,
-      });
-    } else if (!t && u.iamUserId) {
-      acciones.push({ tipo: "cuentaSinFicha", usuarioId: u.id, nombre: u.nombre });
-    } else if (!t) {
-      acciones.push({ tipo: "sinPar", usuarioId: u.id, nombre: u.nombre, jde });
-    } else if (tomados.has(t.id)) {
-      acciones.push({
-        tipo: "conflicto", usuarioId: u.id, nombre: u.nombre,
-        motivo: `El trabajador "${t.nomina}" ya está enlazado a otra persona de Sync (¿duplicado?)`,
-      });
-    } else {
-      acciones.push({
-        tipo: "enlazar", usuarioId: u.id, trabajador: t, via: porSuCuenta ? "cuenta" : "jde",
-      });
-      tomados.add(t.id);
-    }
-  }
-
-  // 3) Antes de proponer un alta, descartar duplicados probables por nombre: una
-  //    ficha libre cuyo nombre contiene todas las palabras del otro (p. ej.
-  //    "Philippe Guyon" ⊂ "Guyon Philippe Pierre Georges") y sin JDE que lo
-  //    contradiga. Va después de los enlaces: una ficha puede quedar tomada por JDE.
-  const libres = trabajadores
-    .filter((t) => !tomados.has(t.id))
-    .map((t) => ({ t, palabras: palabrasDe(t.nomina) }));
-  return acciones.map((a): AccionPadron => {
-    if (a.tipo !== "sinPar") return a;
-    const propias = palabrasDe(a.nombre);
-    const parecidas = libres.filter(
-      (x) => mismoNombreProbable(propias, x.palabras) && !(a.jde && x.t.jde && x.t.jde !== a.jde),
-    );
-    if (parecidas.length === 0) return a;
-    const fichas = parecidas
-      .map((x) => `"${x.t.nomina}"${x.t.ci ? ` (CI ${x.t.ci})` : x.t.jde ? ` (JDE ${x.t.jde})` : ""}`)
-      .join(", ");
-    return {
-      tipo: "conflicto", usuarioId: a.usuarioId, nombre: a.nombre,
-      motivo:
-        `Posible duplicado de ${fichas} en el IAM, así que no se da de alta. ` +
-        (a.jde
-          ? `En el IAM Portal, ponle a esa ficha el JDE ${a.jde} si es la misma persona (o su propio JDE si es otra) y vuelve a enlazar.`
-          : "Complétale el JDE en Sync y en esa ficha del IAM Portal para distinguirlas, y vuelve a enlazar."),
-    };
-  });
-}
-
-/** Palabras de un nombre, sin tildes ni mayúsculas (ignora iniciales sueltas). */
-function palabrasDe(nombre: string): Set<string> {
-  return new Set(
-    nombre.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
-      .replace(/[^a-z ]/g, " ").split(/\s+/).filter((w) => w.length > 1),
-  );
-}
-
-/** Uno de los nombres contiene todas las palabras del otro, que tiene al menos dos. */
-function mismoNombreProbable(a: Set<string>, b: Set<string>): boolean {
-  const [menor, mayor] = a.size <= b.size ? [a, b] : [b, a];
-  if (menor.size < 2) return false;
-  for (const w of menor) if (!mayor.has(w)) return false;
-  return true;
-}
+// ─── Copia del padrón ─────────────────────────────────────────────────────────
+// Toda persona de Sync está enlazada a su ficha del IAM (trabajadorId es
+// obligatorio): las altas nacen allí y quien entra sin ficha recibe una.
 
 function cambiaAlgo(u: Usuario, datos: Record<string, unknown>): boolean {
   return Object.entries(datos).some(([k, v]) => (u as Record<string, unknown>)[k] !== v);
 }
 
-/** Aplica refrescos y enlaces de un plan. Devuelve cuántas filas cambiaron. */
-async function aplicarEnlaces(acciones: AccionPadron[], usuarios: Map<string, Usuario>) {
-  let refrescados = 0;
-  let enlazados = 0;
-  for (const a of acciones) {
-    if (a.tipo !== "refrescar" && a.tipo !== "enlazar") continue;
-    const u = usuarios.get(a.usuarioId)!;
-    const datos = identidadDesdeTrabajador(a.trabajador, u);
-    if (!cambiaAlgo(u, datos)) continue;
-    await prisma.usuario.update({ where: { id: u.id }, data: datos });
-    if (a.tipo === "enlazar") enlazados++;
-    else refrescados++;
-  }
-  return { refrescados, enlazados };
-}
-
-/** Lo que necesita intervención humana: conflictos y cuentas sin ficha de trabajador. */
-function avisosDe(acciones: AccionPadron[]): { nombre: string; motivo: string }[] {
-  return acciones.flatMap((a) => {
-    if (a.tipo === "conflicto") return [{ nombre: a.nombre, motivo: a.motivo }];
-    return [];
-  });
-}
-
 export interface ResultadoPadron {
   refrescados: number;
-  enlazados: number;
-  creadosEnIam: number;
-  sinPar: { nombre: string; jde: string | null }[];
+  /** Personas cuya ficha ya no está en el IAM: requieren intervención. */
   conflictos: { nombre: string; motivo: string }[];
-  errores: { nombre: string; error: string }[];
 }
 
-/**
- * Trae la identidad de las personas desde el IAM y enlaza las que se puedan
- * enlazar con seguridad. No crea nada en ningún lado.
- */
+/** Trae del IAM la identidad de cada persona de Sync. No crea nada en ningún lado. */
 export async function refrescarPadron(): Promise<ResultadoPadron> {
   const [trabajadores, usuarios] = await Promise.all([
     listarTrabajadores(),
     prisma.usuario.findMany(),
   ]);
-  const acciones = planificarPadron(usuarios, trabajadores);
-  const { refrescados, enlazados } = await aplicarEnlaces(
-    acciones, new Map(usuarios.map((u) => [u.id, u])),
-  );
-  return {
-    refrescados, enlazados, creadosEnIam: 0,
-    sinPar: acciones.flatMap((a) => (a.tipo === "sinPar" ? [{ nombre: a.nombre, jde: a.jde }] : [])),
-    conflictos: [
-      ...avisosDe(acciones),
-      ...acciones.filter((a): a is CuentaSinFicha => a.tipo === "cuentaSinFicha").map((a) => ({
-        nombre: a.nombre,
-        motivo: "Tiene cuenta en el IAM sin ficha de trabajador: se le crea al reconciliar o en su próximo inicio de sesión",
-      })),
-    ],
-    errores: [],
-  };
+  const porId = new Map(trabajadores.map((t) => [t.id, t]));
+  let refrescados = 0;
+  const conflictos: ResultadoPadron["conflictos"] = [];
+  for (const u of usuarios) {
+    const t = porId.get(u.trabajadorId);
+    if (!t) {
+      conflictos.push({ nombre: u.nombre, motivo: "Su ficha ya no existe en el IAM" });
+      continue;
+    }
+    const datos = identidadDesdeTrabajador(t, u);
+    if (!cambiaAlgo(u, datos)) continue;
+    await prisma.usuario.update({ where: { id: u.id }, data: datos });
+    refrescados++;
+  }
+  return { refrescados, conflictos };
 }
 
 /**
- * Reconciliación (una vez, la lanza un admin): enlaza como `refrescarPadron` y
- * además da de alta en el IAM a las personas de Sync que no están allí.
- * Con `dry` solo informa qué haría.
+ * Completa en el IAM lo que Sync sabe y allí está vacío (JDE, disciplina,
+ * celular, área), sin pisar nada. La lanza un admin; con `dry` solo informa.
  */
-export async function reconciliarPadron(opciones: { dry: boolean; actor?: ActorIam }) {
+export async function completarPadronEnIam(opciones: { dry: boolean; actor?: ActorIam }) {
   const [trabajadores, usuarios] = await Promise.all([
     listarTrabajadores(),
     prisma.usuario.findMany(),
   ]);
-  const acciones = planificarPadron(usuarios, trabajadores);
-  const porId = new Map(usuarios.map((u) => [u.id, u]));
-  const sinPar = acciones.filter((a): a is Extract<AccionPadron, { tipo: "sinPar" }> => a.tipo === "sinPar");
-  const sinFicha = acciones.filter((a): a is CuentaSinFicha => a.tipo === "cuentaSinFicha");
-  const conflictos = avisosDe(acciones);
-
-  // Fichas del IAM a las que les falta algo que Sync sabe
+  const porId = new Map(trabajadores.map((t) => [t.id, t]));
   const porCompletar: { usuario: Usuario; trabajador: TrabajadorIam; datos: DatosCompletar }[] = [];
-  for (const a of acciones) {
-    if (a.tipo !== "refrescar" && a.tipo !== "enlazar") continue;
-    const usuario = porId.get(a.usuarioId)!;
-    const datos = await faltantesEnIam(usuario, a.trabajador);
-    if (Object.keys(datos).length) porCompletar.push({ usuario, trabajador: a.trabajador, datos });
+  for (const usuario of usuarios) {
+    const trabajador = porId.get(usuario.trabajadorId);
+    if (!trabajador) continue;
+    const datos = await faltantesEnIam(usuario, trabajador);
+    if (Object.keys(datos).length) porCompletar.push({ usuario, trabajador, datos });
   }
 
   if (opciones.dry) {
     return {
       dry: true,
-      porEnlazar: acciones.filter((a) => a.tipo === "enlazar").length,
-      yaEnlazados: acciones.filter((a) => a.tipo === "refrescar").length,
-      porCrearEnIam: sinPar.map((a) => ({ nombre: a.nombre, jde: a.jde })),
-      porCrearFichaDeCuenta: sinFicha.map((a) => ({ nombre: a.nombre })),
       porCompletarEnIam: porCompletar.map((c) => ({ nombre: c.usuario.nombre, campos: Object.keys(c.datos) })),
-      conflictos,
     };
   }
 
-  // Primero completar el IAM; así el enlace siguiente copia de vuelta los mismos valores
   let completadosEnIam = 0;
+  const conflictos: { nombre: string; motivo: string }[] = [];
   const errores: { nombre: string; error: string }[] = [];
-  const conflictosAlta: { nombre: string; motivo: string }[] = [];
   for (const c of porCompletar) {
     try {
       const r = await completarTrabajador(c.trabajador.id, c.datos, opciones.actor);
       if (r.completados.length) completadosEnIam++;
-      for (const o of r.omitidos) conflictosAlta.push({ nombre: c.usuario.nombre, motivo: `No se completó en el IAM — ${o}` });
+      for (const o of r.omitidos) conflictos.push({ nombre: c.usuario.nombre, motivo: `No se completó en el IAM — ${o}` });
     } catch (e) {
       if (e instanceof IamNoDisponible) throw e;
       errores.push({ nombre: c.usuario.nombre, error: (e as Error).message });
     }
   }
-
-  const enlaces = await aplicarEnlaces(acciones, porId);
-  const refrescados = enlaces.refrescados;
-  let enlazados = enlaces.enlazados;
-
-  // Cuentas sin ficha: el IAM la crea ya vinculada a la cuenta
-  let fichasDeCuenta = 0;
-  for (const a of sinFicha) {
-    const u = porId.get(a.usuarioId)!;
-    try {
-      const trabajador = await asegurarFichaDeCuenta(
-        { userId: u.iamUserId!, nombre: u.nombre, rol: u.rol, disciplina: u.disciplina },
-        opciones.actor,
-      );
-      const ocupado = await prisma.usuario.findUnique({
-        where: { trabajadorId: trabajador.id }, select: { nombre: true },
-      });
-      if (ocupado) {
-        conflictosAlta.push({
-          nombre: u.nombre,
-          motivo: `Su ficha "${trabajador.nomina}" ya está enlazada a "${ocupado.nombre}" (¿duplicado? usa Fusionar)`,
-        });
-        continue;
-      }
-      await prisma.usuario.update({ where: { id: u.id }, data: identidadDesdeTrabajador(trabajador, u) });
-      fichasDeCuenta++;
-    } catch (e) {
-      if (e instanceof IamNoDisponible) throw e;
-      errores.push({ nombre: u.nombre, error: (e as Error).message });
-    }
-  }
-
-  let creadosEnIam = 0;
-  for (const a of sinPar) {
-    const u = porId.get(a.usuarioId)!;
-    try {
-      const datos = await datosTrabajadorDesde({ ...u }, { paraAlta: true });
-      const { trabajador, creado } = await crearTrabajador(datos, opciones.actor);
-      // Alta idempotente: el IAM pudo devolver alguien que otra fila ya tiene
-      const ocupado = await prisma.usuario.findUnique({
-        where: { trabajadorId: trabajador.id }, select: { nombre: true },
-      });
-      if (ocupado) {
-        conflictosAlta.push({
-          nombre: u.nombre,
-          motivo: `El IAM ya tenía a "${trabajador.nomina}" y está enlazado a "${ocupado.nombre}" (¿duplicado?)`,
-        });
-        continue;
-      }
-      await prisma.usuario.update({ where: { id: u.id }, data: identidadDesdeTrabajador(trabajador, u) });
-      if (creado) creadosEnIam++;
-      else enlazados++;
-    } catch (e) {
-      errores.push({ nombre: u.nombre, error: (e as Error).message });
-    }
-  }
-
-  return {
-    dry: false,
-    refrescados, enlazados, creadosEnIam, completadosEnIam, fichasDeCuenta,
-    conflictos: [...conflictos, ...conflictosAlta],
-    errores,
-  };
-}
-
-/**
- * Garantiza que una persona de Sync esté en el padrón del IAM (alta idempotente
- * por JDE) y la enlaza. Para personas aún no reconciliadas que se editan.
- */
-export async function asegurarEnPadron(u: Usuario, actor?: ActorIam): Promise<TrabajadorIam> {
-  const datos = await datosTrabajadorDesde({ ...u }, { paraAlta: true });
-  const { trabajador } = await crearTrabajador(datos, actor);
-  const ocupado = await prisma.usuario.findUnique({
-    where: { trabajadorId: trabajador.id }, select: { id: true, nombre: true },
-  });
-  if (ocupado && ocupado.id !== u.id) {
-    throw new ErrorPadron(
-      `En el IAM, "${trabajador.nomina}" ya está enlazado a otra persona de Sync ("${ocupado.nombre}"). ` +
-        "Revisa si es un duplicado antes de editar.",
-      409,
-    );
-  }
-  await prisma.usuario.update({ where: { id: u.id }, data: identidadDesdeTrabajador(trabajador, u) });
-  return trabajador;
+  // Copiar de vuelta lo completado (mismos valores; deja la copia al día)
+  const { refrescados } = await refrescarPadron();
+  return { dry: false, completadosEnIam, refrescados, conflictos, errores };
 }
 
 /** Error de negocio del padrón, con el status HTTP que corresponde. */

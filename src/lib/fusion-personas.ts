@@ -60,7 +60,7 @@ export interface PlanFusion {
   /** Datos de la persona eliminada que pasan a la conservada (estaban vacíos). */
   datosQuePasan: string[];
   /** Ficha del IAM (sin cuenta) del registro que se borra: se desactiva allí. */
-  fichaIamDesactivada: string | null;
+  fichaIamDesactivada: string;
   avisos: string[];
 }
 
@@ -80,10 +80,10 @@ async function cargar(tx: Tx, conservarId: string, eliminarId: string) {
       "Las dos tienen cuenta propia en el IAM. Si son la misma persona, desactiva una de las cuentas en el IAM Portal y vuelve a intentarlo.",
     );
   }
-  const fichaQueSobra = c.trabajadorId && e.trabajadorId && c.trabajadorId !== e.trabajadorId
-    ? e.trabajadorId
-    : null;
-  if (fichaQueSobra && (e.tieneCuentaIam || e.iamUserId)) {
+  // Cada persona tiene su ficha (trabajadorId es único): la del registro que se
+  // borra sobra en el IAM.
+  const fichaQueSobra = e.trabajadorId;
+  if (e.tieneCuentaIam || e.iamUserId) {
     throw new FusionInvalida(
       `"${e.nombre}" tiene cuenta en el IAM con su propia ficha. Conserva ese registro y fusiona el otro en él, ` +
         "o resuelve primero el duplicado en el IAM Portal.",
@@ -94,7 +94,7 @@ async function cargar(tx: Tx, conservarId: string, eliminarId: string) {
 
 /** Campos de identidad que pasan si la persona conservada los tiene vacíos. */
 const HEREDABLES = [
-  "iamUserId", "trabajadorId", "email", "jde", "celular", "puesto",
+  "iamUserId", "email", "jde", "celular", "puesto",
   "superintendencia", "areaTrabajo", "fechaExpiracion",
 ] as const satisfies readonly (keyof Usuario)[];
 
@@ -177,9 +177,7 @@ export async function fusionarPersonas(
   actor?: ActorIam,
 ): Promise<PlanFusion> {
   const previo = await planificarFusion(conservarId, eliminarId);
-  if (previo.fichaIamDesactivada) {
-    await actualizarTrabajador(previo.fichaIamDesactivada, { activo: false }, actor);
-  }
+  await actualizarTrabajador(previo.fichaIamDesactivada, { activo: false }, actor);
   return prisma.$transaction(async (tx) => {
     const { c, e, fichaQueSobra } = await cargar(tx, conservarId, eliminarId);
     const { referencias, avisos } = await contar(tx, conservarId, eliminarId);
@@ -240,13 +238,11 @@ export async function fusionarPersonas(
       });
     }
 
-    // 4) Identidad: lo que la conservada tiene vacío (la ficha que sobra no
-    //    pasa: la conservada tiene la suya). Los únicos se liberan antes.
+    // 4) Identidad: lo que la conservada tiene vacío. Los únicos se liberan antes.
     const datos = heredados(c, e);
-    if (fichaQueSobra) delete datos.trabajadorId;
     await tx.usuario.update({
       where: { id: eliminarId },
-      data: { iamUserId: null, trabajadorId: null, email: null },
+      data: { iamUserId: null, email: null },
     });
     if (Object.keys(datos).length) await tx.usuario.update({ where: { id: conservarId }, data: datos });
     await tx.usuario.delete({ where: { id: eliminarId } });
