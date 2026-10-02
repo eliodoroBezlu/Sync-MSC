@@ -200,7 +200,49 @@ export function planificarPadron(
       tomados.add(t.id);
     }
   }
-  return acciones;
+
+  // 3) Antes de proponer un alta, descartar duplicados probables por nombre: una
+  //    ficha libre cuyo nombre contiene todas las palabras del otro (p. ej.
+  //    "Philippe Guyon" ⊂ "Guyon Philippe Pierre Georges") y sin JDE que lo
+  //    contradiga. Va después de los enlaces: una ficha puede quedar tomada por JDE.
+  const libres = trabajadores
+    .filter((t) => !tomados.has(t.id))
+    .map((t) => ({ t, palabras: palabrasDe(t.nomina) }));
+  return acciones.map((a): AccionPadron => {
+    if (a.tipo !== "sinPar") return a;
+    const propias = palabrasDe(a.nombre);
+    const parecidas = libres.filter(
+      (x) => mismoNombreProbable(propias, x.palabras) && !(a.jde && x.t.jde && x.t.jde !== a.jde),
+    );
+    if (parecidas.length === 0) return a;
+    const fichas = parecidas
+      .map((x) => `"${x.t.nomina}"${x.t.ci ? ` (CI ${x.t.ci})` : x.t.jde ? ` (JDE ${x.t.jde})` : ""}`)
+      .join(", ");
+    return {
+      tipo: "conflicto", usuarioId: a.usuarioId, nombre: a.nombre,
+      motivo:
+        `Posible duplicado de ${fichas} en el IAM, así que no se da de alta. ` +
+        (a.jde
+          ? `En el IAM Portal, ponle a esa ficha el JDE ${a.jde} si es la misma persona (o su propio JDE si es otra) y vuelve a enlazar.`
+          : "Complétale el JDE en Sync y en esa ficha del IAM Portal para distinguirlas, y vuelve a enlazar."),
+    };
+  });
+}
+
+/** Palabras de un nombre, sin tildes ni mayúsculas (ignora iniciales sueltas). */
+function palabrasDe(nombre: string): Set<string> {
+  return new Set(
+    nombre.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z ]/g, " ").split(/\s+/).filter((w) => w.length > 1),
+  );
+}
+
+/** Uno de los nombres contiene todas las palabras del otro, que tiene al menos dos. */
+function mismoNombreProbable(a: Set<string>, b: Set<string>): boolean {
+  const [menor, mayor] = a.size <= b.size ? [a, b] : [b, a];
+  if (menor.size < 2) return false;
+  for (const w of menor) if (!mayor.has(w)) return false;
+  return true;
 }
 
 function cambiaAlgo(u: Usuario, datos: Record<string, unknown>): boolean {
@@ -230,7 +272,7 @@ function avisosDe(acciones: AccionPadron[]): { nombre: string; motivo: string }[
     if (a.tipo === "cuentaSinFicha") {
       return [{
         nombre: a.nombre,
-        motivo: "Tiene cuenta en el IAM pero sin ficha de trabajador: créala y vincúlala en el IAM Portal (Trabajadores)",
+        motivo: "Tiene cuenta en el IAM pero no ficha de trabajador: hay que crearla y vincularla a su cuenta en el IAM",
       }];
     }
     return [];
