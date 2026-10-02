@@ -145,6 +145,26 @@ export async function faltantesEnIam(
   return d;
 }
 
+/**
+ * Ficha de una cuenta que no la tiene: el IAM la crea ya vinculada a la cuenta
+ * (o devuelve la suya, si mientras tanto la tuvo). Nunca queda una ficha suelta.
+ */
+export async function asegurarFichaDeCuenta(
+  cuenta: { userId: string; nombre: string; rol: number; disciplina?: string | null },
+  actor?: ActorIam,
+): Promise<TrabajadorIam> {
+  const { trabajador } = await crearTrabajador(
+    {
+      nomina: cuenta.nombre,
+      puesto: PUESTO_POR_ROL[cuenta.rol] ?? "Técnico",
+      disciplina: texto(cuenta.disciplina) ?? "GENERAL",
+      userId: cuenta.userId,
+    },
+    actor,
+  );
+  return trabajador;
+}
+
 /** Usuario de Sync que hace la petición, para la auditoría del IAM. */
 export async function actorDeSesion(req: NextRequest): Promise<ActorIam | undefined> {
   const token = req.cookies.get(COOKIE_NAME)?.value;
@@ -160,13 +180,13 @@ export type AccionPadron =
   | { tipo: "refrescar"; usuarioId: string; trabajador: TrabajadorIam }
   | { tipo: "enlazar"; usuarioId: string; trabajador: TrabajadorIam; via: "cuenta" | "jde" }
   | { tipo: "sinPar"; usuarioId: string; nombre: string; jde: string | null }
-  // Tiene cuenta en el IAM pero esa cuenta no tiene ficha de trabajador. No se
-  // crea una desde aquí: quedaría suelta, sin vínculo con la cuenta (el servicio
-  // no puede vincularlas). Se le crea y vincula la ficha en el IAM Portal.
+  // Tiene cuenta en el IAM pero esa cuenta no tiene ficha de trabajador. La
+  // reconciliación (o su próximo login) le crea una ya vinculada a la cuenta.
   | { tipo: "cuentaSinFicha"; usuarioId: string; nombre: string }
   | { tipo: "conflicto"; usuarioId: string; nombre: string; motivo: string };
 
 type UsuarioParaPlan = Pick<Usuario, "id" | "nombre" | "jde" | "iamUserId" | "trabajadorId">;
+type CuentaSinFicha = Extract<AccionPadron, { tipo: "cuentaSinFicha" }>;
 
 /**
  * Decide, sin escribir nada, qué pasa con cada persona de Sync frente al
@@ -298,12 +318,6 @@ async function aplicarEnlaces(acciones: AccionPadron[], usuarios: Map<string, Us
 function avisosDe(acciones: AccionPadron[]): { nombre: string; motivo: string }[] {
   return acciones.flatMap((a) => {
     if (a.tipo === "conflicto") return [{ nombre: a.nombre, motivo: a.motivo }];
-    if (a.tipo === "cuentaSinFicha") {
-      return [{
-        nombre: a.nombre,
-        motivo: "Tiene cuenta en el IAM pero no ficha de trabajador: hay que crearla y vincularla a su cuenta en el IAM",
-      }];
-    }
     return [];
   });
 }
@@ -333,7 +347,13 @@ export async function refrescarPadron(): Promise<ResultadoPadron> {
   return {
     refrescados, enlazados, creadosEnIam: 0,
     sinPar: acciones.flatMap((a) => (a.tipo === "sinPar" ? [{ nombre: a.nombre, jde: a.jde }] : [])),
-    conflictos: avisosDe(acciones),
+    conflictos: [
+      ...avisosDe(acciones),
+      ...acciones.filter((a): a is CuentaSinFicha => a.tipo === "cuentaSinFicha").map((a) => ({
+        nombre: a.nombre,
+        motivo: "Tiene cuenta en el IAM sin ficha de trabajador: se le crea al reconciliar o en su próximo inicio de sesión",
+      })),
+    ],
     errores: [],
   };
 }
@@ -351,6 +371,7 @@ export async function reconciliarPadron(opciones: { dry: boolean; actor?: ActorI
   const acciones = planificarPadron(usuarios, trabajadores);
   const porId = new Map(usuarios.map((u) => [u.id, u]));
   const sinPar = acciones.filter((a): a is Extract<AccionPadron, { tipo: "sinPar" }> => a.tipo === "sinPar");
+  const sinFicha = acciones.filter((a): a is CuentaSinFicha => a.tipo === "cuentaSinFicha");
   const conflictos = avisosDe(acciones);
 
   // Fichas del IAM a las que les falta algo que Sync sabe
@@ -368,6 +389,7 @@ export async function reconciliarPadron(opciones: { dry: boolean; actor?: ActorI
       porEnlazar: acciones.filter((a) => a.tipo === "enlazar").length,
       yaEnlazados: acciones.filter((a) => a.tipo === "refrescar").length,
       porCrearEnIam: sinPar.map((a) => ({ nombre: a.nombre, jde: a.jde })),
+      porCrearFichaDeCuenta: sinFicha.map((a) => ({ nombre: a.nombre })),
       porCompletarEnIam: porCompletar.map((c) => ({ nombre: c.usuario.nombre, campos: Object.keys(c.datos) })),
       conflictos,
     };
@@ -391,6 +413,33 @@ export async function reconciliarPadron(opciones: { dry: boolean; actor?: ActorI
   const enlaces = await aplicarEnlaces(acciones, porId);
   const refrescados = enlaces.refrescados;
   let enlazados = enlaces.enlazados;
+
+  // Cuentas sin ficha: el IAM la crea ya vinculada a la cuenta
+  let fichasDeCuenta = 0;
+  for (const a of sinFicha) {
+    const u = porId.get(a.usuarioId)!;
+    try {
+      const trabajador = await asegurarFichaDeCuenta(
+        { userId: u.iamUserId!, nombre: u.nombre, rol: u.rol, disciplina: u.disciplina },
+        opciones.actor,
+      );
+      const ocupado = await prisma.usuario.findUnique({
+        where: { trabajadorId: trabajador.id }, select: { nombre: true },
+      });
+      if (ocupado) {
+        conflictosAlta.push({
+          nombre: u.nombre,
+          motivo: `Su ficha "${trabajador.nomina}" ya está enlazada a "${ocupado.nombre}" (¿duplicado? usa Fusionar)`,
+        });
+        continue;
+      }
+      await prisma.usuario.update({ where: { id: u.id }, data: identidadDesdeTrabajador(trabajador, u) });
+      fichasDeCuenta++;
+    } catch (e) {
+      if (e instanceof IamNoDisponible) throw e;
+      errores.push({ nombre: u.nombre, error: (e as Error).message });
+    }
+  }
 
   let creadosEnIam = 0;
   for (const a of sinPar) {
@@ -419,7 +468,7 @@ export async function reconciliarPadron(opciones: { dry: boolean; actor?: ActorI
 
   return {
     dry: false,
-    refrescados, enlazados, creadosEnIam, completadosEnIam,
+    refrescados, enlazados, creadosEnIam, completadosEnIam, fichasDeCuenta,
     conflictos: [...conflictos, ...conflictosAlta],
     errores,
   };

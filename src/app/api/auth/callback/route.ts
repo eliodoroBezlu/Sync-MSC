@@ -14,6 +14,7 @@ import {
   type OidcUserInfo,
 } from "@/lib/sync-profile";
 import type { Rol } from "@/types";
+import { asegurarFichaDeCuenta } from "@/lib/padron";
 
 export const runtime = "nodejs";
 
@@ -74,6 +75,31 @@ export async function GET(request: NextRequest) {
   const access = getSyncAccess(info);
   if (!access) {
     return fail(request, `usuario ${info.sub} sin acceso a sync-msc`, "sin_acceso");
+  }
+
+  // ── Toda persona que entra tiene ficha en el padrón del IAM: si su cuenta no
+  //    la tiene, el IAM se la crea ya vinculada (nunca suelta). ──
+  if (!info.trabajador?.id) {
+    try {
+      const t = await asegurarFichaDeCuenta(
+        {
+          userId: info.sub,
+          nombre: info.name ?? info.preferred_username ?? "Usuario",
+          rol: mapSyncRole(access.roles),
+          disciplina: access.metadata?.disciplina,
+        },
+        { id: info.sub, nombre: info.name ?? info.preferred_username ?? null },
+      );
+      info.trabajador = {
+        id: t.id, ci: t.ci ?? undefined, jde: t.jde ?? undefined, nomina: t.nomina,
+        puesto: t.puesto, area: t.area ?? undefined, superintendencia: t.superintendencia,
+        disciplina: t.disciplina ?? undefined,
+      };
+      console.log(`[OIDC callback] ficha del padrón creada para la cuenta ${info.sub}`);
+    } catch (err) {
+      // No se bloquea el login: la reconciliación lo vuelve a intentar.
+      console.warn(`⚠️ [OIDC callback] no se pudo crear la ficha de ${info.sub}:`, (err as Error).message);
+    }
   }
 
   // ── Derivar perfil desde la fuente de verdad (IAM) ──

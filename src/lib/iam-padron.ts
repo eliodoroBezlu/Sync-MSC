@@ -39,6 +39,8 @@ export interface DatosTrabajador {
   esContratista?: boolean;
   celular?: string;
   activo?: boolean;
+  /** Solo en altas: cuenta del IAM a la que nace vinculada la ficha. */
+  userId?: string;
 }
 
 /** Lo que Sync puede aportar a una ficha del IAM que lo tiene vacío. */

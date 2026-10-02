@@ -1098,6 +1098,8 @@ type ResultadoPadronApi = {
   porEnlazar?: number; yaEnlazados?: number;
   porCrearEnIam?: { nombre: string; jde: string | null }[];
   porCompletarEnIam?: { nombre: string; campos: string[] }[];
+  porCrearFichaDeCuenta?: { nombre: string }[];
+  fichasDeCuenta?: number;
   sinPar?: { nombre: string; jde: string | null }[];
   conflictos?: { nombre: string; motivo: string }[];
   errores?: { nombre: string; error: string }[];
@@ -1241,6 +1243,9 @@ function UsuariosTab() {
       `${plan.yaEnlazados ?? 0} ya enlazadas`,
       `${plan.porEnlazar ?? 0} se enlazarán por cuenta o JDE`,
       `${altas.length} se darán de alta en el IAM (sin acceso al sistema)`,
+      ...(plan.porCrearFichaDeCuenta?.length
+        ? [`${plan.porCrearFichaDeCuenta.length} cuentas del IAM sin ficha recibirán una, vinculada a su cuenta`]
+        : []),
       ...(completar.length
         ? [`${completar.length} fichas del IAM se completarán con datos de Sync (solo campos vacíos)`]
         : []),
@@ -1260,7 +1265,8 @@ function UsuariosTab() {
     setPadronRes({
       ok: true,
       msg: `Padrón enlazado con el IAM: ${r.enlazados} enlazadas, ${r.creadosEnIam} dadas de alta en el IAM, ` +
-        `${r.completadosEnIam ?? 0} fichas completadas en el IAM, ${r.refrescados} actualizadas.`,
+        `${r.fichasDeCuenta ?? 0} fichas creadas para cuentas, ${r.completadosEnIam ?? 0} fichas completadas en el IAM, ` +
+        `${r.refrescados} actualizadas.`,
       detalle: detallePadron(r),
     });
     load();
