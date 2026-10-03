@@ -22,6 +22,8 @@ const ROLE_MAP: Record<string, Rol> = {
 };
 
 export interface OidcTrabajador {
+  /** Trabajador.id del IAM: clave del padrón de personas. */
+  id?: string;
   ci?: string;
   jde?: string;
   nomina?: string;
