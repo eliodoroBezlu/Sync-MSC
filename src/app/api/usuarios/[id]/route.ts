@@ -13,7 +13,6 @@ import { camposDelIam } from "@/lib/padron-campos";
 import {
   gestionDe,
   actorDeSesion,
-  asegurarEnPadron,
   datosTrabajadorDesde,
   identidadDesdeTrabajador,
   respuestaDeError,
@@ -51,26 +50,10 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     let identidad = {};
     const cambios = cambiosDeIdentidad(actual, body, g);
     if (cambios.length > 0) {
-      const actor = await actorDeSesion(req);
-      let trabajadorId = actual.trabajadorId;
-      if (!trabajadorId) {
-        const t = await asegurarEnPadron(actual, actor);
-        if (t.userId) {
-          // Al enlazarla resultó tener cuenta: su identidad es del portal
-          return Response.json(
-            {
-              ok: false, gestionadoPorIam: true,
-              error: mensajeCamposIam(cambios, { ...g, cuentaIam: true, enPadron: true }),
-            },
-            { status: 409 },
-          );
-        }
-        trabajadorId = t.id;
-      }
       const t = await actualizarTrabajador(
-        trabajadorId,
+        actual.trabajadorId,
         await datosTrabajadorDesde(Object.fromEntries(cambios.map((c) => [c, body[c]]))),
-        actor,
+        await actorDeSesion(req),
       );
       // "El IAM completa, no borra"; pero lo que el usuario acaba de vaciar sí se
       // vacía, así que el respaldo es el valor nuevo para lo que cambió.

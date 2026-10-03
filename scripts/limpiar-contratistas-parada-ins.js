@@ -13,7 +13,7 @@
 //      tiene usuarioId => le pone usuarioId = null (conserva el nombre).
 //   2) Quita ese usuarioId de ParadaOt.personalAsignadoIds de la parada.
 //   3) Borra el Usuario huérfano, SOLO si es seguro:
-//        - passwordHash == null  (nunca fijó contraseña / nunca inició sesión)
+//        - sin cuenta en el IAM  (nunca inició sesión)
 //        - rol in (4, 6)
 //        - no lo referencia ningún otro ParadaGrupoMiembro fuera de este set
 //      Si no pasa un guard: se reporta y NO se borra (pero el miembro igual
@@ -223,7 +223,7 @@ async function main() {
       }
       const nombreU = [u.nombre, u.apellido].filter(Boolean).join(" ");
       const motivos = [];
-      if (u.passwordHash) motivos.push("tiene contraseña (cuenta real)");
+      if (u.iamUserId || u.tieneCuentaIam) motivos.push("tiene cuenta en el IAM (cuenta real)");
       if (![4, 6].includes(u.rol)) motivos.push(`rol ${u.rol} (no es técnico/contratista)`);
       if (refExternaPorUsuario.has(uid)) {
         const d = [...new Set(refExternaPorUsuario.get(uid).map((r) => r.grupo.disciplina))];

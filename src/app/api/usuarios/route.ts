@@ -91,15 +91,7 @@ export async function POST(req: NextRequest) {
         ],
       },
     });
-    if (yaEnSync) {
-      if (!yaEnSync.trabajadorId) {
-        await prisma.usuario.update({
-          where: { id: yaEnSync.id },
-          data: identidadDesdeTrabajador(trabajador, yaEnSync),
-        });
-      }
-      return Response.json({ ok: true, _id: yaEnSync.id, existente: true });
-    }
+    if (yaEnSync) return Response.json({ ok: true, _id: yaEnSync.id, existente: true });
 
     const { apellido, email, rol, areas, fechaExpiracion } = body;
     const user = await prisma.usuario.create({

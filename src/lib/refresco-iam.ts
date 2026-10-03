@@ -39,14 +39,12 @@ export async function refrescarDesdeIam(origen: "startup" | "periodico"): Promis
 
     try {
       const r = await refrescarPadron();
-      const hubo = r.refrescados + r.enlazados > 0;
       // En el ciclo periódico solo se registra lo que cambió, para no llenar el log.
-      if (origen === "startup" || hubo) {
-        console.log(
-          `${tag} Padrón desde IAM: ${r.refrescados} actualizadas, ${r.enlazados} enlazadas, ` +
-            `${r.sinPar.length} sin par en el IAM, ${r.conflictos.length} conflictos`,
-        );
+      if (origen === "startup" || r.refrescados > 0) {
+        console.log(`${tag} Padrón desde IAM: ${r.refrescados} actualizadas, ${r.conflictos.length} conflictos`);
       }
+      // El detalle de los conflictos, solo al arrancar (persisten hasta resolverse)
+      if (origen === "startup") for (const c of r.conflictos) console.warn(`${tag} Padrón — ${c.nombre}: ${c.motivo}`);
     } catch (e) {
       console.warn(`${tag} No se pudo sincronizar el padrón:`, (e as Error).message);
     }
