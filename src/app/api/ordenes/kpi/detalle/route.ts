@@ -12,7 +12,7 @@ import { TENDENCIA_SEMANAS } from "@/lib/kpiConfig";
 // utilización por área, Pareto de correctivas y tendencia de N semanas.
 export async function GET(req: NextRequest) {
   const token = req.cookies.get(COOKIE_NAME)?.value;
-  const session = token ? verifyToken(token) : null;
+  const session = token ? await verifyToken(token) : null;
   if (!session) {
     return NextResponse.json({ success: false, error: "No autenticado" }, { status: 401 });
   }

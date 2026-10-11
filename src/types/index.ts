@@ -42,7 +42,6 @@ export interface IUsuario {
   nombre: string;          // Nómina completa (col B ListaGM)
   apellido?: string;       // Opcional (entrada manual)
   email?: string;          // Opcional — requerido solo para login
-  passwordHash?: string;
   rol: Rol;
   // Rol 1: ignorado (acceso total). Rol 2–3: áreas gestionadas. Rol 4: área asignada.
   areas: string[];         // Códigos de área de planta (3310, 3320…)

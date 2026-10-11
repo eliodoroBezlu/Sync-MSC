@@ -8,7 +8,7 @@ import { semanaActualBolivia } from "@/lib/semana";
 // Acotado server-side por rol/área de la sesión (ver resolveAreaScope).
 export async function GET(req: NextRequest) {
   const token = req.cookies.get(COOKIE_NAME)?.value;
-  const session = token ? verifyToken(token) : null;
+  const session = token ? await verifyToken(token) : null;
   if (!session) {
     return NextResponse.json({ success: false, error: "No autenticado" }, { status: 401 });
   }

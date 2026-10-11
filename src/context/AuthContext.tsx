@@ -13,14 +13,14 @@ interface AuthContextValue {
   user: SessionPayload | null;
   loading: boolean;
   refetch: () => Promise<void>;
-  logout: () => Promise<void>;
+  logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue>({
   user: null,
   loading: true,
   refetch: async () => {},
-  logout: async () => {},
+  logout: () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -56,10 +56,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+  // Navegación completa (no fetch): /api/auth/logout redirige al IAM, que cierra
+  // la sesión SSO y vuelve a Sync. Con fetch esa cadena ocurriría por detrás y
+  // la sesión del IAM seguiría viva → el login volvería a entrar solo.
+  function logout() {
     setUser(null);
-    window.location.href = "/login";
+    window.location.href = "/api/auth/logout";
   }
 
   useEffect(() => {
