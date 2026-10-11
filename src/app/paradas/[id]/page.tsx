@@ -24,8 +24,9 @@ const ROLES_CONFIG = [1, 2, 5];
 // El supervisor (rol 3) también entra a Configuración, pero sólo a las secciones
 // Grupos y Asignaciones (armar cuadrillas y asignar personal).
 const ROLES_CONFIG_GRUPOS = [1, 2, 3, 5];
-// Acceso a la pestaña Reportes (y a Preparativos/Ejecución): supervisor y planificador.
-const ROLES_REPORTE = [3, 5];
+// Acceso a la pestaña Reportes (y a Preparativos/Ejecución): admin, superintendente,
+// supervisor y planificador. Admin/Superintendente pueden regularizar avances a posteriori.
+const ROLES_REPORTE = [1, 2, 3, 5];
 // Admin y Superintendente consolidan el PDF de la reunión (08:00 / 17:00).
 const ROLES_CONSOLIDAR_REPORTE = [1, 2];
 
