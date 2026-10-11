@@ -11,7 +11,10 @@ async function siguienteCertificado(tag: string, fecha: string): Promise<string>
   const tagLimpio = tag.replace(/[/\\*?:"<>| ]/g, "").toUpperCase();
 
   // Calcular el siguiente número desde el máximo real existente en la BD
-  const todos = await prisma.registroCalibracion.findMany({ select: { numeroCertificado: true } });
+  const todos = await prisma.registroCalibracion.findMany({
+    where: { origen: "sistema" },
+    select: { numeroCertificado: true },
+  });
   const maxUsado = todos.reduce((max, r) => {
     const n = parseInt(r.numeroCertificado.split("_")[0], 10);
     return !isNaN(n) && n > max ? n : max;
@@ -27,7 +30,12 @@ export async function GET(req: NextRequest) {
   const fechaDesde        = searchParams.get("fechaDesde");
   const fechaHasta        = searchParams.get("fechaHasta");
   const incluirArchivados = searchParams.get("incluirArchivados") === "true";
-  const limit             = Math.min(Number(searchParams.get("limit") || "50"), 200);
+  // sistema (por defecto) | historico | todos
+  const origenPedido      = searchParams.get("origen");
+  const origen            = origenPedido === "historico" || origenPedido === "todos" ? origenPedido : "sistema";
+  const limiteMax         = fechaDesde || fechaHasta ? 5000 : 200;
+  const limitePedido      = Number(searchParams.get("limit") || "50");
+  const limit             = Math.min(Number.isFinite(limitePedido) && limitePedido > 0 ? limitePedido : 50, limiteMax);
 
   // Capa 3: auto-archivo — excluir registros >90 días salvo que se pida historial completo
   // y no haya filtro de fecha propio del cliente.
@@ -36,7 +44,7 @@ export async function GET(req: NextRequest) {
   fechaArchivoCorte.setDate(fechaArchivoCorte.getDate() - ARCHIVO_DIAS);
   const aplicarFiltroArchivo = !incluirArchivados && !fechaDesde && !fechaHasta && !tag;
 
-  let fechaFilter: Record<string, Date> = {};
+  const fechaFilter: Record<string, Date> = {};
   if (fechaDesde || fechaHasta) {
     if (fechaDesde) fechaFilter.gte = new Date(fechaDesde);
     if (fechaHasta) {
@@ -52,6 +60,7 @@ export async function GET(req: NextRequest) {
     where: {
       ...(tag       ? { tag: { contains: tag, mode: "insensitive" } } : {}),
       ...(resultado ? { resultadoGeneral: resultado } : {}),
+      ...(origen !== "todos" ? { origen } : {}),
       ...(Object.keys(fechaFilter).length ? { fecha: fechaFilter } : {}),
     },
     orderBy: { fecha: "desc" },

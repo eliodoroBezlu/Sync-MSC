@@ -379,6 +379,7 @@ model RegistroCalibracion {
   otAsociada             String?
   areaCodigo             String   @default("3320")
   estado                 String   @default("revision") // revision | aprobado
+  origen                 String   @default("sistema") // sistema | historico (importado de la planilla 2014-2026)
   tecnicoFirma           String? // Base64 or URL
   supervisorFirma        String? // Base64 or URL
   createdAt              DateTime @default(now())
@@ -388,6 +389,27 @@ model RegistroCalibracion {
 
   @@index([tag, fecha(sort: Desc)])
   @@index([areaCodigo, fecha(sort: Desc)])
+  @@index([origen, fecha(sort: Desc)])
+}
+
+// Programa de calibración: una fila por TAG y fecha planificada. Base del KPI
+// programado vs ejecutado (el "ejecutado" sale de RegistroCalibracion, no de aquí).
+model ProgramaCalibracion {
+  id             String   @id @default(cuid())
+  tag            String // normalizado: mayúsculas, sin guiones ni espacios
+  fechaPlan      DateTime @db.Date
+  semanaIso      Int
+  frecuenciaDias Int?
+  programa       String   @default("WG") // WG | Parada Marzo 2026 | ...
+  origen         String   @default("WG") // WG | Parada
+  otModelo       String?
+  tipoServicio   String?
+  horasEstimadas Float?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([tag, fechaPlan, programa])
+  @@index([fechaPlan])
 }
 
 // ─── ÁRBOL DE FALLAS ──────────────────────────────────────────────────────────

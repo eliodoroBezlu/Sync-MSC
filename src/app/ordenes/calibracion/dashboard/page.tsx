@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
+import CumplimientoPanel from "@/components/calibracion/CumplimientoPanel";
 
 type Registro = {
   _id: string;
@@ -74,7 +75,8 @@ export default function DashboardCalibracionPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/calibracion?limit=200").then(r => r.json()),
+      // Solo registros del sistema del año en curso (el histórico 2014-2026 alimenta el cumplimiento, no estas tarjetas).
+      fetch(`/api/calibracion?fechaDesde=${new Date().getFullYear()}-01-01&origen=sistema&limit=5000`).then(r => r.json()),
       fetch("/api/patrones?all=true").then(r => r.json()),
     ])
       .then(([regs, pats]) => {
@@ -101,28 +103,6 @@ export default function DashboardCalibracionPage() {
     const d = diasRestantes(p.fechaVencimiento);
     return d >= 0 && d <= 30;
   });
-
-  // ── TAG analysis: último registro por TAG ─────────────────────────────────
-  const ultimoPorTag: Record<string, Registro> = {};
-  for (const r of registros) {
-    if (!ultimoPorTag[r.tag] || new Date(r.fecha) > new Date(ultimoPorTag[r.tag].fecha)) {
-      ultimoPorTag[r.tag] = r;
-    }
-  }
-  const tagsSinCalibracionReciente = Object.values(ultimoPorTag)
-    .filter(r => diasRestantes(r.fecha) < -180)
-    .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
-    .slice(0, 10);
-
-  // ── Monthly trend (last 6 months) ─────────────────────────────────────────
-  const meses: { label: string; key: string }[] = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const label = d.toLocaleDateString("es-BO", { month: "short", year: "2-digit" });
-    meses.push({ label, key });
-  }
-  const maxMes = Math.max(1, ...meses.map(m => registros.filter(r => r.fecha?.slice(0, 7) === m.key).length));
 
   // ── Recent 10 ─────────────────────────────────────────────────────────────
   const recientes = [...registros]
@@ -159,7 +139,7 @@ export default function DashboardCalibracionPage() {
               Dashboard de Calibraciones
             </h1>
             <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0" }}>
-              Área 3320 — Instrumentación · {registros.length} registros totales
+              Área 3320 — Instrumentación · {registros.length} registros del sistema en {now.getFullYear()}
             </p>
           </div>
           <Link
@@ -180,48 +160,21 @@ export default function DashboardCalibracionPage() {
 
         {/* KPIs */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 20 }}>
-          <KpiCard label="Calibraciones este mes" value={totalEsteMes} sub={`de ${registros.length} total`} color="#0f2847" />
+          <KpiCard label="Calibraciones este mes" value={totalEsteMes} sub={`de ${registros.length} en el año`} color="#0f2847" />
           <KpiCard label="% Conformes (mes)" value={`${pctConforme}%`} sub={`${aprobadosEsteMes} aprobados/ajustados`} color="#16a34a" />
           <KpiCard label="Con no conformidad antes" value={`${pctNoConforme}%`} sub={`${rechazadosAntes} registros`} color="#d97706" />
           <KpiCard label="Patrones vencidos" value={patronesVencidos.length} sub="requieren recalibración" color={patronesVencidos.length > 0 ? "#dc2626" : "#16a34a"} />
           <KpiCard label="Patrones próx. 30 días" value={patronesProximos7.length} sub="vencen pronto" color={patronesProximos7.length > 0 ? "#d97706" : "#16a34a"} />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <CumplimientoPanel />
 
-          {/* Monthly trend */}
-          <div style={S.card}>
-            <h3 style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 700, color: "#0f2847" }}>
-              Tendencia Mensual (últimos 6 meses)
-            </h3>
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 80 }}>
-              {meses.map(m => {
-                const count = registros.filter(r => r.fecha?.slice(0, 7) === m.key).length;
-                const height = Math.round((count / maxMes) * 68) + 4;
-                const isCurrent = m.key === mesActual;
-                return (
-                  <div key={m.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: "#0f2847" }}>{count}</div>
-                    <div style={{
-                      width: "100%",
-                      height,
-                      background: isCurrent ? "#0f2847" : "#bfdbfe",
-                      borderRadius: "3px 3px 0 0",
-                      transition: "height 0.3s",
-                    }} />
-                    <div style={{ fontSize: 9, color: isCurrent ? "#0f2847" : "#94a3b8", fontWeight: isCurrent ? 700 : 400 }}>
-                      {m.label}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
 
           {/* Result breakdown */}
           <div style={S.card}>
             <h3 style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 700, color: "#0f2847" }}>
-              Resultado General (total)
+              Resultado General ({now.getFullYear()})
             </h3>
             {(["APROBADO", "AJUSTADO", "RECHAZADO"] as const).map(res => {
               const count = registros.filter(r => r.resultadoGeneral === res).length;
@@ -301,45 +254,6 @@ export default function DashboardCalibracionPage() {
                         <td style={S.td}>{p.tipo}</td>
                         <td style={{ ...S.td, color: "#d97706", fontWeight: 600 }}>{fmtDate(p.fechaVencimiento)}</td>
                         <td style={{ ...S.td, color: dias <= 7 ? "#dc2626" : "#d97706", fontWeight: 700 }}>{dias} días</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* TAGs sin calibración reciente */}
-        {tagsSinCalibracionReciente.length > 0 && (
-          <div style={S.card}>
-            <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#0f2847" }}>
-              TAGs sin Calibración Reciente (+180 días)
-            </h3>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    {["TAG", "Instrumento", "Tipo Variable", "Última Calibración", "Días sin calibrar", "Último resultado"].map(h => (
-                      <th key={h} style={S.th}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {tagsSinCalibracionReciente.map(r => {
-                    const dias = Math.abs(diasRestantes(r.fecha));
-                    return (
-                      <tr key={r._id}>
-                        <td style={{ ...S.td, fontWeight: 700, color: "#0f2847" }}>{r.tag}</td>
-                        <td style={S.td}>{r.descripcionInstrumento}</td>
-                        <td style={S.td}>{r.tipoVariable}</td>
-                        <td style={S.td}>{fmtDate(r.fecha)}</td>
-                        <td style={{ ...S.td, color: dias > 365 ? "#dc2626" : "#d97706", fontWeight: 700 }}>{dias} días</td>
-                        <td style={S.td}>
-                          <span style={{ color: RESULTADO_COLOR[r.resultadoGeneral], fontWeight: 700, fontSize: 12 }}>
-                            {r.resultadoGeneral}
-                          </span>
-                        </td>
                       </tr>
                     );
                   })}
