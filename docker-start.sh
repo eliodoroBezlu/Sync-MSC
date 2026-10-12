@@ -361,6 +361,26 @@ const migraciones = [
   // los hashes viejos que aún guardaba Sync.
   "ALTER TABLE \"Usuario\" ALTER COLUMN \"trabajadorId\" SET NOT NULL",
   "ALTER TABLE \"Usuario\" DROP COLUMN IF EXISTS \"passwordHash\"",
+
+  // ── Calibración: cumplimiento programado vs ejecutado (2026-10) ───────────
+  "ALTER TABLE \"RegistroCalibracion\" ADD COLUMN IF NOT EXISTS origen TEXT NOT NULL DEFAULT 'sistema'",
+  "CREATE INDEX IF NOT EXISTS \"RegistroCalibracion_origen_fecha_idx\" ON \"RegistroCalibracion\" (origen, fecha DESC)",
+  `CREATE TABLE IF NOT EXISTS "ProgramaCalibracion" (
+    id TEXT NOT NULL PRIMARY KEY,
+    tag TEXT NOT NULL,
+    "fechaPlan" DATE NOT NULL,
+    "semanaIso" INTEGER NOT NULL,
+    "frecuenciaDias" INTEGER,
+    programa TEXT NOT NULL DEFAULT 'WG',
+    origen TEXT NOT NULL DEFAULT 'WG',
+    "otModelo" TEXT,
+    "tipoServicio" TEXT,
+    "horasEstimadas" DOUBLE PRECISION,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL
+  )`,
+  "CREATE UNIQUE INDEX IF NOT EXISTS \"ProgramaCalibracion_tag_fechaPlan_programa_key\" ON \"ProgramaCalibracion\" (tag, \"fechaPlan\", programa)",
+  "CREATE INDEX IF NOT EXISTS \"ProgramaCalibracion_fechaPlan_idx\" ON \"ProgramaCalibracion\" (\"fechaPlan\")",
 ];
 
 (async () => {
