@@ -990,6 +990,9 @@ export default function CalibracionPage() {
     return tagMatch && resMatch && estMatch;
   });
 
+  // Sugerencias del buscador: TAGs y certificados de los registros cargados.
+  const sugerenciasBusqueda = [...new Set(registros.flatMap((r) => [r.tag, r.numeroCertificado]))].sort();
+
   // ── Open nuevo ───────────────────────────────────────────────────────────────
   const openNuevo = () => {
     setForm(emptyForm());
@@ -1150,9 +1153,14 @@ export default function CalibracionPage() {
                   <input
                     style={S.input}
                     placeholder="Buscar..."
+                    list="sugerencias-tag-cert"
+                    autoComplete="off"
                     value={filterTag}
                     onChange={(e) => setFilterTag(e.target.value)}
                   />
+                  <datalist id="sugerencias-tag-cert">
+                    {sugerenciasBusqueda.map((s) => <option key={s} value={s} />)}
+                  </datalist>
                 </div>
                 <div style={{ minWidth: 160 }}>
                   <label style={S.label}>Resultado</label>
