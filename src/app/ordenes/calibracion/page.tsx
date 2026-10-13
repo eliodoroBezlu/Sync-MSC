@@ -120,7 +120,7 @@ const TURNO_LIST = ["Diurno", "Nocturno", "Parada de Planta", "Otro"];
 
 const TIPOS_VARIABLE = [
   "Presión", "Temperatura", "Flujo", "Nivel",
-  "pH", "Conductividad", "Posición", "Velocidad", "Otro",
+  "pH", "Conductividad", "Posición", "Velocidad", "Peso", "Otro",
 ];
 
 const STEP_LABELS = ["Instrumento", "Patrón", "Puntos", "Firma Técnico", "Revisión"];
@@ -143,6 +143,7 @@ const UNIDADES_VARIABLE: Record<string, string[]> = {
   "Gas":           ["ppm", "% vol", "% LEL", "mg/m³"],
   "Sonido":        ["dB"],
   "Masa":          ["kg", "g", "t", "lb"],
+  "Peso":          ["kg/m", "kg", "t/h", "t", "g", "lb"],
   "Velocidad":     ["RPM", "m/s", "Hz"],
   "Posición":      ["mm", "cm", "%"],
   "Otro":          ["—"],
@@ -595,6 +596,7 @@ export default function CalibracionPage() {
   const [loadingLista, setLoadingLista] = useState(true);
   const [filterTag, setFilterTag] = useState("");
   const [filterResultado, setFilterResultado] = useState("");
+  const [filterEstado, setFilterEstado] = useState("");
   // Filtro de período (Capa 1 & 2 — default: últimas 3 semanas)
   const [periodo, setPeriodo] = useState<Periodo>("3semanas");
   const [filtroFechaDesde, setFiltroFechaDesde] = useState(restarDias(21));
@@ -971,7 +973,8 @@ export default function CalibracionPage() {
   const filteredRegistros = registros.filter((r) => {
     const tagMatch = filterTag === "" || r.tag.toLowerCase().includes(filterTag.toLowerCase()) || r.numeroCertificado.toLowerCase().includes(filterTag.toLowerCase());
     const resMatch = filterResultado === "" || r.resultadoGeneral === filterResultado;
-    return tagMatch && resMatch;
+    const estMatch = filterEstado === "" || (r.estado ?? "aprobado") === filterEstado;
+    return tagMatch && resMatch && estMatch;
   });
 
   // ── Open nuevo ───────────────────────────────────────────────────────────────
@@ -1141,6 +1144,18 @@ export default function CalibracionPage() {
                     <option value="APROBADO">APROBADO</option>
                     <option value="RECHAZADO">RECHAZADO</option>
                     <option value="AJUSTADO">AJUSTADO</option>
+                  </select>
+                </div>
+                <div style={{ minWidth: 160 }}>
+                  <label style={S.label}>Estado</label>
+                  <select
+                    style={S.select}
+                    value={filterEstado}
+                    onChange={(e) => setFilterEstado(e.target.value)}
+                  >
+                    <option value="">Todos</option>
+                    <option value="revision">En revisión</option>
+                    <option value="aprobado">Aprobado</option>
                   </select>
                 </div>
                 <div style={{ color: "#64748b", fontSize: 12, paddingBottom: 10 }}>
@@ -1463,7 +1478,7 @@ export default function CalibracionPage() {
                   const display = (!form.tipoVariable || form.tipoVariable === "Otro")
                     ? vigentes
                     : (() => {
-                        const f = vigentes.filter((p) => p.tipo === form.tipoVariable || p.tipo === "Multifunción");
+                        const f = vigentes.filter((p) => p.tipo === form.tipoVariable || p.tipo === "Multifunción" || (form.tipoVariable === "Peso" && p.tipo === "Masa"));
                         return f.length > 0 ? f : vigentes;
                       })();
                   return display.map((p, idx) => {
