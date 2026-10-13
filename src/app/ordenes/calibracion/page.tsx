@@ -1503,7 +1503,7 @@ export default function CalibracionPage() {
                 )}
 
                 {(() => {
-                  const vigentes = patrones.filter((p) => !isVencido(p.fechaVencimiento));
+                  const vigentes = patrones.filter((p) => p.activo && !isVencido(p.fechaVencimiento));
                   const display = (!form.tipoVariable || form.tipoVariable === "Otro")
                     ? vigentes
                     : (() => {
@@ -2291,9 +2291,10 @@ export default function CalibracionPage() {
 
             {/* Status summary */}
             {allPatrones.length > 0 && (() => {
-              const vencidos = allPatrones.filter((p) => isVencido(p.fechaVencimiento)).length;
-              const proximos = allPatrones.filter((p) => !isVencido(p.fechaVencimiento) && isProximoAVencer(p.fechaVencimiento)).length;
-              const vigentes = allPatrones.filter((p) => !isVencido(p.fechaVencimiento) && !isProximoAVencer(p.fechaVencimiento)).length;
+              const activos = allPatrones.filter((p) => p.activo);
+              const vencidos = activos.filter((p) => isVencido(p.fechaVencimiento)).length;
+              const proximos = activos.filter((p) => !isVencido(p.fechaVencimiento) && isProximoAVencer(p.fechaVencimiento)).length;
+              const vigentes = activos.filter((p) => !isVencido(p.fechaVencimiento) && !isProximoAVencer(p.fechaVencimiento)).length;
               return (
                 <div style={{ ...S.card, padding: "12px 16px", marginBottom: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                   <span style={{ fontSize: 12, color: "#64748b" }}>Estado general:</span>

@@ -97,9 +97,10 @@ export default function DashboardCalibracionPage() {
   const rechazadosAntes = registros.filter(r => r.puntosAntes && r.puntosAntes.some(p => !p.aprueba)).length;
   const pctNoConforme = registros.length > 0 ? Math.round((rechazadosAntes / registros.length) * 100) : 0;
 
-  // Patrones vencidos
-  const patronesVencidos = patrones.filter(p => diasRestantes(p.fechaVencimiento) < 0);
-  const patronesProximos7 = patrones.filter(p => {
+  // Patrones vencidos (los inactivos no generan alarma)
+  const patronesActivos = patrones.filter(p => p.activo);
+  const patronesVencidos = patronesActivos.filter(p => diasRestantes(p.fechaVencimiento) < 0);
+  const patronesProximos7 = patronesActivos.filter(p => {
     const d = diasRestantes(p.fechaVencimiento);
     return d >= 0 && d <= 30;
   });
