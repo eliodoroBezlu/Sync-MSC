@@ -1,5 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
+import { exigirRol } from "@/lib/calibracion/acceso";
+
+const ROLES_ELIMINAR = [1]; // solo Admin
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -36,5 +39,18 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error interno";
     return Response.json({ ok: false, error: message }, { status: 400 });
+  }
+}
+
+export async function DELETE(req: NextRequest, { params }: Ctx) {
+  const denegado = await exigirRol(req, ROLES_ELIMINAR);
+  if (denegado) return denegado;
+  try {
+    const { id } = await params;
+    await prisma.registroCalibracion.delete({ where: { id } });
+    return Response.json({ ok: true });
+  } catch (err: unknown) {
+    console.error("Error al eliminar registro de calibración", err);
+    return Response.json({ ok: false, error: "No se pudo eliminar el registro" }, { status: 400 });
   }
 }

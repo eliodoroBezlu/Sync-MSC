@@ -623,6 +623,19 @@ export default function CalibracionPage() {
     window.open(`/ordenes/calibracion/stickers?ids=${[...selectedIds].join(",")}`, "_blank");
   };
 
+  const eliminarSeleccionados = async () => {
+    if (currentUser?.rol !== 1 || selectedIds.size === 0) return;
+    const n = selectedIds.size;
+    if (!window.confirm(`¿Eliminar ${n} hoja${n !== 1 ? "s" : ""} de calibración? Esta acción no se puede deshacer.`)) return;
+    const resultados = await Promise.all(
+      [...selectedIds].map((id) => fetch(`/api/calibracion/${id}`, { method: "DELETE" }).then((r) => r.ok).catch(() => false)),
+    );
+    const fallidas = resultados.filter((ok) => !ok).length;
+    if (fallidas > 0) window.alert(`No se pudieron eliminar ${fallidas} de ${n} hojas.`);
+    setSelectedIds(new Set());
+    await loadRegistros();
+  };
+
   // Datos remotos
   const [patrones, setPatrones] = useState<PatronDoc[]>([]);
   const [tecnicos, setTecnicos] = useState<UserOpt[]>([]);
@@ -1099,6 +1112,14 @@ export default function CalibracionPage() {
                       >
                         🖨 Imprimir stickers ({selectedIds.size})
                       </button>
+                      {currentUser?.rol === 1 && (
+                        <button
+                          style={{ ...S.btnPrimary, background: "#dc2626" }}
+                          onClick={eliminarSeleccionados}
+                        >
+                          🗑 Eliminar ({selectedIds.size})
+                        </button>
+                      )}
                     </>
                   )}
                   <button
